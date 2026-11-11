@@ -1,0 +1,8 @@
+Link to Github Repo: https://github.com/VizuaraAI/infertutor-arena-capstone
+^ Hardware Labs 4: Inference Engineering using vLLM on Modal
+
+Vizuara_AI_Jetson_Orin_Nano_Setup_Guide_ (1).pdf
+^ Hardware Labs 3 Jetson Orin Nano Setup Guide
+
+Raspberry_Pi_Inference_Lab_Module.pdf
+^ Hardware Labs 2 (Raspberry Pi) Lab Guide

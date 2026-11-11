@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>分离式服务 — 图解教程</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --purple:#7c5cfc;--blue:#2563eb;--green:#059669;--orange:#d97706;
+  --red:#dc2626;--pink:#db2777;--cyan:#0891b2;--ink:#171717;
+  --muted:#66635f;--paper:#fbfaf7;--soft:#f4efe7;--line:#ded8cf;
+  --bg:#fff;--shadow:0 16px 42px rgba(30,28,25,.08);--max-w:1040px;
+}
+html{scroll-behavior:smooth}
+body{
+  font-family:'Inter',-apple-system,BlinkMacSystemFont,"Helvetica Neue","PingFang SC","Microsoft YaHei",Arial,sans-serif;
+  color:var(--ink);background:
+  linear-gradient(90deg,rgba(22,22,22,.035) 1px,transparent 1px),
+  linear-gradient(180deg,rgba(22,22,22,.028) 1px,transparent 1px),var(--paper);
+  background-size:28px 28px;line-height:1.68;font-size:15.5px;letter-spacing:0
+}
+code,.mono{font-family:'JetBrains Mono',monospace}
+.nav{position:sticky;top:0;z-index:20;background:rgba(251,250,247,.92);backdrop-filter:blur(14px);border-bottom:1px solid rgba(222,216,207,.78)}
+.nav-inner{max-width:var(--max-w);margin:0 auto;padding:12px 22px;display:flex;align-items:center;justify-content:space-between;gap:18px}
+.nav-brand{font-family:'Instrument Serif',"PingFang SC","Microsoft YaHei",serif;font-size:20px;color:var(--purple)}
+.nav-links{display:flex;gap:9px;flex-wrap:wrap;justify-content:flex-end}
+.nav-links a{font-size:12px;color:var(--muted);text-decoration:none;border:1px solid var(--line);background:rgba(255,255,255,.7);padding:6px 9px;border-radius:999px}
+.nav-links a:hover{color:var(--ink);border-color:var(--ink)}
+.container{max-width:var(--max-w);margin:0 auto;padding:0 24px}
+section{padding:64px 0}
+section.alt{background:rgba(255,255,255,.45);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+h1{font-family:'Instrument Serif',"PingFang SC","Microsoft YaHei",serif;font-size:clamp(44px,7vw,88px);line-height:.95;font-weight:400;margin:0;color:var(--ink)}
+h2{font-family:'Instrument Serif',"PingFang SC","Microsoft YaHei",serif;font-size:clamp(32px,4vw,48px);line-height:1.05;font-weight:400;margin:0 0 12px}
+h3{font-size:20px;line-height:1.2;margin:26px 0 10px}
+p{margin:0 0 14px;color:#36322f}
+.subtitle{font-size:19px;color:var(--muted);max-width:760px;margin:20px 0 0}
+.label{font-size:11px;letter-spacing:1.9px;text-transform:uppercase;font-weight:800;color:var(--purple);margin-bottom:8px}
+.gradient-text{background:linear-gradient(135deg,var(--purple),var(--cyan),var(--green));-webkit-background-clip:text;background-clip:text;color:transparent}
+.hero{min-height:calc(100vh - 68px);display:grid;grid-template-columns:minmax(0,1.05fr) minmax(340px,.75fr);gap:34px;align-items:center;padding:52px 0 36px}
+.hero-card{border:1px solid var(--ink);border-radius:8px;background:#fff;box-shadow:var(--shadow);padding:18px}
+.hero-diagram{height:360px;border:1px solid var(--line);border-radius:8px;background:linear-gradient(180deg,#fff,#f8f6f2);position:relative;overflow:hidden}
+.request{position:absolute;left:18px;top:36px;width:64px;height:28px;background:var(--ink);color:#fff;border-radius:999px;display:grid;place-items:center;font:700 11px 'JetBrains Mono';animation:requestMove 5s ease-in-out infinite}
+@keyframes requestMove{0%,100%{transform:translateX(0)}32%{transform:translateX(112px)}64%{transform:translateX(224px)}}
+.lane{position:absolute;left:34px;right:34px;height:96px;border:1px solid var(--line);border-radius:10px;background:#fff}
+.lane.prefill{top:92px}.lane.decode{top:212px}
+.lane-title{position:absolute;left:12px;top:8px;font:800 11px 'JetBrains Mono';text-transform:uppercase;letter-spacing:.8px}
+.lane.prefill .lane-title{color:var(--blue)}.lane.decode .lane-title{color:var(--orange)}
+.gpu-mini{position:absolute;top:38px;width:58px;height:36px;border-radius:8px;display:grid;place-items:center;color:#fff;font:800 10px 'JetBrains Mono'}
+.lane.prefill .gpu-mini{background:var(--blue)}.lane.decode .gpu-mini{background:var(--orange)}
+.g1{left:16px}.g2{left:86px}.g3{left:156px}.g4{left:226px}
+.kv-packet{position:absolute;left:72px;top:192px;width:208px;height:16px;border-radius:999px;background:repeating-linear-gradient(90deg,var(--green),var(--green) 12px,#7dd3a8 12px,#7dd3a8 24px);animation:kvFlow 3.2s linear infinite}
+@keyframes kvFlow{from{background-position:0 0}to{background-position:48px 0}}
+.metric-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:16px}
+.metric{border:1px solid var(--line);background:var(--soft);border-radius:8px;padding:14px}
+.metric strong{display:block;font-size:30px;line-height:1;font-family:'JetBrains Mono';margin-bottom:6px}
+.callout{border-left:4px solid var(--purple);background:#f3f0ff;border-radius:0 10px 10px 0;padding:18px 22px;margin:18px 0}
+.callout.blue{border-left-color:var(--blue);background:#eff6ff}.callout.green{border-left-color:var(--green);background:#f0fdf4}.callout.orange{border-left-color:var(--orange);background:#fffbeb}.callout.red{border-left-color:var(--red);background:#fef2f2}
+.card{background:#fff;border:1px solid var(--line);border-radius:8px;padding:20px;box-shadow:0 1px 2px rgba(0,0,0,.04);margin:16px 0}
+.card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin:18px 0}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
+.phase-card{min-height:230px;position:relative;overflow:hidden}
+.phase-pill{display:inline-flex;align-items:center;gap:8px;border-radius:999px;padding:6px 10px;font:800 11px 'JetBrains Mono';text-transform:uppercase}
+.phase-pill.prefill{background:#dbeafe;color:#1d4ed8}.phase-pill.decode{background:#fef3c7;color:#92400e}
+.bars{display:flex;gap:10px;align-items:flex-end;height:132px;margin:20px 0 8px}
+.bar{flex:1;border-radius:8px 8px 0 0;color:#fff;display:flex;align-items:flex-end;justify-content:center;padding:8px 4px;font:800 11px 'JetBrains Mono';text-align:center}
+.bar.compute{height:118px;background:var(--blue)}.bar.memory{height:38px;background:#93c5fd}.bar.decode-compute{height:42px;background:#fbbf24;color:#6b3a00}.bar.decode-memory{height:120px;background:var(--orange)}
+.pipeline{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:22px 0}
+.stage{border:1px solid var(--line);background:#fff;border-radius:8px;padding:14px;min-height:118px;position:relative;text-align:center}
+.stage::after{content:"";position:absolute;right:-16px;top:50%;width:22px;height:2px;background:var(--line)}
+.stage:last-child::after{display:none}
+.stage .icon{width:48px;height:48px;margin:0 auto 10px;border-radius:14px;background:var(--soft);display:grid;place-items:center;font:900 20px 'JetBrains Mono';color:var(--purple)}
+.stage h4{font-size:13px;margin-bottom:4px}.stage p{font-size:12.5px;color:var(--muted);margin:0}
+.timeline{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff;margin:16px 0}
+.tl-row{display:grid;grid-template-columns:120px 1fr;border-bottom:1px solid var(--line)}
+.tl-row:last-child{border-bottom:0}.tl-label{padding:12px;font:800 12px 'JetBrains Mono';background:#faf9f7;border-right:1px solid var(--line)}
+.tl-track{padding:10px;display:flex;gap:4px;min-height:52px}
+.tl-block{display:flex;align-items:center;justify-content:center;border-radius:7px;color:#fff;font:800 10px 'JetBrains Mono';min-width:24px;padding:0 6px}
+.prefill-block{background:var(--blue)}.decode-block{background:var(--orange)}.idle-block{background:#e5e7eb;color:#777;border:1px dashed #c9c9c9}.transfer-block{background:var(--green)}
+.controls{display:flex;gap:10px;flex-wrap:wrap;margin:16px 0}
+.btn{border:1.5px solid var(--line);background:#fff;border-radius:999px;padding:8px 15px;font:700 13px 'Inter';cursor:pointer}
+.btn.active,.btn:hover{border-color:var(--purple);color:var(--purple);background:#f3f0ff}
+.system-vis{position:relative;border:1px solid var(--line);border-radius:12px;background:#fff;min-height:420px;margin:18px 0;overflow:hidden}
+.pool{position:absolute;border:2px solid;border-radius:14px;padding:14px;background:rgba(255,255,255,.92)}
+.pool h4{font-size:13px;text-transform:uppercase;letter-spacing:.9px;margin-bottom:10px}
+.pool.ingress{left:22px;top:38px;width:160px;border-color:var(--purple)}.pool.prefill{left:242px;top:28px;width:260px;border-color:var(--blue)}.pool.decode{right:22px;top:138px;width:260px;border-color:var(--orange)}.pool.store{left:242px;bottom:28px;width:260px;border-color:var(--green)}
+.server-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.server{height:46px;border-radius:8px;color:#fff;display:grid;place-items:center;font:800 11px 'JetBrains Mono'}
+.server.blue{background:var(--blue)}.server.orange{background:var(--orange)}.server.green{background:var(--green)}.server.purple{background:var(--purple)}
+.arrow-line{position:absolute;height:3px;background:var(--line);transform-origin:left center}
+.a1{left:184px;top:98px;width:58px}.a2{left:502px;top:112px;width:122px;transform:rotate(28deg)}.a3{left:372px;top:164px;width:126px;transform:rotate(90deg)}.a4{left:502px;top:306px;width:98px;transform:rotate(-31deg)}
+.packet{position:absolute;border-radius:999px;padding:5px 9px;color:#fff;font:800 10px 'JetBrains Mono';box-shadow:0 4px 12px rgba(0,0,0,.12)}
+.p1{left:198px;top:78px;background:var(--purple)}.p2{left:528px;top:138px;background:var(--green)}.p3{left:516px;top:276px;background:var(--green)}
+.calc{display:grid;grid-template-columns:minmax(0,1fr) minmax(260px,.75fr);gap:18px;align-items:start}
+.slider-row{margin:16px 0}.slider-row label{display:flex;justify-content:space-between;font-weight:700;font-size:13px;margin-bottom:8px}.slider-row input{width:100%}
+.result-box{background:var(--ink);color:#fff;border-radius:10px;padding:18px;position:sticky;top:90px}
+.result-box h3{margin-top:0;color:#fff}.result-line{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid rgba(255,255,255,.13);padding:9px 0;font-family:'JetBrains Mono';font-size:13px}
+.result-line:last-child{border-bottom:0}.result-line strong{color:#8ad4ff}
+.equation{font-family:'JetBrains Mono';background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px;overflow-x:auto;margin:14px 0;color:#1f2937}
+.figure-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px;box-shadow:var(--shadow);margin:18px 0}
+.figure-card img{display:block;width:100%;height:auto;border-radius:8px;border:1px solid var(--line)}
+.figure-caption{font-size:13px;color:var(--muted);margin:10px 2px 0;line-height:1.55}
+.code-block{background:#151923;color:#f8fafc;border-radius:10px;padding:16px;overflow-x:auto;font:12.5px/1.7 'JetBrains Mono';margin:14px 0;border:1px solid rgba(255,255,255,.08)}
+.code-block .comment{color:#9ca3af}.code-block .hl{color:#8ad4ff}.code-block .ok{color:#7dd3a8}
+.checklist{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin:18px 0}
+.check{background:#fff;border:1px solid var(--line);border-radius:8px;padding:15px}.check strong{display:block;margin-bottom:4px;color:var(--ink)}
+.chip-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 9px;font:700 11px 'JetBrains Mono';color:var(--muted)}
+table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:8px;overflow:hidden;margin:16px 0;font-size:13px}th{background:#f4efe7;text-align:left;font:800 11px 'JetBrains Mono';text-transform:uppercase;letter-spacing:.7px;color:#514b45}td,th{padding:11px 12px;border-bottom:1px solid var(--line)}tr:last-child td{border-bottom:0}.good{color:var(--green);font-weight:800}.bad{color:var(--red);font-weight:800}.warn{color:var(--orange);font-weight:800}
+footer{text-align:center;border-top:1px solid var(--line);padding:38px 24px;background:#fff}
+.footer-brand{font-family:'Instrument Serif',"PingFang SC","Microsoft YaHei",serif;color:var(--purple);font-size:20px}
+@media(max-width:860px){.hero,.two-col,.calc{grid-template-columns:1fr}.pipeline{grid-template-columns:1fr}.stage::after{display:none}.system-vis{min-height:740px}.pool.ingress,.pool.prefill,.pool.decode,.pool.store{position:relative;left:auto;right:auto;top:auto;bottom:auto;width:auto;margin:16px}.arrow-line,.packet{display:none}.nav-inner{align-items:flex-start;flex-direction:column}}
+@media(max-width:620px){section{padding:46px 0}.metric-grid{grid-template-columns:1fr}.tl-row{grid-template-columns:1fr}.tl-label{border-right:0;border-bottom:1px solid var(--line)}}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <span class="nav-brand">分离式服务</span>
+    <div class="nav-links">
+      <a href="#why">为什么要拆分？</a>
+      <a href="#vllm">vLLM 循环</a>
+      <a href="#chunking">分块</a>
+      <a href="#phases">预填充 vs 解码</a>
+      <a href="#interference">相互干扰</a>
+      <a href="#architecture">架构</a>
+      <a href="#kv-tax">KV 传输税</a>
+      <a href="#kv-lifecycle">KV 生命周期</a>
+      <a href="#production">生产</a>
+      <a href="#routing">路由</a>
+      <a href="#decision">决策</a>
+    </div>
+  </div>
+</nav>
+
+<main>
+<section class="hero container">
+  <div>
+    <div class="label">端到端图解教程</div>
+    <h1><span class="gradient-text">分离式服务</span></h1>
+    <p class="subtitle">一个生产级 LLM 服务器其实是两台截然不同的机器共用了一个名字：一台吞下 prompt 的预填充机器，和一台流式输出 token 的解码机器。分离式服务（disaggregated serving）把它们拆开，让各自以自然的节奏运行。</p>
+    <div class="metric-grid">
+      <div class="metric"><strong>TTFT</strong>预填充队列压力</div>
+      <div class="metric"><strong>TPOT</strong>解码 token 节奏</div>
+      <div class="metric"><strong>KV</strong>交接的载荷</div>
+      <div class="metric"><strong>SLO</strong>路由之所以重要的原因</div>
+    </div>
+  </div>
+  <aside class="hero-card">
+    <div class="hero-diagram" aria-label="动画化的预填充-解码泳道">
+      <div class="request">请求</div>
+      <div class="lane prefill">
+        <div class="lane-title">预填充池：大块的 prompt 分块</div>
+        <div class="gpu-mini g1">P0</div><div class="gpu-mini g2">P1</div><div class="gpu-mini g3">P2</div><div class="gpu-mini g4">P3</div>
+      </div>
+      <div class="kv-packet"></div>
+      <div class="lane decode">
+        <div class="lane-title">解码池：一次一个 token</div>
+        <div class="gpu-mini g1">D0</div><div class="gpu-mini g2">D1</div><div class="gpu-mini g3">D2</div><div class="gpu-mini g4">D3</div>
+      </div>
+    </div>
+  </aside>
+</section>
+
+<section id="why" class="alt">
+  <div class="container">
+    <div class="label">核心思想</div>
+    <h2>一个模型，两种工作负载</h2>
+    <p>自回归推理有两个阶段。在 <strong>预填充（prefill）</strong> 阶段，模型处理整个 prompt 并创建初始 KV 缓存。在 <strong>解码（decode）</strong> 阶段，模型生成一个新的 token，追加一条新的 KV 条目，然后不断重复。这两个阶段对 GPU 施加的压力不同。</p>
+    <div class="callout blue"><strong>预填充很宽。</strong> 数千个 prompt token 可以并行处理。它看起来像大规模矩阵乘法，往往偏向计算密集。</div>
+    <div class="callout orange"><strong>解码很窄。</strong> 每个活跃请求每次迭代只前进一个 token。它反复读取权重和 KV 缓存，因此内存带宽和调度占主导地位。</div>
+    <div class="two-col">
+      <div class="card phase-card">
+        <span class="phase-pill prefill">预填充</span>
+        <h3>Prompt 摄取</h3>
+        <p>输入：大量 token。输出：首批 logits 以及 prompt 的完整 KV 缓存。</p>
+        <div class="bars">
+          <div class="bar compute">计算</div>
+          <div class="bar memory">内存</div>
+        </div>
+        <p class="mono">擅长：大批量、粗颗粒工作、高 GPU 占用率。</p>
+      </div>
+      <div class="card phase-card">
+        <span class="phase-pill decode">解码</span>
+        <h3>Token 流式输出</h3>
+        <p>输入：每个序列一个 token。输出：每个序列一个 token，反复多次。</p>
+        <div class="bars">
+          <div class="bar decode-compute">计算</div>
+          <div class="bar decode-memory">内存</div>
+        </div>
+        <p class="mono">擅长：稳定节奏、连续批处理、受保护的 TPOT。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="phases">
+  <div class="container">
+    <div class="label">数学图景</div>
+    <h2>预填充想要大块，解码想要节奏。</h2>
+    <p>对单个请求而言，预填充只发生一次，而解码每生成一个 token 就发生一次。这意味着一个长 prompt 会在开始时制造一波计算爆发，而一个长回答会在之后制造许多次细小的解码迭代。</p>
+    <div class="equation">
+      预填充成本  ≈  处理(prompt_tokens) 一次<br>
+      解码成本   ≈  处理(1 个新 token) × output_tokens<br>
+      服务之痛   ≈  预填充突发干扰解码节奏
+    </div>
+    <div class="pipeline">
+      <div class="stage"><div class="icon">1</div><h4>请求到达</h4><p>估算 prompt 长度和 SLO。</p></div>
+      <div class="stage"><div class="icon">2</div><h4>预填充运行</h4><p>prompt token 创建初始 KV 缓存。</p></div>
+      <div class="stage"><div class="icon">3</div><h4>KV 移动</h4><p>缓存成为解码所需的状态。</p></div>
+      <div class="stage"><div class="icon">4</div><h4>解码循环</h4><p>每次迭代每个序列一个 token。</p></div>
+      <div class="stage"><div class="icon">5</div><h4>Token 流式输出</h4><p>解码继续时用户看到输出。</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="vllm" class="alt">
+  <div class="container">
+    <div class="label">深入 vLLM 引擎</div>
+    <h2>只有理解了引擎循环，分离式服务才有意义。</h2>
+    <p>一个现代的 vLLM 风格服务器并不是一个简单调用 <code>model.generate()</code> 的 Web 进程。它是一个持续运行的调度器。每一步，引擎都会选择哪些请求进入 batch，更新 KV 块元数据，准备紧凑的 GPU 输入，运行一次展平的前向传播，采样 token，然后重复。</p>
+    <div class="pipeline">
+      <div class="stage"><div class="icon">Q</div><h4>等待队列</h4><p>新 prompt、恢复的请求和被抢占的请求竞争 token 预算。</p></div>
+      <div class="stage"><div class="icon">S</div><h4>调度器步骤</h4><p>在内存和 token 限制下选择预填充分块和解码 token。</p></div>
+      <div class="stage"><div class="icon">M</div><h4>元数据</h4><p>构建位置、slot 映射、块表和注意力元数据。</p></div>
+      <div class="stage"><div class="icon">F</div><h4>前向传播</h4><p>用分页注意力将所有活动序列展平为一个紧凑的超级批。</p></div>
+      <div class="stage"><div class="icon">T</div><h4>采样 token</h4><p>提取最后 token 状态、采样、追加 KV，并返回调度器。</p></div>
+    </div>
+    <div class="callout blue"><strong>为什么这很重要。</strong> 预填充/解码的拆分并不在引擎之外；它改变的是调度器每一步被允许放入的内容。统一 worker 在同一个循环里混合 prompt 分块和解码 token。分离式系统则为每个阶段提供各自的循环和各自的资源池。</div>
+    <div class="two-col">
+      <div class="card">
+        <h3>连续批处理（continuous batching）</h3>
+        <p>每一次引擎步骤之后，完成的请求离开，新的请求可以进入，活跃请求继续。无需把每个序列填充到相同长度；分页注意力和注意力元数据在一个展平的 batch 里保持序列彼此分离。</p>
+      </div>
+      <div class="card">
+        <h3>分页 KV 内存</h3>
+        <p>每个请求拥有逻辑上的 KV 位置，但物理 KV 缓存按块存储。调度器更新块表，注意力 kernel 在前向传播期间遵循该映射。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="chunking">
+  <div class="container">
+    <div class="label">过渡思想</div>
+    <h2>分块预填充是局部修复，分离式服务是架构级修复。</h2>
+    <p>在拆分 worker 之前，vLLM 可以通过把一个长 prompt 切成更小的预填充分块来减少干扰。与其让一个 8K token 的 prompt 独占整个步骤，调度器会限制单次迭代中可处理的新 prompt token 数量。这能让解码 token 持续流动，但同一个 GPU 池仍然在共享两种不兼容的工作负载。</p>
+    <div class="timeline">
+      <div class="tl-row">
+        <div class="tl-label">不分块</div>
+        <div class="tl-track">
+          <div class="tl-block prefill-block" style="flex:72">8K 预填充独占一个步骤</div>
+          <div class="tl-block decode-block" style="flex:10">解码</div>
+          <div class="tl-block decode-block" style="flex:10">解码</div>
+        </div>
+      </div>
+      <div class="tl-row">
+        <div class="tl-label">分块</div>
+        <div class="tl-track">
+          <div class="tl-block prefill-block" style="flex:20">P1</div>
+          <div class="tl-block decode-block" style="flex:8">解码</div>
+          <div class="tl-block prefill-block" style="flex:20">P2</div>
+          <div class="tl-block decode-block" style="flex:8">解码</div>
+          <div class="tl-block prefill-block" style="flex:20">P3</div>
+          <div class="tl-block decode-block" style="flex:8">解码</div>
+        </div>
+      </div>
+      <div class="tl-row">
+        <div class="tl-label">分离式 P/D</div>
+        <div class="tl-track">
+          <div class="tl-block prefill-block" style="flex:44">预填充池吃掉分块</div>
+          <div class="tl-block transfer-block" style="flex:10">KV</div>
+          <div class="tl-block decode-block" style="flex:44">解码池稳定流式输出</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-grid">
+      <div class="card"><h3>分块预填充有助于 TTFT 公平性</h3><p>它防止单个长 prompt 在一个非常大的引擎步骤中阻塞其他所有请求。</p></div>
+      <div class="card"><h3>它并不能消除资源错配</h3><p>计算密集的预填充和内存密集的解码仍然共享同一个 worker 的 GPU 内存、队列和调度器。</p></div>
+      <div class="card"><h3>分离式服务增加了一项新成本</h3><p>一旦预填充和解码运行在不同的 worker 上，KV 缓存就必须在流式输出开始前跨互联结构移动。</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="interference" class="alt">
+  <div class="container">
+    <div class="label">生产问题</div>
+    <h2>在统一服务器里，预填充和解码互相打架。</h2>
+    <p>当两个阶段运行在同一个 GPU 池上时，一个长预填充会占用 GPU 时间，而活跃用户正在等待他们的下一个流式 token。症状很简单：第一个用户已经开始收到响应，但流突然卡顿，因为另一个用户的长 prompt 进入了 batch。</p>
+    <div class="controls" role="group" aria-label="时间轴模式">
+      <button class="btn active" data-mode="unified">统一池</button>
+      <button class="btn" data-mode="disagg">分离式池</button>
+    </div>
+    <div class="timeline" id="timelineVis"></div>
+    <div class="callout red" id="timelineText"><strong>统一池。</strong> 长预填充和解码迭代共享同一个队列。吞吐可能很高，但当 prompt 突发到来时，TPOT 会变得嘈杂。</div>
+    <div class="figure-card">
+      <img src="assets/production-systems/pd-interference-timeline.jpg" alt="预填充与解码相互干扰的时间轴，对比同置与分离式服务">
+      <p class="figure-caption"><strong>新细节。</strong> 在同置泳道里，解码流变慢并不是因为注意力数学变了；而是因为调度器在解码迭代之间插入了大量预填充工作。分离式服务把这种时间上的干扰变成了显式的 KV 交接。</p>
+    </div>
+    <div class="card">
+      <h3>数值干扰追踪</h3>
+      <pre class="code-block">Traffic at t=0:
+  64 active decode streams, each wants 1 token every 50 ms
+  1 new long-context request arrives with 12,000 prompt tokens
+
+Unified worker:
+  Step A: decode 64 tokens                  -> 45 ms
+  Step B: prefill chunk of long prompt       -> 180 ms
+  Step C: decode 64 tokens                  -> 45 ms
+
+Observed stream gap:
+  expected token gap ~= 50 ms
+  actual token gap   ~= 225 ms
+  user sees stutter
+
+Disaggregated:
+  Prefill worker runs 12K prompt separately
+  Decode worker keeps 45-55 ms cadence
+  user sees steady stream, but waits for KV handoff before first token</pre>
+    </div>
+  </div>
+</section>
+
+<section id="architecture">
+  <div class="container">
+    <div class="label">架构</div>
+    <h2>分离的池，显式的交接。</h2>
+    <p>分离式服务创建专用的预填充 worker 和专用的解码 worker。路由器把 prompt 密集的工作送到预填充池。一旦初始 KV 缓存存在，系统就把它转移给拥有流式输出循环的解码 worker。</p>
+    <div class="figure-card">
+      <img src="assets/disaggregated-pd.png" alt="分离式预填充-解码架构：只做预填充的 GPU 把 KV 缓存转移给只做解码的 GPU，从而降低 ITL 尖峰。">
+      <p class="figure-caption"><strong>要记住的图景。</strong> 左侧 worker 对大量输入 token 做高算术强度的预填充。右侧 worker 一次一个 token 地做受内存带宽约束的解码。KV 缓存传输是桥梁。没有拆分时，只要长预填充进入统一 worker，ITL 就会尖峰；有了拆分，解码节奏就更平稳。</p>
+    </div>
+    <div class="callout orange"><strong>重要细节。</strong> 解码 worker 收到的并不是「prompt 文本」。它收到的是模型状态：每个 prompt token、每一层、每个 KV 头的 K/V 张量。这就是为什么交接的数据量很大，而且对拓扑结构敏感。</div>
+    <div class="system-vis">
+      <div class="pool ingress">
+        <h4>入口路由器</h4>
+        <div class="server purple">SLO</div>
+        <p style="font-size:12px;margin-top:10px;color:var(--muted)">分类 prompt 长度、优先级和预估输出长度。</p>
+      </div>
+      <div class="pool prefill">
+        <h4>预填充 worker</h4>
+        <div class="server-grid"><div class="server blue">P0</div><div class="server blue">P1</div><div class="server blue">P2</div><div class="server blue">P3</div></div>
+      </div>
+      <div class="pool store">
+        <h4>KV 传输平面</h4>
+        <div class="server-grid"><div class="server green">KV</div><div class="server green">DMA</div><div class="server green">RDMA</div><div class="server green">PIN</div></div>
+      </div>
+      <div class="pool decode">
+        <h4>解码 worker</h4>
+        <div class="server-grid"><div class="server orange">D0</div><div class="server orange">D1</div><div class="server orange">D2</div><div class="server orange">D3</div></div>
+      </div>
+      <div class="arrow-line a1"></div><div class="arrow-line a2"></div><div class="arrow-line a3"></div><div class="arrow-line a4"></div>
+      <div class="packet p1">prompt</div><div class="packet p2">KV 缓存</div><div class="packet p3">状态</div>
+    </div>
+    <div class="card-grid">
+      <div class="card"><h3>预填充池</h3><p>针对大块、高算术强度、prompt 批处理和 TTFT 降低做了优化。</p></div>
+      <div class="card"><h3>解码池</h3><p>针对稳定的 token 节奏、连续批处理、内存带宽以及 P95/P99 TPOT 做了优化。</p></div>
+      <div class="card"><h3>KV 传输平面</h3><p>新的税。只有当移动 KV 缓存比让预填充干扰解码更便宜时，分离式服务才划算。</p></div>
+    </div>
+    <table>
+      <thead><tr><th>组件</th><th>它负责什么</th><th>生产关注点</th></tr></thead>
+      <tbody>
+        <tr><td>路由器</td><td>准入、阶段放置、worker 选择、请求状态。</td><td>交接之后不能坐在 KV 数据路径上。</td></tr>
+        <tr><td>预填充 worker</td><td>prompt 执行、首批 logits、临时 prompt KV 块。</td><td>需要高计算吞吐和 prompt 批处理。</td></tr>
+        <tr><td>解码 worker</td><td>流式循环、持久 KV 状态、token 节奏。</td><td>需要内存带宽、稳定队列和足够的 KV 容量。</td></tr>
+        <tr><td>连接器</td><td>KV 从生产者到消费者的移动。</td><td>需要快速的本地互联结构：NVLink、InfiniBand 或高速以太网。</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="kv-tax" class="alt">
+  <div class="container">
+    <div class="label">隐藏的成本</div>
+    <h2>KV 缓存是你为分离式服务支付的过路费。</h2>
+    <p>预填充结束后，解码 worker 需要该请求的 KV 缓存。其大小可以从模型架构和 prompt 长度预测。</p>
+    <div class="equation">
+      KV 字节数 = tokens × layers × 2 × kv_heads × head_dim × bytes_per_value
+    </div>
+    <div class="figure-card">
+      <img src="assets/production-systems/kv-transfer-tax.jpg" alt="KV 传输税公式与互联结构带宽对比">
+      <p class="figure-caption"><strong>新细节。</strong> KV 传输税（KV transfer tax）随 prompt token 数和层数线性增长。GQA/MQA 通过减少 KV 头来降低这项税；长上下文的稠密 MHA 则让它变得痛苦。</p>
+    </div>
+    <div class="calc">
+      <div class="card">
+        <h3>交互式 KV 传输计算器</h3>
+        <p>默认值接近 Llama-70B 风格的 GQA 模型：80 层、8 个 KV 头、128 头维度、BF16。</p>
+        <div class="slider-row"><label>Prompt token 数 <span id="tokVal">4096</span></label><input id="tokens" type="range" min="512" max="32768" step="512" value="4096"></div>
+        <div class="slider-row"><label>层数 <span id="layerVal">80</span></label><input id="layers" type="range" min="24" max="128" step="4" value="80"></div>
+        <div class="slider-row"><label>KV 头数 <span id="headVal">8</span></label><input id="heads" type="range" min="1" max="32" step="1" value="8"></div>
+        <div class="slider-row"><label>网络带宽 GB/s <span id="bwVal">50</span></label><input id="bandwidth" type="range" min="10" max="900" step="10" value="50"></div>
+      </div>
+      <div class="result-box">
+        <h3>传输估算</h3>
+        <div class="result-line"><span>每个 token 的 KV</span><strong id="perTok">320 KiB</strong></div>
+        <div class="result-line"><span>总 KV</span><strong id="totalKv">1.25 GiB</strong></div>
+        <div class="result-line"><span>原始传输</span><strong id="transferMs">25.6 ms</strong></div>
+        <div class="result-line"><span>解读</span><strong id="verdict">注意</strong></div>
+      </div>
+    </div>
+    <div class="callout green"><strong>设计原则。</strong> 当 KV 传输税小于你避免掉的解码干扰时，分离式服务才有吸引力。</div>
+    <div class="two-col">
+      <div class="card">
+        <h3>盈亏平衡测试</h3>
+        <pre class="code-block">benefit =
+  avoided_decode_stall_ms
++ avoided_prefill_queue_ms
++ better_pool_utilization_ms
+
+cost =
+  KV_transfer_ms
++ connector_overhead_ms
++ extra_failure_retry_ms
+
+Use disagg if benefit > cost.</pre>
+      </div>
+      <div class="card">
+        <h3>GQA 带来了什么</h3>
+        <p>由于 KV 大小与 <code>kv_heads</code> 成正比，分组查询注意力（GQA）和多查询注意力（MQA）不仅减少了内存占用，也减少了 P/D 传输税。这是注意力变体那节课与生产服务架构之间最清晰的联系之一。</p>
+      </div>
+    </div>
+    <div class="card">
+      <h3>1.34 GB KV 缓存的网络阶梯</h3>
+      <p>对于 Llama-70B 风格的模型，4K prompt 大约产生 1.34 GB 的 KV 缓存。在普通网络上这慢得令人痛苦；在本地数据中心的互联结构上则变得可行。</p>
+      <table>
+        <thead><tr><th>互联结构</th><th>大致带宽</th><th>1.34 GB 的传输时间</th><th>结论</th></tr></thead>
+        <tbody>
+          <tr><td>1 GbE</td><td>0.125 GB/s</td><td class="bad">~10.7 s</td><td>对交互式服务不可行。</td></tr>
+          <tr><td>10 GbE</td><td>1.25 GB/s</td><td class="bad">~1.1 s</td><td>对 TTFT 预算来说往往太慢。</td></tr>
+          <tr><td>100 GbE</td><td>12.5 GB/s</td><td class="warn">~110 ms</td><td>配合谨慎的排队可行。</td></tr>
+          <tr><td>InfiniBand HDR</td><td>25 GB/s</td><td class="good">~54 ms</td><td>与生产相关。</td></tr>
+          <tr><td>NVLink / 同节点</td><td>数百 GB/s</td><td class="good">几毫秒</td><td>如果放置在本机则非常出色。</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section id="kv-lifecycle">
+  <div class="container">
+    <div class="label">KV 连接器生命周期</div>
+    <h2>交接是一套协议，而不只是一次拷贝。</h2>
+    <p>在分离式的 vLLM 风格设计中，KV 传输围绕模型执行来协调。预填充 worker 生产 KV 块；解码 worker 预留空间并等待这些块；一旦加载完成，解码继续，该请求的外部 KV 只被消费一次。</p>
+    <div class="pipeline">
+      <div class="stage"><div class="icon">A</div><h4>分配</h4><p>解码 worker 为即将到来的请求预留 KV 块。</p></div>
+      <div class="stage"><div class="icon">P</div><h4>生产</h4><p>预填充 worker 为每个 prompt token 和每一层创建 K、V 张量。</p></div>
+      <div class="stage"><div class="icon">C</div><h4>连接</h4><p>路由器协调生产者和消费者；数据路径可以是直连的。</p></div>
+      <div class="stage"><div class="icon">L</div><h4>加载</h4><p>解码 worker 在第一个解码步骤之前导入 KV 块。</p></div>
+      <div class="stage"><div class="icon">D</div><h4>解码</h4><p>现在该请求表现得像一个普通的本地解码请求。</p></div>
+    </div>
+    <div class="two-col">
+      <div class="card">
+        <h3>哪里可能出错？</h3>
+        <p>KV 块可能迟到，解码内存可能已满，预填充 worker 可能在解码 slot 就绪前就完成，或者网络拥塞把一个干净的架构变成 TTFT 问题。</p>
+      </div>
+      <div class="card">
+        <h3>必须测量什么？</h3>
+        <p>等待预填充的时间、传输 KV 的时间、解码队列延迟、KV 内存占用，以及因为交接而错过 SLO 的请求数量。</p>
+      </div>
+    </div>
+    <div class="callout orange"><strong>微妙之处。</strong> 解码 worker 不希望每个 token 都反复拉取同一份远程 KV。远程 KV 只被加载进本地缓存一次，然后正常的解码循环追加新的本地 KV 条目。</div>
+  </div>
+</section>
+
+<section id="production" class="alt">
+  <div class="container">
+    <div class="label">生产实现</div>
+    <h2>是的：vLLM 和 SGLang 都有分离式服务路径。</h2>
+    <p>这已不再仅仅是论文里的架构。它正出现在真实的服务栈中，但仍然是一种高级部署模式：你需要多个实例、一个路由器或代理、KV 传输配置、快速的本地互联结构，以及细致的可观测性。</p>
+    <div class="card-grid">
+      <div class="card">
+        <h3>vLLM 现状</h3>
+        <p>vLLM 将 <strong>分离式预填充（disaggregated prefilling）</strong> 记录为实验性功能。该实现运行一个预填充实例和一个解码实例，然后通过 <code>vllm/distributed/kv_transfer</code> 下的连接器传输 KV 缓存。可用的连接器示例包括 NIXL、LMCache、P2P NCCL、Mooncake、FlexKV 和卸载连接器。</p>
+      </div>
+      <div class="card">
+        <h3>vLLM Router</h3>
+        <p>vLLM Router 是一个面向大型部署的状态感知负载均衡器。其公开仓库描述了它支持负载均衡、服务发现、健康检查、指标以及预填充/解码分离。</p>
+      </div>
+      <div class="card">
+        <h3>SGLang 现状</h3>
+        <p>SGLang 记录了 <strong>PD 分离</strong>，也记录了面向多模态工作负载的 <strong>EPD 分离</strong>，其中编码器、预填充和解码阶段可以分开，用于 VLM 服务。</p>
+      </div>
+    </div>
+
+    <h3>最小 SGLang 单节点示例</h3>
+    <p>SGLang 目前拥有最简洁的起步命令。基本形态是：启动一个预填充模式的服务器、一个解码模式的服务器，然后在前面放一个小的负载均衡器。</p>
+    <pre class="code-block"><span class="comment"># 1. Prefill worker</span>
+python -m sglang.launch_server \
+  --model-path meta-llama/Llama-3.1-8B-Instruct \
+  --disaggregation-mode prefill \
+  --disaggregation-transfer-backend nixl
+
+<span class="comment"># 2. Decode worker on another GPU / port</span>
+python -m sglang.launch_server \
+  --model-path meta-llama/Llama-3.1-8B-Instruct \
+  --disaggregation-mode decode \
+  --port 30001 \
+  --base-gpu-id 1 \
+  --disaggregation-transfer-backend nixl
+
+<span class="comment"># 3. Lightweight load balancer / front door</span>
+python -m sglang.srt.disaggregation.mini_lb \
+  --prefill http://127.0.0.1:30000 \
+  --decode http://127.0.0.1:30001 \
+  --host 0.0.0.0 \
+  --port 8000</pre>
+
+    <h3>vLLM 生产形态</h3>
+    <p>vLLM 的生产配置取决于连接器。稳定的心智模型是一样的：预填充是 KV 生产者，解码是 KV 消费者，代理/路由器编排两阶段的请求。使用官方示例脚本获取确切的连接器专用 JSON。</p>
+    <pre class="code-block"><span class="comment"># Conceptual vLLM layout. Fill connector JSON from the official example you use.</span>
+
+<span class="comment"># 1. Prefill instance: computes prompt KV cache</span>
+vllm serve $MODEL \
+  --port 8100 \
+  --kv-transfer-config '<span class="hl">{"kv_connector":"NixlConnector","kv_role":"kv_producer", ...}</span>'
+
+<span class="comment"># 2. Decode instance: receives/loads KV, then streams tokens</span>
+vllm serve $MODEL \
+  --port 8200 \
+  --kv-transfer-config '<span class="hl">{"kv_connector":"NixlConnector","kv_role":"kv_consumer", ...}</span>'
+
+<span class="comment"># 3. Router/proxy: OpenAI-compatible entry point</span>
+<span class="comment"># Routes request -> prefill -> decode, tracks worker health and queue state.</span></pre>
+
+    <h3>生产检查清单</h3>
+    <div class="checklist">
+      <div class="check"><strong>从基线开始。</strong> 先测量正常的 vLLM/SGLang 服务：TTFT、ITL/TPOT、P95/P99、吞吐、GPU 内存和队列延迟。</div>
+      <div class="check"><strong>使用相同的模型和流量。</strong> 在完全相同的 prompt/输出长度分布上比较统一服务和分离式服务。</div>
+      <div class="check"><strong>固定拓扑结构。</strong> 让预填充和解码 worker 保持在同一个节点、机架或高速互联结构域内。互联网式的网络对大规模 KV 传输来说远远不够。</div>
+      <div class="check"><strong>关注 KV 内存。</strong> 解码 worker 必须为传输过来的 prompt KV 加上新生成的解码 KV 预留空间。</div>
+      <div class="check"><strong>按阶段分离指标。</strong> 追踪预填充队列延迟、传输等待、解码队列延迟、token 节奏，以及请求失败/重试率。</div>
+      <div class="check"><strong>安全地失败。</strong> 添加健康检查、超时、生产者 KV 块清理，以及交接失败时回退到统一服务。</div>
+    </div>
+
+    <h3>有用的教程和文档</h3>
+    <table>
+      <thead><tr><th>资源</th><th>用它来做什么</th></tr></thead>
+      <tbody>
+        <tr><td><a href="https://docs.vllm.ai/en/latest/features/disagg_prefill/" target="_blank" rel="noreferrer">vLLM 分离式预填充文档</a></td><td>连接器抽象、官方示例路径、基准测试和实现位置。</td></tr>
+        <tr><td><a href="https://github.com/vllm-project/router" target="_blank" rel="noreferrer">vLLM Router</a></td><td>生产路由、负载均衡、服务发现和 P/D 感知的编排。</td></tr>
+        <tr><td><a href="https://vllm.ai/blog/2026-04-07-moriio-kv-connector" target="_blank" rel="noreferrer">vLLM MORI-IO 博客</a></td><td>具体的单节点 PD 设置、读/写传输模式、代理和 RDMA 交接细节。</td></tr>
+        <tr><td><a href="https://docs.sglang.ai/backend/pd_disaggregation.html" target="_blank" rel="noreferrer">SGLang PD 分离文档</a></td><td>使用 Mooncake、NIXL 和其他传输后端的单节点及多节点命令。</td></tr>
+        <tr><td><a href="https://docs.sglang.io/docs/advanced_features/epd_disaggregation" target="_blank" rel="noreferrer">SGLang EPD 分离文档</a></td><td>面向多模态/VLM 工作负载的编码器-预填充-解码分离。</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="routing">
+  <div class="container">
+    <div class="label">路由与调度</div>
+    <h2>路由器成为模型服务器的一部分。</h2>
+    <p>分离式系统需要放置决策。路由器估算一个请求应该走拆分路径、留在本地、等待空闲的解码 slot，还是使用压缩/卸载的 KV 路径。</p>
+    <div class="checklist">
+      <div class="check"><strong>Prompt 长度</strong>长 prompt 会产生大量的预填充突发和大规模 KV 传输。</div>
+      <div class="check"><strong>预期输出长度</strong>长输出会占用解码 worker 很多次迭代。</div>
+      <div class="check"><strong>SLO 层级</strong>交互式聊天在乎 TPOT；批量任务在乎吞吐。</div>
+      <div class="check"><strong>缓存局部性</strong>前缀复用和 KV 驻留可能胜过理论上更干净的放置。</div>
+      <div class="check"><strong>网络压力</strong>KV 传输与所有其他分布式流量共享互联结构。</div>
+      <div class="check"><strong>GPU 池平衡</strong>预填充 worker 太多会让解码挨饿；太少会抬高 TTFT。</div>
+    </div>
+    <table>
+      <thead><tr><th>请求类型</th><th>路由选择</th><th>原因</th></tr></thead>
+      <tbody>
+        <tr><td>短 prompt、短回答</td><td class="warn">统一或本地</td><td>KV 传输开销可能占主导。</td></tr>
+        <tr><td>长 prompt、交互式回答</td><td class="good">分离式</td><td>大预填充不应干扰活跃的解码流。</td></tr>
+        <tr><td>批量摘要</td><td class="good">预填充密集池</td><td>吞吐比 token 节奏更重要。</td></tr>
+        <tr><td>长多轮对话</td><td class="warn">局部性感知</td><td>如果会话继续，让 KV 靠近解码 worker。</td></tr>
+      </tbody>
+    </table>
+    <div class="card">
+      <h3>独立扩缩容的经验法则</h3>
+      <p>对于短 prompt 和长响应，分配更少的预填充 worker 和更多的解码 worker。对于长 prompt 和短响应，分配更多的预填充 worker 和更少的解码 worker。正确的拆分取决于工作负载，这正是关键所在：把两个阶段一起扩缩容是在浪费容量。</p>
+      <table>
+        <thead><tr><th>流量组合</th><th>可能的压力</th><th>池形态</th></tr></thead>
+        <tbody>
+          <tr><td>长回答的聊天助手</td><td>解码占用</td><td>更多解码 worker。</td></tr>
+          <tr><td>长文档上的 RAG</td><td>预填充突发加 KV 传输</td><td>更多预填充 worker；关注互联结构。</td></tr>
+          <tr><td>摘要批量</td><td>prompt 处理</td><td>预填充密集、面向吞吐。</td></tr>
+          <tr><td>可复用模板的 agent 循环</td><td>缓存局部性</td><td>路由器应利用前缀/缓存复用。</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section id="decision" class="alt">
+  <div class="container">
+    <div class="label">决策框架</div>
+    <h2>你什么时候应该做分离式服务？</h2>
+    <div class="card-grid">
+      <div class="card"><h3>何时使用</h3><p>prompt 很长、流量呈突发性、解码 SLO 很重要，而且你有足够的请求让两个池都保持温暖。</p><div class="chip-row"><span class="chip">长上下文</span><span class="chip">P99 TPOT</span><span class="chip">多 GPU</span></div></div>
+      <div class="card"><h3>何时要小心</h3><p>请求很短、流量很低、网络带宽很弱，或者 KV 缓存太大而无法廉价移动。</p><div class="chip-row"><span class="chip">短 prompt</span><span class="chip">低 QPS</span><span class="chip">慢互联</span></div></div>
+      <div class="card"><h3>测量这些</h3><p>TTFT、TPOT、P95/P99 延迟、预填充队列延迟、解码队列延迟、KV 传输时间、GPU 利用率，以及每个生成 token 的成本。</p><div class="chip-row"><span class="chip">TTFT</span><span class="chip">TPOT</span><span class="chip">有效吞吐</span></div></div>
+    </div>
+    <div class="card">
+      <h3>它如何融入完整的 vLLM 栈</h3>
+      <p>分离式 P/D 与其他 vLLM 服务特性并列。PagedAttention 让 KV 内存变得可控，连续批处理让解码 slot 保持填满，分块预填充减少本地干扰，前缀缓存避免重复的 prompt 工作，投机解码攻击解码延迟，而分离式服务在一个池无法干净地服务两者时，把两种资源画像拆开。</p>
+    </div>
+    <div class="card">
+      <h3>进一步阅读的来源</h3>
+      <p>本教程基于两篇优秀的公开讲解：JarvisLabs 关于分离式预填充-解码的文章，以及 Aleksa Gordić 对 vLLM 引擎、调度、分页注意力、分块预填充和高级服务特性的深入剖析。</p>
+      <div class="chip-row">
+        <a class="chip" href="https://jarvislabs.ai/blog/llm-optimization-disaggregated-prefill-decode" target="_blank" rel="noreferrer">JarvisLabs P/D 文章</a>
+        <a class="chip" href="https://www.aleksagordic.com/blog/vllm" target="_blank" rel="noreferrer">深入 vLLM</a>
+      </div>
+    </div>
+    <div class="callout blue"><strong>心智模型。</strong> 统一服务就像一个所有人既做饭又上菜的厨房。分离式服务则有一个备餐间和一条上菜线。当备餐工作大到足以干扰上菜时，分离式服务更好。</div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="footer-brand">Vizuara AI Labs</div>
+  <div style="font-size:12px;color:var(--muted);margin-top:4px">为推理工程师打造的图解教程</div>
+</footer>
+
+<script>
+const timeline = document.getElementById('timelineVis');
+const text = document.getElementById('timelineText');
+const buttons = document.querySelectorAll('[data-mode]');
+const rows = {
+  unified: [
+    ['GPU 池', [['长预填充',30,'prefill'],['解码',8,'decode'],['解码',8,'decode'],['突发预填充',24,'prefill'],['解码',8,'decode'],['解码',8,'decode']]],
+    ['用户流', [['等待',30,'idle'],['token',8,'decode'],['token',8,'decode'],['卡顿',24,'idle'],['token',8,'decode'],['token',8,'decode']]],
+    ['问题', [['TTFT 正常',30,'prefill'],['TPOT',16,'decode'],['抖动',24,'idle'],['TPOT',16,'decode']]]
+  ],
+  disagg: [
+    ['预填充池', [['长预填充',28,'prefill'],['突发预填充',24,'prefill'],['批预填充',26,'prefill'],['空闲',10,'idle']]],
+    ['KV 传输', [['KV',12,'transfer'],['',16,'idle'],['KV',12,'transfer'],['',24,'idle']]],
+    ['解码池', [['解码',8,'decode'],['解码',8,'decode'],['解码',8,'decode'],['解码',8,'decode'],['解码',8,'decode'],['解码',8,'decode'],['解码',8,'decode']]]
+  ]
+};
+function blockClass(kind){return kind==='prefill'?'prefill-block':kind==='decode'?'decode-block':kind==='transfer'?'transfer-block':'idle-block'}
+function renderTimeline(mode){
+  timeline.innerHTML = rows[mode].map(([label,blocks]) => `
+    <div class="tl-row">
+      <div class="tl-label">${label}</div>
+      <div class="tl-track">${blocks.map(([name,width,kind]) => `<div class="tl-block ${blockClass(kind)}" style="flex:${width}">${name}</div>`).join('')}</div>
+    </div>`).join('');
+  text.className = 'callout ' + (mode === 'unified' ? 'red' : 'green');
+  text.innerHTML = mode === 'unified'
+    ? '<strong>统一池。</strong> 长预填充和解码迭代共享同一个队列。吞吐可能很高，但当 prompt 突发到来时，TPOT 会变得嘈杂。'
+    : '<strong>分离式池。</strong> 预填充突发在自己的 worker 上运行，而解码 worker 保持更稳定的 token 节奏。代价是 KV 传输。';
+}
+buttons.forEach(btn => btn.addEventListener('click', () => {
+  buttons.forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderTimeline(btn.dataset.mode);
+}));
+renderTimeline('unified');
+
+const tokens = document.getElementById('tokens');
+const layers = document.getElementById('layers');
+const heads = document.getElementById('heads');
+const bandwidth = document.getElementById('bandwidth');
+const ids = ['tokVal','layerVal','headVal','bwVal','perTok','totalKv','transferMs','verdict'].reduce((o,id)=>{o[id]=document.getElementById(id);return o},{});
+function fmtBytes(bytes){
+  const units=['B','KiB','MiB','GiB','TiB']; let v=bytes, i=0;
+  while(v>=1024 && i<units.length-1){v/=1024;i++}
+  return `${v.toFixed(v>=10?1:2)} ${units[i]}`;
+}
+function updateCalc(){
+  const t=+tokens.value,l=+layers.value,h=+heads.value,bw=+bandwidth.value;
+  const headDim=128, bytesPer=2;
+  const perToken=l*2*h*headDim*bytesPer;
+  const total=perToken*t;
+  const seconds=total/(bw*1e9);
+  ids.tokVal.textContent=t.toLocaleString();
+  ids.layerVal.textContent=l;
+  ids.headVal.textContent=h;
+  ids.bwVal.textContent=bw;
+  ids.perTok.textContent=fmtBytes(perToken);
+  ids.totalKv.textContent=fmtBytes(total);
+  ids.transferMs.textContent=(seconds*1000).toFixed(1)+' ms';
+  ids.verdict.textContent=seconds*1000 < 20 ? '便宜' : seconds*1000 < 80 ? '注意' : '昂贵';
+}
+[tokens,layers,heads,bandwidth].forEach(el=>el.addEventListener('input',updateCalc));
+updateCalc();
+</script>
+</body>
+</html>

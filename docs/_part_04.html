@@ -1,0 +1,550 @@
+<section class="chapter-wrapper" id="ch10-flash-attention">
+<h1>第 10 章：FlashAttention</h1>
+<p>第 8 章和第 9 章针对的是 KV 缓存的<em>大小</em>。FlashAttention 针对的是另一个目标：注意力内核运行期间发生的<em>内存流量</em>，与缓存本身有多大或多小无关。</p>
+<p>要理解为什么这一点重要，先回想解码步骤中发生的事情。模型从 HBM 读取 KV 缓存。它将 Q、K、V 加载到片上内存中。它计算注意力分数（<code>Q · Kᵀ</code>），应用 softmax，再乘以 V 得到上下文向量。然后它把上下文向量写回。这一操作跨越 HBM 移动的总字节数可能远大于缓存本身，因为中间张量——N×N 的分数矩阵、N×N 的权重矩阵——会在内核运行时被物化并被反复读取。</p>
+<p>FlashAttention 的洞见是：这些中间张量<strong>根本不需要存放在 HBM 中</strong>。它们可以在片上 SRAM 里一块一块地计算、使用并丢弃，从不写入 HBM，也从不读回。唯一的 HBM 流量就是 Q、K、V 的进入，以及上下文向量的输出。其余一切都在片上完成。</p>
+<p>结果是执行期间注意力的内存占用大幅下降。在 H100 上、4K token 的上下文下，FlashAttention 把注意力的 HBM 流量减少了大约 10×，在注意力密集型工作负载上转化为 2-4× 的端到端加速。在长上下文（32K+）下，加速更明显。</p>
+<p>本章逐步讲解这一切是如何实现的：分块（tiling）策略、让分块注意力在数学上正确的在线 softmax（online softmax）技巧，以及量化收益的 I/O 复杂度分析。我们还会追溯从 FlashAttention-1（2022）到 FlashAttention-3（2024）的演进，因为每个版本都通过利用上一版本未使用的硬件特性，从 GPU 峰值中榨取出更多性能。</p>
+<hr>
+<h2>标准注意力的 HBM 流量问题</h2>
+<h3>10.1：标准注意力到底对 HBM 做了什么</h3>
+<p>在深入解决方案之前，让我们先精确说明标准注意力做错了什么。注意力计算包含三次矩阵乘法：</p>
+<ol>
+<li><code>scores = Q · Kᵀ / √d</code>，产生一个 N×N 的分数矩阵。</li>
+<li><code>weights = softmax(scores)</code>，同样是 N×N。</li>
+<li><code>context = weights · V</code>，产生 N×d。</li>
+</ol>
+<p>在朴素实现中（大致就是 PyTorch 默认注意力在 <code>torch.compile</code> 之前的行为），每一次乘法都被实现为独立的 CUDA 内核。这意味着：</p>
+<ul>
+<li>内核 1 从 HBM 读取 Q 和 K，把 N×N 的分数矩阵写入 HBM。</li>
+<li>内核 2 从 HBM 读取分数，把 N×N 的权重矩阵写入 HBM。</li>
+<li>内核 3 从 HBM 读取权重和 V，把上下文写入 HBM。</li>
+</ul>
+<p><img alt="图 10.1：标准注意力：HBM 往返次数过多" src="figures/ch10-fig1-standard-attention-hbm-traffic/final.png">
+<em>图 10.1.</em> 一个由六个交替方框组成的纵向流程图。HBM（写入 Q、K、V）。计算（读取 Q 和 K，计算分数）。HBM（写入 N×N 分数）。计算（读取分数，softmax）。HBM（写入 N×N 权重）。计算（读取权重和 V，产生输出）。注释：「对 N×N 矩阵进行 3 次完整读取 + 3 次完整写入到 HBM。」</p>
+<p>图 10.1 展示了这种流量。六次往返 HBM，N×N 矩阵在 HBM 中穿行两次——一次作为分数，一次作为权重。当 N = 4096、每个元素 2 字节时，N×N 矩阵是 <code>4096² × 2 = 32 MB per attention layer per forward pass per user</code>。跨越 32 层，仅注意力中间张量每次前向传播就大约 1 GB，全部以 3.35 TB/s 的速度在 HBM 中搬运。</p>
+<p>注意力内核本身执行的 FLOPs 相对很少（在预填充期间与 <code>N²·d</code> 成正比，在解码期间与 <code>N·d</code> 成正比），却搬运了巨大的字节量。这是一个典型的访存受限（memory-bound）内核。数据搬运时，计算大部分时间处于空闲状态。</p>
+<h3>10.2：真正的问题：N×N 矩阵装不进 SRAM</h3>
+<p>我们究竟为什么要把 N×N 分数矩阵写入 HBM？因为它对片上内存来说太大了。H100 的 SM 有 228 KB SRAM；N = 4096 时的 N×N 矩阵是 32 MB，大约是其 140×。即使是较小的一块——单个 SM 线程块处理的部分——通常也有数 MB。根本没办法把整个矩阵都放在片上。</p>
+<p><img alt="图 10.2：真正的问题：N×N 分数矩阵爆炸" src="figures/ch10-fig2-n-squared-matrix-problem/final.png">
+<em>图 10.2.</em> 中央是一张 N = 4096 的 N×N 矩阵网格图。注释「4096 × 4096 × 2 bytes = 32 MB per attention layer per sequence」。旁边是一个对比框：「L = 32 layers → 1 GB total. SRAM per SM = 228 KB.」一个醒目的箭头标注：「The N×N matrix is ~140,000× bigger than SRAM can hold. It MUST live in HBM under standard attention.」</p>
+<p>图 10.2 展示了这种不匹配。32 MB 的 N×N 矩阵对比每个 SM 228 KB 的 SRAM。标准解法是「把它放进 HBM，然后继续」。FlashAttention 的解法是：「根本不要生成完整的 N×N 矩阵。每次只生成它的一小块，用完即弃。」</p>
+<p>这绝非易事，因为 <strong>softmax 是按行进行的</strong>，而 N×N 矩阵的一行跨越所有 N 个 key。你无法在不知道其他所有块信息的情况下只计算一块分数——softmax 归一化需要对整行求和 <code>exp(score)</code>。需要某种数学技巧才能让逐块 softmax 成立。这个技巧就是 <strong>在线 softmax</strong>。</p>
+<hr>
+<h2>FlashAttention 算法</h2>
+<h3>10.3：核心思想：把 Q、K、V 分块装进 SRAM</h3>
+<p><img alt="图 10.3：FlashAttention 的思想：把 Q、K、V 分块装进 SRAM" src="figures/ch10-fig3-flash-attention-idea-tile-into-sram/final.png">
+<em>图 10.3.</em> 一张左右分栏的图。左半「Standard attention」显示 Q、K、V 在 HBM 中，一个巨大的 N×N 分数矩阵在 HBM 中被物化。右半「FlashAttention」显示 Q、K、V 仍在 HBM 中，但彩色的小块被一次一块地加载进 SRAM。N×N 分数矩阵在 HBM 中并不存在；它在 SRAM 内逐块计算并丢弃。中央注释：「The N×N scores matrix is never written to HBM. Only small tiles exist briefly inside SRAM.」</p>
+<p>图 10.3 是核心思想。与其计算完整的 N×N 矩阵再遍历它，FlashAttention：</p>
+<ol>
+<li>把 Q 分成 <code>B_r</code> 个行块，把 K、V 分成 <code>B_c</code> 个列块，块大小要适配 SRAM 预算。</li>
+<li>对每个 Q 块，遍历所有 K 块和 V 块。</li>
+<li>对每个（Q 块、K 块、V 块）三元组：把它们加载进 SRAM，计算该块的局部分数矩阵，应用运行中的 softmax 更新，累积该 Q 块的局部输出。</li>
+<li>当某个 Q 块的所有 K/V 块都处理完毕后，把最终输出块写入 HBM。</li>
+</ol>
+<p>关键性质：<strong>N×N 分数矩阵从不存在于 HBM 中</strong>。只有它的小块短暂存在于 SRAM 中，并在每次迭代时被覆盖。HBM 只看到 Q、K、V 进入和 O 输出。</p>
+<p>图 10.4 以具体规模展示了这种分块结构。</p>
+<p><img alt="图 10.4：分块网格：8×8 注意力，2×2 分块网格" src="figures/ch10-fig4-tiling-grid/final.png">
+<em>图 10.4.</em> 一个 8×8 的注意力矩阵被划分成 2×2 的 4×4 分块网格，每个块用不同颜色表示。Q 行块（Q_1 行 0-3，Q_2 行 4-7）标注在左侧。K 列块标注在顶部。4 个块各自以其（行块，列块）索引命名。注释：「FlashAttention processes tiles in an outer loop over Q blocks, inner loop over K/V blocks.」</p>
+<p>图 10.4 展示了一个玩具规模的 8×8 注意力被拆成 4 个 4×4 的分块。实践中，块大小根据 SRAM 选定，典型的生产参数是 Q 用 <code>B_r = 128</code>、K 用 <code>B_c = 64</code>，得到 8K 个元素的分块，能轻松装进 H100 的 228 KB SRAM。</p>
+<p>问题是：既然 softmax 需要整行归一化，逐块计算又如何产生正确的 softmax 输出？</p>
+<h3>10.4：在线 softmax 技巧</h3>
+<p>在线 softmax 是让分块注意力成立的数学基础。它回答的问题是：<em>给定目前的局部和，当带有自身局部贡献的新块到达时，我们该如何更新它？</em></p>
+<p>标准 softmax：</p>
+<pre><code>softmax(x_1, ..., x_N)_i  =  exp(x_i) / sum_{j=1..N} exp(x_j)
+</code></pre>
+<p>在数值实现中，为了稳定性，我们减去最大值：</p>
+<pre><code>m = max(x_1, ..., x_N)
+softmax(x_1, ..., x_N)_i  =  exp(x_i - m) / sum_{j=1..N} exp(x_j - m)
+</code></pre>
+<p>现在假设我们已经处理了块 1 到块 t，并已知：
+- <code>m_t</code> = 到目前为止见过的所有分数的最大值
+- <code>l_t</code> = 到目前为止所有 j 的 <code>exp(score_j - m_t)</code> 之和
+- <code>o_t</code> = 到目前为止的局部输出向量（V 值的加权和）</p>
+<p>一个新的块 t+1 到达，带有：
+- <code>m'</code> = 该块中分数的最大值
+- <code>l'</code> = 该块分数的 <code>exp(score_j - m')</code> 之和
+- <code>o'</code> = 该块的局部输出（该块的分数 × V）</p>
+<p>我们需要合并它们。在线 softmax 的更新：</p>
+<pre><code>m_new  =  max(m_t, m')
+l_new  =  exp(m_t - m_new) · l_t  +  exp(m' - m_new) · l'
+o_new  =  exp(m_t - m_new) · o_t  +  exp(m' - m_new) · o'
+</code></pre>
+<p>在最后一块之后，最终输出是 <code>o_last / l_last</code>。</p>
+<p><img alt="图 10.5：在线 softmax 技巧" src="figures/ch10-fig5-online-softmax/final.png">
+<em>图 10.5.</em> 一张从左到右的流程图，展示跨两个块的运行状态更新。块 1 之后，状态是 (m_1, l_1, o_1)。块 2 带着自己的 (m_2, l_2, o_2) 到达。一个合并公式框显示 m_new = max(m_1, m_2)；scale_1 = exp(m_1 - m_new)；scale_2 = exp(m_2 - m_new)；l_new = l_1·scale_1 + l_2·scale_2；o_new = o_1·scale_1 + o_2·scale_2。注释：「Each tile contributes to a running max, sum, and output. Softmax ends up correct without materializing the full row.」</p>
+<p>图 10.5 展示了这个机制。这个「状态」只是三个数字（每个注意力查询行）：一个运行最大值 <code>m</code>、一个运行求和 <code>l</code>，以及一个局部输出向量 <code>o</code>。每个进来的块都用图中所示的指数缩放来更新这三者。</p>
+<p>数学正确性：最终的 softmax 是精确的。缩放因子 <code>exp(m_t - m_new)</code> 确保当新块带来更大的最大值时，旧的贡献会被重新缩放到新的参考点。这等价于把所有指数参数平移，从而在最终比值中相互抵消。</p>
+<p>数值稳定性：在指数化之前减去最大值，使指数参数的上界为 0，从而防止溢出。这在批量 softmax 中已是标准做法；在线 softmax 只是把它变成增量形式。</p>
+<h3>10.5：逐块走查</h3>
+<p>让我们追踪两个块，把它具体化。</p>
+<p><img alt="图 10.6：块 (Q1, K1)：第一个块，初始化状态" src="figures/ch10-fig6-tile-0-0-walkthrough/final.png">
+<em>图 10.6.</em> 对第一个块的四步拆解。第 1 步：从 HBM 把 Q1、K1、V1 加载进 SRAM。第 2 步：在 SRAM 内计算 S = Q1 · K1ᵀ。第 3 步：按行求最大值 m_1、求和 l_1、局部输出 o_1。第 4 步：把状态写入 HBM，丢弃 SRAM 中的块。</p>
+<p>对于第一个块（Q 块 0、K 块 0、V 块 0）：</p>
+<ol>
+<li>
+<p>从 HBM 把 Q_1（形状 <code>B_r × d</code>）、K_1（形状 <code>B_c × d</code>）、V_1（形状 <code>B_c × d</code>）加载进 SRAM。总加载量：<code>(B_r + 2·B_c) · d · 2 bytes</code>。</p>
+</li>
+<li>
+<p>计算该块的分数：<code>S_1 = Q_1 · K_1ᵀ / √d</code>，形状 <code>(B_r, B_c)</code>，全在 SRAM 中。</p>
+</li>
+<li>
+<p>对 Q_1 的每一行，计算：
+   - <code>m_1[i] = max(S_1[i, :])</code>，局部最大值
+   - <code>l_1[i] = sum(exp(S_1[i, :] - m_1[i]))</code>，指数和的局部求和
+   - <code>o_1[i] = sum_j exp(S_1[i, j] - m_1[i]) · V_1[j, :]</code>，局部输出</p>
+</li>
+<li>
+<p>把该 Q 块的状态 <code>(m_1, l_1, o_1)</code> 写回 HBM。</p>
+</li>
+</ol>
+<p>第二个块，同一 Q 块的 K 块 1：</p>
+<p><img alt="图 10.7：块 (Q1, K2)：第二个块，更新运行状态" src="figures/ch10-fig7-tile-0-1-walkthrough/final.png">
+<em>图 10.7.</em> 对第二个块的四步拆解。第 1 步：从 HBM 加载 Q1（已缓存）、K2、V2（新），以及先前的状态 (m_1, l_1, o_1)。第 2 步：在 SRAM 内计算 S = Q1 · K2ᵀ。第 3 步：局部 m_2、l_2。用在线 softmax 规则与先前状态合并，产生 (m_new, l_new, o_new)。第 4 步：把新状态写回 HBM。</p>
+<p>结构相同，但现在有先前的状态需要合并。合并使用 §10.4 中的在线 softmax 更新公式。当该 Q 块的所有 K 块都处理完毕后，最终的 <code>o / l</code> 就是该 Q 块的精确注意力输出。</p>
+<p>注意 Q_1 只需加载一次，它会在整个 K/V 块内层循环期间一直留在 SRAM 中。K 块和 V 块每次迭代都重新加载。</p>
+<h3>10.5.1：一个玩具 8×8 注意力的完整数值走查</h3>
+<p>仅有公式无法建立直觉。现在我们在一个玩具注意力头上端到端地运行 FlashAttention，其中每个矩阵元素都小到可以手算。这个示例的结构与 Llama-3-70B 在 <code>N = 131,072</code> 时发生的情况完全一致；只是维度不同。</p>
+<p><strong>设置。</strong> 一个头，序列长度 <code>N = 8</code>，头维度 <code>d = 4</code>，块大小 <code>B_q = B_kv = 4</code>。缩放因子是 <code>1/√d = 0.5</code>。8×8 的分数矩阵拆成 2×2 的 4×4 块网格。</p>
+<pre><code>Q (8×4):                  K (8×4):                  V (8×4):
+ 1.0  0.5  0.0  0.2        0.8  0.3  0.1  0.4        1.0  0.0  0.5  0.2
+ 0.3  1.0  0.4  0.1        0.2  0.9  0.5  0.3        0.3  0.8  0.1  0.6
+ 0.7  0.2  0.8  0.5        0.6  0.1  0.7  0.8        0.7  0.3  0.9  0.1
+ 0.1  0.6  0.3  0.9        0.4  0.7  0.2  0.6        0.2  0.5  0.4  0.8
+ 0.5  0.3  0.7  0.4        0.9  0.4  0.3  0.1        0.6  0.2  0.7  0.3
+ 0.8  0.1  0.2  0.6        0.1  0.8  0.6  0.5        0.4  0.7  0.2  0.9
+ 0.2  0.7  0.5  0.3        0.5  0.2  0.4  0.7        0.8  0.1  0.6  0.4
+ 0.4  0.5  0.1  0.8        0.3  0.6  0.8  0.2        0.5  0.4  0.3  0.7
+</code></pre>
+<p><img alt="图 10.6.A：玩具 QKV 矩阵与 2×2 分块网格" src="figures/ch10-fig6a-toy-qkv-matrices/final.png">
+<em>图 10.6.A.</em> 三张 8×4 矩阵 Q、K、V 并排显示，附带其数值，并按两个 4 行 Q 块和 4 行 KV 块进行色带划分。右侧是一个 8×8 注意力网格，叠加了 2×2 的分块边界，标注为 <code>(Q₀, K₀)</code>、<code>(Q₀, K₁)</code>、<code>(Q₁, K₀)</code>、<code>(Q₁, K₁)</code>。注释：「FlashAttention will process this grid tile by tile; the full 8×8 scores matrix never exists in HBM.」</p>
+<p><strong>标准注意力参考（第 0 行）。</strong> 我们先用标准注意力计算输出第 0 行<em>应该</em>是什么，以便验证 FlashAttention 能精确复现它。</p>
+<p><code>S = Q · Kᵀ / √d</code> 的第 0 行，其中 <code>Q[0] = [1.0, 0.5, 0.0, 0.2]</code>，与每个 K 行做点积后乘以 0.5：</p>
+<pre><code>S[0] = [0.515, 0.385, 0.405, 0.435, 0.560, 0.300, 0.370, 0.320]
+</code></pre>
+<p>按行 softmax：最大值是位置 4 处的 0.560。减去后指数化：</p>
+<pre><code>exp(S[0] - 0.560) = [0.956, 0.839, 0.856, 0.882, 1.000, 0.771, 0.827, 0.787]
+sum = 6.919
+P[0] = [0.138, 0.121, 0.124, 0.127, 0.145, 0.111, 0.120, 0.114]   (sums to 1.0)
+</code></pre>
+<p>最后 <code>O[0] = P[0] · V</code>，即 V 行的 8 路加权和：</p>
+<pre><code>O[0][0] = 0.138·1.0 + 0.121·0.3 + 0.124·0.7 + 0.127·0.2
+        + 0.145·0.6 + 0.111·0.4 + 0.120·0.8 + 0.114·0.5
+        = 0.571
+</code></pre>
+<p>所以输出第 0 行的标准注意力答案以 <strong>0.571</strong> 开头。记住这个数字。</p>
+<p><strong>FlashAttention，块 (Q₀, K₀)。</strong> 把 Q₀ = Q[0:4]、K₀ = K[0:4]、V₀ = V[0:4] 加载进 SRAM。初始化运行状态：</p>
+<pre><code>m_0 = [-∞, -∞, -∞, -∞]    (one per Q row)
+l_0 = [ 0,  0,  0,  0]
+O_0 = zeros(4, 4)
+</code></pre>
+<p>在 SRAM 中计算 <code>S_tile = Q₀ · K₀ᵀ · 0.5</code>（128 FLOPs）：</p>
+<pre><code>S_tile (4×4):
+  [ 0.515  0.385  0.405  0.435 ]   ← Q row 0
+  [ 0.325  0.580  0.385  0.465 ]   ← Q row 1
+  [ 0.475  0.385  0.605  0.430 ]   ← Q row 2
+  [ 0.305  0.490  0.360  0.505 ]   ← Q row 3
+</code></pre>
+<p>这个 4×4 分块只存在于 SRAM 中。它从不写入 HBM。这是省下的第一块。</p>
+<p>按行最大值与运行状态更新：</p>
+<pre><code>m_tile = rowmax(S_tile) = [0.515, 0.580, 0.605, 0.505]
+m_new  = max(m_0, m_tile) = [0.515, 0.580, 0.605, 0.505]   (first tile, m_0 was -∞)
+
+P_tile = exp(S_tile - m_new)
+       = [[1.000, 0.878, 0.896, 0.923],   ← row 0
+          [0.775, 1.000, 0.823, 0.891],
+          [0.878, 0.803, 1.000, 0.839],
+          [0.819, 0.985, 0.865, 1.000]]
+
+l_0 = [0, 0, 0, 0] + rowsum(P_tile) = [3.697, 3.489, 3.520, 3.669]
+
+O_0 = P_tile · V_0
+Row 0: [1.000·[1.0,0.0,0.5,0.2] + 0.878·[0.3,0.8,0.1,0.6]
+        + 0.896·[0.7,0.3,0.9,0.1] + 0.923·[0.2,0.5,0.4,0.8]]
+     = [2.075, 1.433, 1.763, 1.555]   (unnormalized, per-row partial)
+</code></pre>
+<p>块 (0,0) 之后第 0 行的状态：<code>m = 0.515</code>、<code>l = 3.697</code>、<code>O = [2.075, 1.433, 1.763, 1.555]</code>。</p>
+<p><strong>FlashAttention，块 (Q₀, K₁)——修正生效。</strong> 加载 K₁ = K[4:8]、V₁ = V[4:8]。Q₀ 已在 SRAM 中，我们复用它。</p>
+<pre><code>S_tile = Q₀ · K₁ᵀ · 0.5:
+  [ 0.560  0.300  0.370  0.320 ]   ← Q row 0 attending to K rows 4-7
+  [ 0.290  0.420  0.310  0.395 ]
+  [ 0.465  0.385  0.460  0.465 ]
+  [ 0.225  0.435  0.335  0.325 ]
+
+m_tile = [0.560, 0.420, 0.465, 0.435]
+m_new  = max(m_0, m_tile) = [0.560, 0.580, 0.605, 0.505]
+                             ^^^^^
+                             row 0 promoted from 0.515 to 0.560
+</code></pre>
+<p>这是关键时刻。第 0 行的旧累积是针对最大值 = 0.515 构建的。新块揭示了一个更大的值 0.560。我们必须重新缩放旧的工作。第 0 行的修正因子是：</p>
+<pre><code>correction[0] = exp(m_0 - m_new) = exp(0.515 − 0.560) = exp(−0.045) = 0.956
+correction    = [0.956, 1.000, 1.000, 1.000]
+</code></pre>
+<p>第 1–3 行不受影响（它们的旧最大值仍然成立，所以 <code>exp(0) = 1</code>）。只有第 0 行得到一个小于 1 的修正。</p>
+<pre><code>P_tile = exp(S_tile - m_new):
+  [ 1.000  0.771  0.827  0.787 ]   ← row 0 under new max 0.560
+  [ 0.748  0.852  0.763  0.831 ]
+  [ 0.870  0.803  0.865  0.870 ]
+  [ 0.756  0.932  0.844  0.835 ]
+
+l_new = correction · l_0 + rowsum(P_tile)
+      = [0.956, 1.000, 1.000, 1.000] · [3.697, 3.489, 3.520, 3.669]
+      + [3.385, 3.194, 3.408, 3.367]
+      = [3.534, 3.489, 3.520, 3.669] + [3.385, 3.194, 3.408, 3.367]
+      = [6.919, 6.683, 6.928, 7.036]
+</code></pre>
+<p>对比第 0 行：在线 softmax 得到 <code>l[0] = 6.919</code>，与上面计算的标准注意力求和完全一致。没有任何近似——修正因子 <code>exp(-0.045) = 0.956</code> 把旧块的贡献重新缩放到新参考点，旧的求和 3.697 变成 <code>0.956 · 3.697 = 3.534</code>，再加上新块的 3.385，恰好得到 6.919。</p>
+<p>类似地更新输出累积器：</p>
+<pre><code>O_new[0] = correction[0] · O_0[0] + P_tile[0] · V_1
+         = 0.956 · [2.075, 1.433, 1.763, 1.555]
+         + [1.000·[0.6,0.2,0.7,0.3] + 0.771·[0.4,0.7,0.2,0.9]
+            + 0.827·[0.8,0.1,0.6,0.4] + 0.787·[0.5,0.4,0.3,0.7]]
+         = [1.984, 1.370, 1.685, 1.487] + [1.964, 1.138, 1.586, 1.876]
+         = [3.948, 2.508, 3.271, 3.363]
+</code></pre>
+<p>当 Q 块 0 的 K 块内层循环结束后，我们除以最终的 <code>l</code> 得到该 Q 块的归一化输出：</p>
+<pre><code>O_final[0] = O_new[0] / l_new[0] = [3.948, 2.508, 3.271, 3.363] / 6.919
+           = [0.571, 0.362, 0.473, 0.486]
+</code></pre>
+<p>第一个元素是 <strong>0.571</strong>——与我们在开头计算的标准注意力答案逐位一致。FlashAttention 不是近似。它计算出完全相同的输出，只是 HBM 流量减少了 67%，因为 4×4 的 <code>S_tile</code> 和 <code>P_tile</code> 从未接触 HBM。</p>
+<p><img alt="图 10.6.B：跨两个块的在线 softmax 修正" src="figures/ch10-fig6b-online-correction-trace/final.png">
+<em>图 10.6.B.</em> 一张双栏图，追踪第 0 行跨块的状态。栏 1「After tile (Q₀,K₀)」显示状态三元组 (m=0.515, l=3.697, O=[2.075, 1.433, 1.763, 1.555])，旁边是 P_tile 矩阵。栏 2「After tile (Q₀,K₁)」显示以红色高亮的修正因子 0.956，状态三元组更新为 (m=0.560, l=6.919, O=[3.948, 2.508, 3.271, 3.363])，以及一条从被 0.956 缩放的旧 O 值指向新值的虚线箭头。底部有一个「Final normalize」框：<code>O/l = [0.571, 0.362, 0.473, 0.486]</code>，下方盖有「Matches standard attention exactly」的印记。</p>
+<p><strong>玩具示例的 I/O 账本。</strong> 计算每种方法的 HBM 字节数：</p>
+<p><img alt="图 10.6.C：HBM I/O 时间线——标准注意力 vs FlashAttention" src="figures/ch10-fig11-standard-attention-hbm-trace/final.png">
+<em>图 10.6.C.</em> 两条水平时间线上下堆叠。上方：「Standard attention, 6 HBM round-trips」——Q/K/V 写入（192 B）、Q/K 读取（128 B）、写入 S 8×8（128 B）、读取 S + 写入 P（256 B）、读取 P/V（192 B）、写入 O（64 B）。累计 = 768 B。S/P 的往返以铁锈色高亮，并标注「intermediate, discarded」。下方：「FlashAttention, 4 HBM round-trips, same FLOPs」——Q 块（32 B）、K/V_0（64 B）、K/V_1（64 B）、O 写入（32 B），加上 Q 块 2 的重复读取。累计 = 384 B。旁边是柱状图：768 B vs 384 B，标注「0.50× HBM traffic, identical 1,152 FLOPs.」</p>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>标准</th>
+<th>FlashAttention</th>
+<th>比值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>HBM 读取</td>
+<td>448 B（Q、K、V、S、P）</td>
+<td>320 B（Q、K、V；K、V 重读一次）</td>
+<td>0.71×</td>
+</tr>
+<tr>
+<td>HBM 写入</td>
+<td>320 B（S、P、O）</td>
+<td>64 B（仅 O）</td>
+<td>0.20×</td>
+</tr>
+<tr>
+<td><strong>总 HBM 流量</strong></td>
+<td><strong>768 B</strong></td>
+<td><strong>384 B</strong></td>
+<td><strong>0.50×</strong></td>
+</tr>
+<tr>
+<td>FLOPs</td>
+<td>1,152</td>
+<td>1,152</td>
+<td>1.00×</td>
+</tr>
+<tr>
+<td>HBM 中的中间量 S+P</td>
+<td>256 B</td>
+<td>0 B</td>
+<td>0.00×</td>
+</tr>
+</tbody>
+</table>
+<p>标准注意力把 67% 的 HBM 字节花在搬运 N×N 中间量 S 和 P 上。FlashAttention 完全消除了这些。FLOPs 完全相同——<em>没有节省任何计算</em>。加速完全来自没有搬运的字节。</p>
+<p>在生产规模下，这个比值会变得更好。在 <code>N = 131,072</code>（Llama-3-70B 长上下文）时，仅一个注意力头的 S 矩阵就有 32 GB。标准注意力每次前向传播要两次写入并读取这 32 GB。FlashAttention 从不物化它。跨越 64 个头和 80 层，节省下来的量会累积到每次前向传播避免数 TB 的 HBM 流量。</p>
+<h3>10.6：I/O 复杂度分析</h3>
+<p>现在来看定量的收益。标准注意力搬运多少字节，FlashAttention 又搬运多少？</p>
+<p><strong>标准注意力</strong>：</p>
+<ul>
+<li>读取 Q、K、V 各一次：<code>3 · N · d · 2 bytes</code></li>
+<li>写入分数、读取分数、写入权重、读取权重：<code>4 · N² · 2 bytes</code>（全部经过 HBM）</li>
+<li>写入输出：<code>N · d · 2 bytes</code></li>
+<li>总计：大约 <code>8 N² + 8 N·d</code> 字节的 HBM 流量。</li>
+</ul>
+<p>主导项是 <code>8 N²</code>，即 N×N 矩阵的反复读写。</p>
+<p><strong>FlashAttention</strong>：</p>
+<ul>
+<li>读取 Q、K、V：<code>3 · N · d · 2 bytes</code>（每个完整矩阵各一次）</li>
+<li>N×N 矩阵从不接触 HBM。</li>
+<li>写入输出：<code>N · d · 2 bytes</code></li>
+<li>然而会有一些次级流量：当我们做 <code>Q_block_count × K_block_count</code> 个块时，每个 K/V 块会为每个 Q 块重读一次。总的 K/V 重读：<code>Q_block_count · K · 2</code>。</li>
+<li>总计：大约 <code>N·d + (N²·d²) / M</code> 字节，其中 M 是 SRAM 大小。</li>
+</ul>
+<p>对于典型的块大小（<code>B_r = 128</code>、<code>B_c = 64</code>），Q 块数是 <code>N / 128</code>，而对每个 Q 块我们都读取完整的 K（N 行）。总的 K 读取：<code>N · N = N²</code> 行，每行大小为 <code>d · 2</code>。即 <code>2 N² d</code> 字节，比单独的 <code>N²</code> 更大。</p>
+<p>乍看之下这似乎更糟而非更好。诀窍在于 <strong>这些读取是对带宽友好的顺序读取</strong>（加载一个 K 块是一次连续传输），并且它们会在多次迭代中命中 L2 缓存，因此有效的 HBM 流量要低得多。</p>
+<p><img alt="图 10.8：HBM I/O 复杂度：标准 vs FlashAttention" src="figures/ch10-fig8-io-complexity-comparison/final.png">
+<em>图 10.8.</em> 一张 log-log 折线图。X 轴：序列长度 N，从 256 到 32,000。Y 轴：每个注意力层传输的 HBM 字节数（对数刻度）。两条曲线：标准注意力 O(N² + N·d) 呈二次增长；FlashAttention O(N·d + N²·d²/M) 对典型 M 近似线性增长。在 N = 32,000 时，FlashAttention 传输的 HBM 比标准注意力少约 10×。</p>
+<p>图 10.8 比较了二者。实践中，在 H100 上交叉点大约出现在 N = 1000 处，到 N = 32K 时比值约为 10×。对于长上下文的预填充，这是显著的墙钟加速。对于解码，注意力内核占总时间的比例较小（投影和 FFN 是更大的开销），因此端到端收益更小，但仍有 1.5-2×。</p>
+<h3>10.7：演进：FA-1、FA-2、FA-3</h3>
+<p>随着硬件演进，FlashAttention 经历了三次修订。每个版本都通过使用上一版本没有使用的 GPU 特性，榨取出更多的峰值 FLOPS。</p>
+<p><img alt="图 10.9：FlashAttention 演进：FA-1 → FA-2 → FA-3" src="figures/ch10-fig9-fa1-vs-fa2-vs-fa3/final.png">
+<em>图 10.9.</em> 三列竖排。FA-1（2022）：首次分块 + 在线 softmax；外层循环遍历 K/V，内层遍历 Q。FA-2（2023）：交换了外层/内层，使外层遍历 Q（可跨 warp 并行），减少了一半冗余工作。FA-3（2024）：针对 Hopper，通过 TMA 进行异步内存拷贝，生产者/消费者 warp 模式，支持 FP8。底部有一行总结，显示 H100 峰值利用率：FA-1 ~40%、FA-2 ~65%、FA-3 ~85%。</p>
+<p>图 10.9 追溯了这次演进。</p>
+<p><strong>FlashAttention-1（2022，Dao 等人）</strong> 引入了核心的分块 + 在线 softmax 思想。它的外层循环遍历 K/V 块（在所有查询间共享它们），内层循环遍历 Q 块。这对在 A100 上训练很有利，但在解码时留下了一些未利用的并行性，因为不同的查询必须相互等待。</p>
+<p><strong>FlashAttention-2（2023）</strong> 交换了循环顺序。外层循环遍历 Q 块，内层遍历 K/V。这意味着每个 Q 块都可以在 SM 内跨 warp 独立并行化。结果是：对 SM 的利用率显著提高，训练速度比 FA-1 大约快 2×。</p>
+<p><strong>FlashAttention-3（2024）</strong> 增加了 Hopper 特有的特性：</p>
+<ul>
+<li><strong>异步内存拷贝（TMA）</strong>：Hopper 的 Tensor Memory Accelerator 可以异步发起 HBM 到 SRAM 的拷贝，与计算重叠。FA-3 用它来把权重加载与正在进行的注意力计算流水线化。</li>
+<li><strong>生产者/消费者 warp</strong>：一些 warp 专用于加载数据，另一些专用于计算。这种分离利用了 Hopper 的 warp 专用化能力。</li>
+<li><strong>FP8 支持</strong>：注意力的 matmul 步骤可以在 FP8 张量核心上运行（H100 上为 1,979 TFLOPS），并以 FP16 累加以保证稳定性。</li>
+</ul>
+<p>结果是：FlashAttention-3 在注意力内核上达到 H100 峰值 FP16 张量核心吞吐量的大约 85%，而 FA-2 约为 65%。这是实质性的生产收益，在相同硬件上比 FA-2 快 1.3×，仅仅靠更好地使用硬件特性。</p>
+<p><img alt="图 10.9.A：三代，一个核心算法" src="figures/ch10-fig12-fa-2-3-evolution/final.png">
+<em>图 10.9.A.</em> 四列演进图。第 1 列「FA-1 (2022)」：分块 + 在线 softmax，外层遍历 K/V、内层遍历 Q，约 40% H100 峰值。第 2 列「FA-2 (2023)」：交换循环顺序，更好的 warp 并行，比 FA-1 约快 2×，约 65% 峰值。第 3 列「FA-3 (2024)」：通过 TMA 进行异步内存、生产者/消费者 warp、FP8 支持，约 85% 峰值。第 4 列：利用率柱状图——FA-1 40%、FA-2 65%、FA-3 85%。注释：「Each revision exploits newer hardware features without changing the core tiling + online softmax idea.」</p>
+<p>对于推理工程师：使用哪个具体版本，远不如使用<em>某种</em> FlashAttention 实现重要。vLLM、SGLang、TensorRT-LLM 和 Hugging Face TGI 都在内部使用 FA-2 或 FA-3。如果你没有使用 FlashAttention，你就白白损失了约 2-3× 的性能，并且你的工作点比它本应处的位置更深地陷入访存受限区域。</p>
+<hr>
+<h2>Roofline 上的 FlashAttention</h2>
+<h3>10.8：这把注意力内核放在 roofline 的什么位置</h3>
+<p>回顾第 7 章，注意力内核本身的算术强度大约是 N（对解码而言），它对每个查询做 <code>N·d</code> 次 FLOP，字节数同阶。这把注意力置于一个中间区域：不像权重加载项那样深陷访存受限区域，但对典型 N 仍在屋脊之下。</p>
+<p>FlashAttention 从 HBM 流量中消除了 N×N 中间张量。这极大地改变了字节计数，注意力内核的字节数大约下降了一个 N/M 因子（M 是 SRAM 大小）。算术强度相应上升。</p>
+<p><img alt="图 10.10：FlashAttention 在 roofline 上把你移到哪里" src="figures/ch10-fig10-flash-on-roofline/final.png">
+<em>图 10.10.</em> roofline 图。两个标注点：「Standard attention decode」位于深处的访存受限区域（低 AI）。「FlashAttention decode」更靠右、更接近屋脊（更高的 AI）。一条从第一个点到第二个点的清晰箭头，标注为：「FlashAttention shifts right → higher AI → closer to compute-bound.」图例：「FlashAttention reduces HBM bytes without reducing FLOPs.」</p>
+<p>图 10.10 展示了这一移动。标准实现下的注意力深陷访存受限。在 FlashAttention 下，它向右移动，对典型长上下文算术强度大约上升 10×。仅就注意力内核而言，这常常把工作点推过屋脊、进入算力受限区域。</p>
+<p>重要提醒：FlashAttention 只加速<em>注意力内核</em>。解码循环整体还要做权重加载（投影、FFN），对大多数模型规模，这些主导了解码时间。FlashAttention 帮不了这些；只有注意力本身受益。因此 FlashAttention 的端到端加速小于仅注意力的加速，且取决于你的解码时间中有多大比例实际上是注意力、多大是投影 + FFN。</p>
+<p>对于典型的 Transformer 推理：</p>
+<ul>
+<li>在短上下文（约 4K）的小模型（7B-13B）上，注意力占解码时间的约 15-25%。FlashAttention 带来适度的 5-10% 端到端加速。</li>
+<li>在长上下文（32K+）的大模型（70B+）上，注意力占解码时间的 30-50%。FlashAttention 带来 15-25% 的端到端加速。</li>
+<li>在训练上，FlashAttention 的收益更大，因为在长上下文下注意力主导了训练计算时间。</li>
+</ul>
+<h3>10.9：FlashAttention 与其他技术</h3>
+<p>FlashAttention 可以与头压缩（第 8 章）和 token 压缩（第 9 章）组合。GQA 加 FlashAttention 是生产的默认配置。MLA 加 FlashAttention 是 DeepSeek-V3 高效服务的方式。滑动窗口注意力上的 FlashAttention 是 Mistral 的服务方式。</p>
+<p>FlashAttention 还可以与 PagedAttention（第 11 章）组合，这正是 vLLM 注意力内核的工作方式。分页注意力内核应用了 FlashAttention 的分块策略，但「K 块」实际上是一串按页寻址的 KV 条目的拼接，而不是 HBM 中的连续区块。这是叠加的：你同时获得 PagedAttention 的内存布局收益和 FlashAttention 的 HBM 流量收益。</p>
+<h3>10.10：FlashAttention 解决不了什么</h3>
+<p>三件事。</p>
+<p><strong>第一，KV 缓存的大小。</strong> FlashAttention 不缩小缓存；它缩小的是<em>中间计算流量</em>。你仍然需要每个解码步骤读取 K 缓存和 V 缓存。第 8 章和第 9 章的压缩技术仍然需要。</p>
+<p><strong>第二，权重加载的开销。</strong> 每步中占主导的字节开销是读取模型权重（Llama-3-70B 为 140 GB）。FlashAttention 帮不了这一点。量化（第 13 章）可以。</p>
+<p><strong>第三，调度。</strong> FlashAttention 加速了一次前向传播。它不解决前向传播如何跨用户调度，也不解决长预填充如何阻塞解码。那属于 PagedAttention + 连续批处理 + 分块预填充的领域，将在接下来的两章中介绍。</p>
+<h3>10.11：接下来去哪里</h3>
+<p>第 11 章是第二个主要的内存布局技术：<strong>PagedAttention</strong>。如果说 FlashAttention 是关于重排一次前向传播内部的计算，那么 PagedAttention 就是关于重排跨用户的缓存布局。二者结合使现代服务成为可能。没有 PagedAttention，连续批处理就会崩溃；没有 FlashAttention，注意力即使在页内也仍然访存受限。</p>
+</section>
+
+<section class="chapter-wrapper" id="ch11-paged-attention">
+<h1>第 11 章：PagedAttention</h1>
+<p>第 10 章重排了注意力内核内部的计算，以避免不必要的 HBM 流量。分页注意力（PagedAttention）针对的是另一个问题：KV 缓存<strong>如何跨用户布局在 HBM 中</strong>，以及这种布局对并发用户容量有何影响。</p>
+<p>这个问题很容易表述。如果你预先为每个用户的 KV 缓存分配一块连续的 HBM，你就必须决定这块有多大，而你无法提前知道用户的对话会有多长。分配太大，你浪费 HBM 且无法接纳更多用户。分配太小，用户会在对话中途耗尽空间，你不得不中止。分配一个中等大小，你仍然浪费很多，因为有些用户写 50 个 token 就停，而另一些写 20,000。这就是<strong>碎片化问题</strong>，在传统的连续分配服务栈中，它迫使工程师防御性地过度分配，导致 40-70% 的 HBM 闲置。</p>
+<p>PagedAttention 通过借用操作系统中一个最古老的思想来解决这个问题：<strong>虚拟内存（virtual memory）</strong>。把每个用户的 KV 缓存拆成小的固定大小块。允许这些块非连续地存放在 HBM 中。为每个用户维护一张「页表」，把逻辑 token 位置映射到物理块地址。当注意力内核需要读取某个过去 token 的 K 或 V 时，它查询页表来找到该 token 的块实际存放的位置。</p>
+<p>这一由 vLLM 于 2023 年引入的结果是革命性的。生产服务引擎从每块 GPU 服务 4-8 个并发用户，变为服务 20-40 个。GPU 并没有变快，只是被更充分地利用了。本章从碎片化问题到块表机制再到运行其上的内核，逐步讲解 PagedAttention 如何实现这一点。</p>
+<hr>
+<h2>碎片化问题</h2>
+<h3>11.1：连续 KV 缓存：默认做法及其代价</h3>
+<p>如果你写一个朴素的服务栈，你会为每个用户的 KV 缓存分配一块连续的 HBM，其大小按最大预期对话长度设定。这就是 PyTorch 原生注意力所做的；这是最初的 Huggingface Transformers 库所做的；这是大多数 vLLM 之前的服务栈所做的。</p>
+<p><img alt="图 11.1：连续分配带来的碎片化问题" src="figures/ch11-fig1-fragmentation-problem/final.png">
+<em>图 11.1.</em> 一条水平的 HBM（总计 100 GB）被分成四个连续的彩色块，每个块按最大序列长度（各 25 GB）预先分配给一个用户。每个块上的标签显示实际使用量：用户 A 用了分配的 2%，用户 B 用了 93%，用户 C 用了 25%，用户 D 用了 5%。下方注释：「Total HBM reserved: 100 GB. Actually used: 22 GB. Wasted: 78 GB.」</p>
+<p>图 11.1 展示了这种浪费。引擎为每个用户分配了 25 GB，但真实对话的长度差异巨大。用户 B，一位长篇写作者，用满了其分配的 93%。用户 A 发了两条消息就停了；用了 2%。GPU 为了服务四个用户而占用了 100 GB 的预留缓存空间，其中 78 GB 闲置并被锁定。第五个用户到来时被拒绝，不是因为 HBM 真的满了，而是因为每个槽位都被预先占用了。</p>
+<p>这是<strong>外部碎片</strong>。总的空闲 HBM 足够服务多得多的用户，但它被划分成任何人都无法使用的空洞。内部碎片（一次分配内部被浪费的空间）是一个相似但不同的问题：你分配了 25 GB 却用了 12 GB，块内就浪费了 13 GB。</p>
+<p>连续分配使这两种碎片模式都无法避免。要么预先分配（浪费），要么允许缓存按需增长（然后当它超出初始槽位时你不得不移动它，这很昂贵）。没有任何连续分配方案能避免浪费。</p>
+<h3>11.2：虚拟内存：来自 1961 年的思想</h3>
+<p>计算机系统在六十年前解决了一个非常相似的问题。操作系统需要给每个进程一个「大而连续的地址空间」的错觉，同时实际上把它的数据存放在分散的物理 RAM 碎片中。解决方案是<strong>带页表的虚拟内存</strong>：每个进程有一个「虚拟」地址空间，被划分成固定大小的页，操作系统维护一个从虚拟页到物理 RAM 页的逐进程映射。物理页可以放在任何地方。硬件（MMU）在每次内存访问时把虚拟地址翻译成物理地址。</p>
+<p><img alt="图 11.2：虚拟内存（1961）：PagedAttention 借用的思想" src="figures/ch11-fig2-virtual-memory-analogy/final.png">
+<em>图 11.2.</em> 两个面板并排。左：「OS virtual memory.」顶部是一个虚拟地址空间矩形（逻辑层）；中间是页表框；底部是物理 RAM 矩形，呈碎片状。箭头显示通过页表从虚拟地址到物理页的映射。右：「PagedAttention (2023).」同样的三层结构，重新命名：顶部是逻辑 token 序列，中间是块表，底部是 HBM 中的物理 KV 块。箭头显示从逻辑 token 到物理块的映射。注释：「Same indirection trick, 60 years apart.」</p>
+<p>图 11.2 把二者并排放在一起。PagedAttention 在结构上完全相同。每个用户有一个「逻辑」KV 缓存，按 token 位置 0、1、2、3、... 索引。这些位置通过块表翻译成物理 HBM 块 ID。物理块可以位于 HBM 的任何地方、以任何顺序排列。</p>
+<p>注意力内核在读取 token i 的 K 和 V 时，查询块表，取出包含 token i 的物理块，并从中读取 K 和 V。间接寻址多花几微秒；每块 GPU 能容纳的用户数量则多了几个数量级。</p>
+<hr>
+<h2>PagedAttention 如何工作</h2>
+<h3>11.3：连续 vs 分页，一张图说清</h3>
+<p><img alt="图 11.3：连续 vs 分页的 KV 缓存分配" src="figures/ch11-fig3-before-vs-after-allocation/final.png">
+<em>图 11.3.</em> 一张并排对比。左：「Contiguous」显示四个大的预保留色块，块之间有可见的白色间隙（外部碎片）。右：「Paged (vLLM)」显示同一条 HBM 被分成约 40 个小的统一块，按用户所有权着色（四种颜色交错），没有浪费的间隙。一个单独的块表面板显示逐用户映射：「User A → blocks [3, 11, 27]」，等等。两个面板下方的注释：「Utilization jumps from ~40% to &gt;96%.」</p>
+<p>图 11.3 展示了这种转变。HBM 不再是四块大的区块，而是被细分成大约 40 个小的统一块（通常是 16-token 块，每块的大小是 <code>16 tokens × H · D · 2 bytes × 2 (K,V) × L layers</code>，对 Llama-3-70B 在 GQA、H_kv=8、D=128 下，即 <code>16 × 8 × 128 × 2 × 2 × 80 = 每块 6.5 MB</code>）。任意时刻每个块恰好分配给一个用户。</p>
+<p>用户的逻辑序列通过块表映射到他们当前持有的物理块。如果用户 A 有 48 个 token 的上下文，他们就持有 3 个块（48/16）。这些块不需要连续，块 3、块 11、块 27 完全没问题。注意力内核跟随块表找到它们。</p>
+<p>当用户会话结束时，他们的块立即归还到空闲池。当新用户到来时，他们从池中请求块，系统把空闲的块交给他们。没有碎片，没有预保留。</p>
+<h3>11.4：块表：地址翻译如何工作</h3>
+<p>每个用户有一个小的、逐会话的数据结构，称为<strong>块表</strong>。具体来说，它是一个简短的物理块 ID 列表：</p>
+<pre><code>User A's block table = [7, 23, 2]
+</code></pre>
+<p>这意味着：用户 A 的逻辑 token 0-15 存放在物理块 7，token 16-31 存放在物理块 23，token 32-47 存放在物理块 2。</p>
+<p><img alt="图 11.4：块表：地址翻译" src="figures/ch11-fig4-block-table-translation/final.png">
+<em>图 11.4.</em> 一个三阶段纵向流程。第 1 阶段：一个用户的 token 序列 0-11 以小方块表示。第 2 阶段：「Block table for User A」显示 3 行：逻辑块索引 0 → 物理块 7；1 → 块 12；2 → 块 91。箭头把 token 分组为逻辑块并映射到物理块。第 3 阶段：一个约 100 个小块的 HBM 区域；块 7、12、91 被高亮为「User A's storage.」注释：「Two layers of indirection. That's it.」</p>
+<p>图 11.4 展示了完整的翻译过程。要访问用户 A 的 token 11：</p>
+<ol>
+<li>计算 <code>logical_block = 11 // 16 = 0</code>（块 0）和 <code>offset = 11 % 16 = 11</code>。</li>
+<li>查物理块：<code>block_table[0] = 7</code>。</li>
+<li>在偏移 11 处访问 HBM 块 7。</li>
+</ol>
+<p>两次整数除法加一次查表。在生产规模下，这个开销每次访问是几十纳秒，相比数百个周期的 HBM 延迟微不足道。</p>
+<h3>11.5：按需分配</h3>
+<p>块只在需要时才分配。当用户对话增长超过当前块的容量时，就从空闲池请求一个新块。</p>
+<p><img alt="图 11.5：随序列增长按需分配块" src="figures/ch11-fig5-allocation-timeline/final.png">
+<em>图 11.5.</em> 一条水平时间线，展示一个用户块表的四个快照。快照 1（t=0）：0 个 token，空块表，HBM 中有 50 个绿色空闲块。快照 2（t=1）：4 个 token，块表 = [7]；一个 HBM 块从绿色翻转为淡紫色。快照 3（t=2）：9 个 token，块表 = [7, 23]；两个淡紫色块（非连续）。快照 4（t=3）：13 个 token，块表 = [7, 23, 2]；三个淡紫色块。</p>
+<p>图 11.5 展示了生命周期。随着用户对话从 0 增长到 13 个 token，块只在前一个块填满时才从空闲池取出。关键在于，<strong>这些块在 HBM 中不必连续</strong>，先是块 7，然后 23，然后 2。块表记录着一切的位置。</p>
+<p>如果用户对话在 9 个 token 处结束，则只用了 2 个块。第三个块从未分配。当用户会话结束时，块 7 和 23 归还到空闲池供下一个用户使用。没有碎片。</p>
+<h3>11.6：PagedAttention 内核</h3>
+<p>注意力内核必须处理这种间接寻址。它不能读取连续的 K 缓存，而必须从分散的物理块读取。</p>
+<p><img alt="图 11.6：PagedAttention 内核：跟随块表" src="figures/ch11-fig6-paged-attention-kernel/final.png">
+<em>图 11.6.</em> 中央是块表，含三个物理块 ID（7、23、2）。下方是三个 HBM 块，内部绘制了 K/V 向量：块 7（token 0-3）、块 23（token 4-7）、块 2（token 8-11）。块表上方是单个查询向量 Q。三条箭头从 Q 流向三个块中的每一个（非连续收集），每条标注为「Q · K_block^T → partial scores.」三个局部分数输出汇入一个「Online softmax accumulator」框，产生最终输出。</p>
+<p>图 11.6 展示了内核结构。对用户 A 的一次解码步骤：</p>
+<ol>
+<li>内核收到用户的块表和新查询向量 Q。</li>
+<li>对块表中列出的每个物理块：
+   - 把块取进 SRAM。
+   - 计算局部注意力分数：<code>Q · K_block^T / √d</code>。
+   - 应用在线 softmax 更新规则（来自第 10 章）。
+   - 通过指数缩放累积局部输出。</li>
+<li>所有块都处理完毕后，累积的输出就是最终上下文向量。</li>
+</ol>
+<p>第 10 章的在线 softmax 完美迁移。每个块都贡献到运行中的最大值、求和与输出。块在 HBM 中非连续这一事实不影响数学，逐块计算在结构上完全相同。</p>
+<p><img alt="图 11.7：跨非连续块的在线 softmax" src="figures/ch11-fig7-online-softmax-across-blocks/final.png">
+<em>图 11.7.</em> 三个纵向步骤。第 1 步：取块 7，计算 Q · K_7^T，得到 m_1、l_1、o_1。第 2 步：取块 23，计算 Q · K_23^T，得到 m_2、l_2、o_2。用在线 softmax 合并：m_new = max(m_1, m_2)，重新缩放并相加。第 3 步：取块 2，同样合并。最终状态就是精确的注意力输出。</p>
+<p>图 11.7 展示了合并过程。每个非连续块都贡献到运行中的 softmax 状态。顺序对数值稳定性略有影响（大致按值幅度递减的顺序处理块，精度略好），但不影响正确性。</p>
+<h3>11.7：前缀共享：一个意外之喜</h3>
+<p>PagedAttention 促成了一项额外的优化：当多个用户共享相同的提示前缀（系统消息、对话模板等）时，它们可以<strong>共享</strong>存放该前缀 K/V 的物理块。</p>
+<p><img alt="图 11.8：带写时复制的前缀共享" src="figures/ch11-fig8-prefix-sharing-cow/final.png">
+<em>图 11.8.</em> 三个用户（A、B、C）都以相同的 64-token 系统提示开头。共享前缀占用 4 个 KV 块（5、6、7、8），带有「refcount = 3」标签。每个用户的块表显示共享前缀加上各自的私有续写：用户 A → [5, 6, 7, 8, 42, 43]；用户 B → [5, 6, 7, 8, 19]；用户 C → [5, 6, 7, 8, 11, 12, 13]。注释：「64 tokens of shared prefix stored ONCE, referenced by three users.」另一个标注框：「Copy-on-write: if a user tries to modify a shared block, it is cloned first so others keep the original.」</p>
+<p>图 11.8 展示了前缀共享的作用。三个用户，都带相同的系统提示，指向相同的四个物理块作为共享前缀。那 64 个前缀 token 的 KV 只计算一次（由第一个用户的预填充完成），并被接下来的两个用户复用。一个<strong>引用计数</strong>跟踪有多少用户依赖某个给定块；只有当引用计数降为零时，块才会被释放。</p>
+<p>当用户想要修改一个共享块时（例如，他们开始在共享前缀之上生成新 token），会先复制该块，以免干扰其他用户的视图。这就是<strong>写时复制（copy-on-write）</strong>，直接借自操作系统虚拟内存。实践中，生成总是在序列末尾创建<em>新</em>块，因此写时复制很少触发，大多数共享是只读的。</p>
+<p>前缀共享是<strong>前缀缓存（prefix caching）</strong>的基础，我们将在第 12 章介绍。可以把第 12 章看作把这个意外之喜变成一种跨会话的系统性优化。</p>
+<h3>11.8：这对利用率意味着什么</h3>
+<p>图 11.9 量化了端到端的影响。</p>
+<p><img alt="图 11.9：KV 缓存利用率：分页注意力前后对比" src="figures/ch11-fig9-utilization-before-after/final.png">
+<em>图 11.9.</em> 两组柱状图。第 1 组「Without PagedAttention」：模型权重 40 GB + 预留 KV 缓存 60 GB（大部分为空）；容纳 3-5 个并发用户。第 2 组「With PagedAttention」：模型权重 40 GB + 紧凑打包的 KV 缓存 40 GB（密实填充，约 96% 填满）+ 20 GB 工作余量；容纳 20-40 个并发用户。注释：「~8× more concurrent users fit in the same GPU.」</p>
+<p>图 11.9 展示了生产影响。没有 PagedAttention，在单块 H100 上对 Llama-3-70B 的典型部署只能服务 3-5 个并发用户。有了 PagedAttention，同样硬件可服务 20-40 个用户，8× 的提升，且每个请求的质量或延迟没有任何变化。</p>
+<p>这是推理历史上最大的单硬件提升。正是它在 2023 年发布时让 vLLM 对大多数工作负载的每 token 成本比 Hugging Face Transformers 便宜约 10×，并且它至今仍是 vLLM 在 2026 年成为默认服务引擎的基础。</p>
+<h3>11.9：Roofline 上的 PagedAttention</h3>
+<p><img alt="图 11.10：PagedAttention 如何把你在 roofline 上向上推" src="figures/ch11-fig10-paged-on-roofline/final.png">
+<em>图 11.10.</em> roofline 图。两个标注点：「Contiguous batching (few users)」位于斜坡低处；「Paged + continuous batching (many users)」位于斜坡更高处，更接近屋脊。一条从第一个点到第二个点的清晰箭头，标注为「More concurrent users → more tokens per HBM weight-load → higher AI.」图例卡：「Bigger effective batch is the secret.」</p>
+<p>图 11.10 是 roofline 的解读。PagedAttention 并不直接减少每个 token 的字节数，用户的缓存仍须每步读取。它所做的是<strong>允许更多并发用户</strong>，这意味着每次 HBM 权重加载被摊销到更多解码 token 上。算术强度随有效批大小成倍上升。解码工作点沿斜坡向上爬升。</p>
+<p>这就是为什么 PagedAttention 和连续批处理（第 14 章）总是被一起讨论。二者相互成全。连续批处理需要 PagedAttention，因为没有非连续缓存，会话加入和离开批会立即产生碎片。PagedAttention 需要连续批处理来实现其收益，因为它的全部意义就是让更多用户同时运行。</p>
+<hr>
+<h2>PagedAttention 解决不了什么</h2>
+<h3>11.10：剩下的问题</h3>
+<p>PagedAttention 针对的是内存布局。它不针对：</p>
+<ul>
+<li><strong>每 token 缓存字节。</strong> 无论分页与否，用户的缓存大小相同；PagedAttention 只是不在其周围浪费 HBM。要减少每 token 缓存字节，你仍然需要头/token 压缩（第 8-9 章）或量化（第 13 章）。</li>
+<li><strong>权重加载开销。</strong> 每个解码步骤仍从 HBM 读取完整的模型权重。PagedAttention 对此无能为力。</li>
+<li><strong>预填充/解码调度冲突。</strong> 一个长预填充仍然会阻塞正在进行的解码，除非你加入分块预填充（chunked prefill）（第 12 章）。</li>
+<li><strong>跨会话的前缀重算。</strong> 图 11.8 中共享前缀的两个会话在运行时确实共享 KV 缓存，但如果第二个会话在第一个结束<em>之后</em>才到达，前缀就必须重算。跨会话的前缀缓存需要持久存储 KV 块，加上基于哈希的查找，这就是第 12 章的内容。</li>
+</ul>
+<h3>11.11：块大小：唯一的旋钮</h3>
+<p>PagedAttention 中主要的调优旋钮是块大小，即一个物理块容纳多少个 token。小块（4-8 个 token）粒度更细、块内内部碎片更少，但每步开销更大（每个注意力步骤有更多块查找）。大块（32-64 个 token）减少查找开销，但对序列不是块大小整数倍的用户，会增加内部碎片。</p>
+<p>vLLM 的默认值是每块 16 个 token，对大多数工作负载是个不错的折中。在非常短的序列（语音流式、短聊天）上，较小的块有帮助。在非常长的序列（文档处理）上，较大的块能减少开销。</p>
+<h3>11.12：接下来去哪里</h3>
+<p>第 12 章把 PagedAttention 的前缀共享洞见扩展为一个功能完整的<strong>前缀缓存 + 分块预填充</strong>系统。我们将看到如何跨用户会话持久化 KV 块，如何跨不同用户和请求哈希匹配前缀，以及如何把长预填充拆成小块，使它们不会阻塞解码队列。与 PagedAttention 和 FlashAttention 一起，这些完善了现代服务引擎的内存与调度故事。</p>
+</section>
+
+<section class="chapter-wrapper" id="ch12-prefix-caching-chunked-prefill">
+<h1>第 12 章：前缀缓存 + 分块预填充</h1>
+<p>本章包含两项优化。二者都针对现代 LLM 服务的一个特定病态。二者在 2026 年的生产栈中几乎都普遍启用。二者在概念上都很简单，但对服务引擎如何调度工作有着深远的影响。</p>
+<p><strong>前缀缓存（prefix caching）</strong> 针对的是：成千上万的用户访问一个 LLM 端点时，往往以相同（或非常相似）的提示前缀开头——一条系统消息、一个对话模板、一组 few-shot 示例。没有任何优化时，每个用户的预填充都从头运行，一遍又一遍地为完全相同的 token 前缀重算 K 和 V。有了前缀缓存，引擎对前缀做哈希，存储它以前见过的前缀的 K/V 块，并在用户之间复用它们。</p>
+<p><strong>分块预填充（chunked prefill）</strong> 针对的是：一个带着 16,000-token 提示的新用户到来，会造成一次计算密集的前向传播，把<em>其他所有用户的解码</em>阻塞数百毫秒。P99 的 ITL 尖峰非常严重。分块预填充把长预填充拆成较小的切片，与正在进行的解码交错执行，这样任何单个用户的预填充都无法「劫持」GPU。</p>
+<p>这两项技术一起，把引擎从「一次只为一个用户工作」变成「为许多同时用户工作，且 P99 稳定」。2026 年的每一个生产服务引擎——vLLM、SGLang、TensorRT-LLM、TGI——都实现了这两者，因为没有它们，在任何有意义的流量下 P99 延迟都会崩溃。</p>
+<hr>
+<h2>两种生产痛点</h2>
+<h3>12.1：冗余前缀之痛</h3>
+<p>想象一个聊天产品。每个请求都以一条 500-token 的系统提示开头，定义助手的行为。10,000 个并发用户中的每一个，在他们各自的 30 条消息中，都发送这相同的 500-token 前缀。那就是每天 1.5 亿次冗余的前缀 token 预填充。</p>
+<p>预填充成本随前缀长度呈二次增长（第 5 章）。对 Llama-3-70B 在 H100 上的 500 个 token，一次预填充约 45 毫秒。每天 1.5 亿次，就是每天 1,875 个 GPU 小时，仅用于在用户之间完全相同的前缀计算。</p>
+<p><img alt="图 12.1：共享前缀的两个查询" src="figures/ch12-fig1-shared-prefix-visual/final.png">
+<em>图 12.1.</em> 两行水平的 token。查询 A：「You are a helpful assistant. Use concise answers. Explain quicksort.」查询 B：「You are a helpful assistant. Use concise answers. Write a haiku about rain.」一个大括号横跨两个查询相同的首 48 个 token，标注为「IDENTICAL PREFIX, 48 tokens.」注释：「The K and V for these 48 tokens are the same, regardless of what follows.」</p>
+<p>图 12.1 展示了这种冗余。两个查询的前 48 个 token 产生完全相同的 K 和 V 向量，因为 K 和 V 是输入 token 嵌入和冻结权重矩阵的确定性函数。如果我们缓存了第一个查询的 K 和 V，就可以把它们复用于第二个查询的前 48 个 token，完全跳过这些 token 的预填充。</p>
+<p>这就是前缀缓存所做的事。其机制正是哈希索引的 PagedAttention 块池（第 11 章）为之构建的东西，再加上每个前缀的哈希查找来找到先前计算过的块。</p>
+<h3>12.2：队头阻塞之痛</h3>
+<p>与前缀冗余分开来看，生产栈还会碰到另一个问题：预填充和解码争夺同一块 GPU。</p>
+<p><img alt="图 12.2：队头阻塞：一个长预填充阻塞所有解码" src="figures/ch12-fig4-head-of-line-blocking/final.png">
+<em>图 12.2.</em> 一条双车道的水平时间线。上车道：用户 A 大约每 50 ms 解码一个 token，稳定进行到 t=400 ms，然后出现 800 ms 的大段空白、没有 token，之后恢复。下车道：用户 B 在 t=400 ms 带着一个 4000-token 提示到达；从 t=400 到 t=1200 ms 有一条长实心块，标注为「prefill in progress (800 ms).」车道之间的注释：「User A's ITL spikes from 50 ms to 850 ms.」</p>
+<p>图 12.2 展示了这种病态。用户 A 正愉快地解码，每 50 ms 一个 token。在 t = 400 ms 时，一个新用户 B 带着 4000-token 提示到达。GPU 暂停 A 的解码 800 ms 来运行 B 的预填充。然后 A 恢复。在仪表盘上，A 那一步的 ITL 是 850 ms，比正常尖峰了 17×。该服务窗口的 P99 ITL 刚刚突破了 SLO。</p>
+<p>这就是<strong>队头阻塞（head-of-line blocking）</strong>。它不是一个小效应，在任何混合工作负载的生产系统中，除非你采取措施防止它，否则你会看到这些尖峰。修复方法是把长预填充拆成较小的块，使其能与解码交错执行。</p>
+<hr>
+<h2>两种技术详解</h2>
+<h3>12.3：前缀缓存：生命周期</h3>
+<p>前缀缓存给一个基于 PagedAttention 的引擎增加了三样东西：</p>
+<ol>
+<li><strong>一个哈希函数。</strong> 把 token 序列（前缀）映射到一个哈希值。</li>
+<li><strong>一张哈希索引的查找表。</strong> 把前缀哈希映射到块表指针。</li>
+<li><strong>引用计数。</strong> 跟踪有多少活跃用户依赖每个缓存前缀的块，这样我们就知道何时驱逐。</li>
+</ol>
+<p><img alt="图 12.3：前缀缓存命中的生命周期" src="figures/ch12-fig2-prefix-cache-hit-lifecycle/final.png">
+<em>图 12.3.</em> 一条由五个方框组成的水平流程。(1)「New request with prompt tokens [t1 t2 ... t50].」(2)「Compute prefix hashes: hash(t[:16]) → hash_a, hash(t[:32]) → hash_b, hash(t[:48]) → hash_c.」(3)「Look up cache: hash_c FOUND! (48 tokens already cached).」(4)「Skip recomputing K, V for tokens 1-48. Only prefill tokens 49-50.」(5)「Result: TTFT drops from 400 ms to 50 ms.」下方小图例：「Cache key = hash of the token sequence. Cache value = pointer to the physical KV blocks.」</p>
+<p>图 12.3 展示了逐请求的流程。当一个新请求到达时，引擎对逐渐增长的前缀做哈希（以块对齐的倍数）。它在缓存中查找每个哈希；命中的最长者就是最佳匹配。引擎随后为这个前缀复用缓存的块，只对剩余 token 运行预填充。</p>
+<p>哈希函数通常是 xxhash 或类似的，快速、密码学上弱但足以抵抗碰撞用于缓存。键是完整的 token ID 序列（不只是前缀字符串），所以两个语义相同的提示若用不同的分词方式表达会不命中，但这在实践中没问题，因为分词是确定性的。</p>
+<h3>12.4：引用计数与哈希索引块</h3>
+<p><img alt="图 12.4：前缀缓存的引用计数与哈希表" src="figures/ch12-fig3-refcount-hashtable/final.png">
+<em>图 12.4.</em> 中央是一个哈希表框，含 3 个条目，每个把哈希映射到 (block_ids, refcount)：「hash_sys_prompt → blocks [5, 6, 7, 8] refcount: 12.」「hash_tool_prefix → [42, 43] refcount: 3.」「hash_user_greeting → [101] refcount: 1.」左侧：三个进入的用户，各自映射到它们命中的条目。右侧：「Eviction rule: when refcount → 0, blocks return to free pool (LRU among zero-refcount entries).」</p>
+<p>图 12.4 展示了这种数据结构。前缀缓存表中的每个条目有三个字段：哈希（键）、该前缀 KV 所在的物理块 ID 列表，以及当前正在使用这个前缀的活跃会话数量的引用计数。</p>
+<p>当一个新会话到达并命中一个缓存前缀时，引用计数上升。当那个会话结束时，引用计数下降。引用计数为零意味着没有活跃会话需要这个缓存条目，因此它成为驱逐的候选。当 GPU 用尽空闲块时，引擎按 LRU（最近最少使用）顺序驱逐引用计数为零的条目。</p>
+<p>这是经典的缓存设计。生产工程的关键在于把驱逐策略做对：在内存压力大时，是驱逐热门前缀（伤害平均命中率）还是稀有前缀（可能是造成压力的原因）？vLLM 的默认是 LRU，这很有效，因为共享前缀（系统提示）往往被反复复用，因此一直保持「最近」。</p>
+<h3>12.5：分块预填充：让预填充与解码交错</h3>
+<p>现在是另一个痛点。图 12.5 展示了队头阻塞的修复方法。</p>
+<p><img alt="图 12.5：分块预填充：把预填充块与正在进行的解码交错" src="figures/ch12-fig5-chunked-prefill-timeline/final.png">
+<em>图 12.5.</em> 与图 12.2 相同的双车道布局，但现在下车道的预填充被分块。上车道：用户 A 稳定地解码 token，每个约 50 ms，没有空白。下车道：用户 B 的 4000-token 预填充被拆成八个 512-token 的块，绘制成间隔均匀的独立小块，与用户 A 的解码 token 交错。注释：「User B's prefill broken into 8 chunks of 512. Each chunk processed between decode steps. User A barely notices.」</p>
+<p>图 12.5 展示了分块预填充的作用。引擎不再把用户 B 的完整 4000-token 预填充作为一次整体前向传播运行，而是把它拆成 8 个 512-token 的块。每个块在各自的前向传播中处理，与正在进行的解码共享 GPU。用户 A 的解码循环继续以约 50 ms 每步进行；用户 B 的预填充跨 8 步完成而非 1 步，但总延迟相似，且没有其他用户被阻塞。</p>
+<h3>12.6：块大小的权衡</h3>
+<p>选择块大小是分块预填充唯一的调优决策。较大的块意味着每个请求的预填充更快（更接近原生 TTFT），但每块的解码阻塞更多。较小的块意味着解码更平滑，但预填充更慢。</p>
+<p><img alt="图 12.6：块大小的权衡" src="figures/ch12-fig6-chunk-size-tradeoff/final.png">
+<em>图 12.6.</em> 一张折线图。X 轴：块大小（token），从 64 到 4096（对数）。两条曲线：「TTFT (ms)」下降（块越大 → 预填充越快 → TTFT 越好）；「Decode ITL jitter (ms)」上升（块越大 → 解码阻塞越多）。在 512-1024 token 附近有一个阴影「sweet spot」区域。注释：「Production default: 512 tokens per chunk.」</p>
+<p>图 12.6 展示了这种权衡。典型 H100 部署的最佳区间是每块 512 到 1024 个 token。在 512 时，每块计算约需 10-20 ms，小到解码几乎察觉不到，又大到预填充吞吐可接受。在 2048+ 时，解码会感觉到这些块；在 128 时，预填充延迟增长过多。</p>
+<p>vLLM 通过 <code>max_num_batched_tokens</code>（v1 中默认 8192）暴露这一点，它与 <code>long_prefill_token_threshold</code>（默认 2048）一起定义分块行为。如果请求的提示超过阈值，它就会被自动分块。</p>
+<h3>12.7：分块预填充 + FlashAttention：组合</h3>
+<p>分块预填充和 FlashAttention 都是分块策略。它们作用于栈的不同层级。</p>
+<p><img alt="图 12.7：分块预填充 + FlashAttention：两个层级的分块" src="figures/ch12-fig7-chunked-prefill-plus-flash/final.png">
+<em>图 12.7.</em> 两个嵌套矩形。外层「Chunked Prefill level」：一个 4096-token 提示被分成 8 个 512-token 的块。内层「FlashAttention level」：一个 512-token 块进一步被分成 8 个 64-token 的分块用于 SRAM 处理。二者之间一个括号：「Composition: 8 chunks × 8 SRAM tiles per chunk.」</p>
+<p>图 12.7 展示了这种组合。分块预填充在调度器层级运作，决定哪个预填充的哪个块进入哪次前向传播。FlashAttention 在内核层级运作，决定一次前向传播内的注意力如何被分块进 SRAM。二者都是分块策略，只是粒度不同。</p>
+<p>它们组合得很干净。在每个预填充块内部，注意力内核使用 FlashAttention 避免在 HBM 中物化该块的 N×N 分数矩阵。跨块，调度器与解码交错。这两种技术针对不同的瓶颈，且成倍叠加。</p>
+<h3>12.8：分块预填充 + 前缀缓存：完整的节省</h3>
+<p>而当一个分块预填充命中前缀缓存时，节省会进一步叠加。</p>
+<p><img alt="图 12.8：分块预填充 + 前缀缓存一起作用" src="figures/ch12-fig8-chunked-plus-prefix-cache/final.png">
+<em>图 12.8.</em> 一个走查场景。第 1 步：「5000-token prompt arrives.」第 2 步：「First 3500 tokens match system-prompt cache.」第 3 步：「Only 1500 remaining tokens need prefill.」第 4 步：「Chunked into 3 chunks of 512.」第 5 步：「Each chunk processed between decodes, TTFT = 140 ms.」一个小型节省总结：「Without optimizations: 800 ms TTFT. With prefix cache alone: 240 ms. With cache + chunked: stable 140 ms, no HOL blocking.」</p>
+<p>图 12.8 展示了一个现实场景。一个用户带着 5000-token 提示到达，其中前 3500 个 token 是系统的前缀缓存（系统消息 + RAG 上下文 + 对话历史）。前缀缓存完全跳过这 3500 个 token，只剩 1500 个 token 需要真正的新预填充。分块预填充把这 1500 个 token 拆成 3 个 512-token 的块。用户的 TTFT 从朴素的 800 ms 降到 140 ms，5.7× 的提升，同时还消除了其他用户的 P99 ITL 尖峰。</p>
+<p>这是现代聊天工作负载的生产服务现实。每一个前沿 API（OpenAI、Anthropic、Google）都实现了这个的某个版本。每一个严肃的开源服务引擎也是如此。启用与禁用之间的用户体验差异是巨大的，不是微不足道的。</p>
+<h3>12.9：完整的优化栈</h3>
+<p>让我退后一步，看看整个栈。</p>
+<p><img alt="图 12.9：完整的预填充侧优化栈" src="figures/ch12-fig9-optimization-stack/final.png">
+<em>图 12.9.</em> 六个水平层自下而上堆叠。第 1 层（最大，底部）：「Attention math itself.」第 2 层：「PagedAttention (removes fragmentation).」第 3 层：「Continuous batching (pack more users per forward pass).」第 4 层：「Chunked prefill (remove HOL blocking between prefill and decode).」第 5 层：「Prefix caching (skip recomputing shared prefixes).」第 6 层（顶部）：「FlashAttention (make each kernel call efficient).」注释：「Every layer above is multiplicative. Modern engines use ALL of these together.」</p>
+<p>图 12.9 说明了为什么现代服务引擎是现在这个样子。本书中的每一项优化都堆叠在其他优化之上。PagedAttention 使连续批处理成为可能。连续批处理使有效的分块预填充成为可能。分块预填充使混合工作负载下的 P99 ITL 稳定成为可能。前缀缓存使共享前缀上的 TTFT 降低成为可能。FlashAttention 使每一次前向传播都高效，无论它来自哪里。</p>
+<p>禁用任何一层都会使某个特定指标退化。禁用 PagedAttention，并发用户容量崩溃。禁用分块预填充，P99 ITL 尖峰。禁用前缀缓存，重复前缀工作负载上的 TTFT 退化。生产服务是这些的总和，而非其中任何一个。</p>
+<h3>12.10：对指标的影响</h3>
+<p>图 12.10 量化了这两项优化对生产指标的影响。</p>
+<p><img alt="图 12.10：分块预填充 + 前缀缓存前后的 TTFT 与 ITL" src="figures/ch12-fig10-metrics-impact/final.png">
+<em>图 12.10.</em> 一张分组柱状图。两个场景，前后对比。每个场景四根柱：中位 TTFT（前 400 ms，后 80 ms）；P99 TTFT（前 2200 ms，后 220 ms）；中位 ITL（前 50 ms，后 48 ms）；P99 ITL（前 850 ms，后 55 ms）。注释：「P99 metrics improve by 10×, median barely changes (only the tail was broken).」</p>
+<p>图 12.10 展示了真实影响。有了前缀缓存，中位 TTFT 下降 5×。P99 TTFT 下降 10×，因为分块预填充压平了尾部。中位 ITL 几乎不变（它本来就很好）。P99 ITL 下降 15×，因为长预填充争抢导致的尖峰消失了。</p>
+<p>注意这个模式：<strong>中位数改善不大，P99 改善巨大</strong>。这是调度层优化的生产特征。如果你的部署有不错的中位数却有痛苦的尾部，这几乎总是一个调度问题，而分块预填充 + 前缀缓存是通常的修复方法。</p>
+<hr>
+<h2>它们在 Roofline 故事中的位置</h2>
+<h3>12.11：前缀缓存把你移到哪里</h3>
+<p>前缀缓存消除了共享 token 的预填充计算。在 roofline 上，这以特定方式移动了<em>预填充</em>工作点：需要预填充的 token 更少，意味着算力受限区域流经的字节更少，因此预填充时间几乎随缓存命中率线性下降。对于 80% 预填充 token 被缓存的工作负载，预填充成本下降 5×。</p>
+<p>解码不受影响。前缀缓存帮助 TTFT，但不帮助 ITL。</p>
+<h3>12.12：分块预填充把你移到哪里</h3>
+<p>分块预填充不改变基本的计算或内存使用，无论是否分块，总 FLOPs 和字节数都相同。它改变的是<strong>调度</strong>。解码与预填充块并行运行，而不是排在它们后面。并发解码的有效工作点不变；变化的是预填充不再主导任何一次前向传播。</p>
+<p>在 roofline 上，你看到这表现为解码点随时间稳定。没有分块预填充时，解码点会随长预填充占用 GPU 而上下不规则跳动；有了它，点就停在原地。</p>
+<h3>12.13：接下来去哪里</h3>
+<p>第 13 章讨论本书的第三个主要内存杠杆：<strong>量化</strong>。减少每个参数和每个缓存条目的比特数。这与此前我们看到的一切都是叠加的，它在 PagedAttention 块内运作、使 FlashAttention 内核受益、也压缩前缀缓存的前缀。量化是这样一项技术：它把一个已通过第 7-12 章优化的栈，再把由此产生的成本压缩另外 2-4×。</p>
+</section>
+
+<section class="chapter-wrapper" id="breadcrumb-02-after-ch12">
+<h1>Breadcrumb——缓存已处理</h1>
+<p>你现在已经学完了第 5 章到第 12 章。这是本书迄今最深的技术板块。在我们进入量化和随后的调度技术之前，让我们标记一下你已经覆盖的内容。</p>
+<hr>
+<h2>到目前为止，这一板块的旅程</h2>
+<p><strong>第 5 章</strong> 从第一性原理推导出 KV 缓存。你逐矩阵地看到朴素推理中浪费了什么（Q、K、V 的前 N-1 行每步都被重算），以及哪些行在每次解码步骤中才是真正新增的。你用一个带真实数字的玩具「第二天是」走了一遍，这将成为本书其余部分的经典示例。</p>
+<p><strong>第 6 章</strong> 给了你底层的 GPU 硬件。流式多处理器、张量核心、内存层级、NVLink 和 InfiniBand。未来每一章关于「计算」和「内存」的心智模型，都生活在第 6 章所绘的图景里。</p>
+<p><strong>第 7 章</strong> 命名了 KV 缓存的善与恶。善：O(N²) 的 FLOPs 坍缩为 O(N)。恶：字节随 N 线性增长，解码变得访存受限，在 Llama-3-70B 上 32K 上下文时每用户 43 GB 就是限制并发用户的天花板。第 7 章以一个提问结束：我们能否在不受带宽代价的情况下得到 FLOP 节省？</p>
+<p><strong>第 8 章</strong> 通过跨头压缩回答了这个问题的一半。MHA → MQA → GQA → MLA。Llama-3 使用 G = 8 的 GQA。DeepSeek-V3 使用 MLA。这些就是今天生产中的变体，在极小的质量代价下带来 4× 到 64× 的每 token 缓存节省。</p>
+<p><strong>第 9 章</strong> 通过跨 token 压缩回答了另一半。滑动窗口把缓存限制在固定的 W。线性注意力把过去的 token 坍缩成一个 D×D 的运行状态。SSM 和 Mamba 用具有固定大小隐藏状态的循环来取代注意力。每种技术都以不同的方式用检索质量换取内存节省，在混合架构之外生产使用很少见。</p>
+<p><strong>第 10 章</strong> 重排了注意力内核<em>如何</em>使用内存。FlashAttention 把计算分块进 SRAM，使 N×N 分数矩阵从不接触 HBM。FA-1 → FA-2 → FA-3 逐步榨取更多峰值利用率；H100 上的 FA-3 达到约 85% 的张量核心峰值。</p>
+<p><strong>第 11 章</strong> 重排了 KV 缓存在 HBM 中<em>位于何处</em>。PagedAttention 把缓存打散成 16-token 的块，这些块可以位于 HBM 的任何地方，由每用户的块表跟踪。并发用户容量跃升 8×，因为没有什么是过度分配的。</p>
+<p><strong>第 12 章</strong> 重排了预填充和解码<em>何时</em>以及<em>如何</em>共享 GPU。前缀缓存在用户之间复用共享前缀的 K 和 V。分块预填充把长预填充块与正在进行的解码交错，使任何单个用户都无法阻塞系统。二者都由第 11 章的分页布局所促成。</p>
+<hr>
+<h2>大局</h2>
+<p>你现在理解了把朴素的 Transformer 解码循环（每步 O(N²)、1% GPU 利用率、每块 H100 3 个并发用户）转变为现代生产服务引擎（每步 O(N)、60% GPU 利用率、20-40 个并发用户）的机制。那次转变的每一块，都是上述八章中的某一章。</p>
+<p>在 roofline 上，你追随了解码工作点从：</p>
+<ul>
+<li><strong>KV 缓存之后（第 7 章）：</strong> 深处左侧，算术强度约 1。</li>
+<li><strong>头压缩之后（第 8 章）：</strong> 略向右，AI 上升约 8×（GQA）或约 64×（MLA）。</li>
+<li><strong>FlashAttention 之后（第 10 章）：</strong> 仅注意力内核就大幅右移（其 AI 上升约 10×）；端到端解码 AI 适度上升。</li>
+<li><strong>PagedAttention 之后（第 11 章）：</strong> 随并发批大小增长沿斜坡向上。</li>
+<li><strong>分块预填充之后（第 12 章）：</strong> 稳定，长预填充到来时点不再跳动。</li>
+</ul>
+<p>工作点不再深陷访存受限区域。对于批大小为 32 的充分优化解码，它紧邻屋脊。</p>
+<hr>
+<h2>还剩什么</h2>
+<p>运行时层还有三个更大的杠杆，它们是第 13-15 章。</p>
+<p><strong>第 13 章</strong> 是<strong>量化</strong>：减少每个权重、每个激活和每个 KV 缓存条目的字节数。FP16 到 FP8 到 INT4 到三元。每降一档都会乘上你在第 5-12 章构建的一切，更小的带宽压力、量化张量核心上更高的算力天花板、每块 GPU 更多的并发用户。</p>
+<p><strong>第 14 章</strong> 是<strong>连续批处理</strong>，这实际上是你一直在假定的东西。第 14 章把它明确化，序列如何动态加入和离开活跃批、为什么这需要 PagedAttention，以及 vLLM 的调度器如何在每一步做出决策。</p>
+<p><strong>第 15 章</strong> 是<strong>投机解码</strong>，一种巧妙的方法，通过让一个便宜的「草稿」模型预测几个 token、再由完整模型验证它们，从而在每次前向传播中产生多个 token。在质量无损的情况下 2-4× 加速，前提是草稿模型足够好。</p>
+<p>在那之后，第 16-18 章进入基础设施层，并行、解耦、复制。第 19-22 章覆盖工具、vLLM 内部、引擎版图、微调衔接。第 23 章巡览前沿（多模态、具身）。第 24-26 章是结业项目。</p>
+<hr>
+<h2>接下来去哪里</h2>
+<p>下一章是第 13 章。量化是我们刚构建的 KV 缓存技术之后最大的单一附加杠杆。一个优化过的 INT4 量化 Llama-3-70B 在单块 H100 上，每美元服务大约比同硬件的 FP16 版本多 4× 的 token。这就是主题。</p>
+</section>

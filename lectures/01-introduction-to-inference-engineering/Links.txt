@@ -1,0 +1,11 @@
+Miro Lesson Notes: https://miro.com/app/board/uXjVHcTHpyk=/?share_link_id=682398832877
+_
+| DNA of a Transformer: https://vizuaraai.github.io/dna-of-a-transformer
+| Anatomy of a GPU: https://brrrviz.com/
+- ^ Visual Walkthroughs
+
+_
+| Vizz-AI: https://vizz.vizuara.ai/
+| DynaRoute: https://dynaroute.vizuara.ai/
+| Roadmap Generator: https://roadmap.vizuara.ai/
+- ^ Vizuara Products for Inference Demo

@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>百万请求级 LLM 系统设计 - 最终答案</title>
+  <style>
+    :root{--ink:#161616;--muted:#625f5a;--paper:#fbfaf7;--line:#ded8cf;--soft:#f0ebe3;--blue:#315d8d;--green:#2f765f;--red:#9a4a3c;--gold:#92742f;--violet:#72569a;--shadow:0 16px 42px rgba(30,28,25,.08);--font:"Avenir Next","Helvetica Neue","PingFang SC","Microsoft YaHei",Arial,sans-serif;--mono:"SFMono-Regular",Consolas,monospace}
+    *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;color:var(--ink);background:linear-gradient(90deg,rgba(22,22,22,.035) 1px,transparent 1px),linear-gradient(180deg,rgba(22,22,22,.03) 1px,transparent 1px),var(--paper);background-size:28px 28px;font-family:var(--font);line-height:1.65;letter-spacing:0}.nav{position:sticky;top:0;background:rgba(251,250,247,.92);backdrop-filter:blur(12px);border-bottom:1px solid var(--line);z-index:5}.nav-inner{width:min(1120px,calc(100vw - 32px));margin:auto;display:flex;justify-content:space-between;gap:16px;align-items:center;padding:12px 0}.brand{font-weight:800}.links{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.nav a{color:var(--muted);text-decoration:none;border:1px solid var(--line);background:#fff;padding:7px 10px;border-radius:999px;font-size:12px}.shell{width:min(1120px,calc(100vw - 32px));margin:auto}.hero{min-height:calc(100vh - 64px);display:grid;grid-template-columns:minmax(0,1fr) minmax(330px,.72fr);gap:28px;align-items:center;padding:48px 0}.label{font:800 12px var(--mono);text-transform:uppercase;color:var(--gold);margin-bottom:10px}h1{font-size:clamp(48px,7vw,86px);line-height:.96;margin:0;letter-spacing:0}h2{font-size:clamp(30px,4vw,48px);line-height:1.05;margin:0 0 14px;letter-spacing:0}h3{font-size:22px;margin:26px 0 10px}.lead{font-size:20px;color:#3d3a36;max-width:780px;margin-top:22px}p{margin:0 0 14px;color:#36322f}section{padding:58px 0;border-top:1px solid var(--line)}.card{background:#fff;border:1px solid var(--line);border-radius:8px;padding:20px;margin:16px 0}.hero-card{background:#fff;border:1px solid var(--ink);border-radius:8px;padding:14px;box-shadow:var(--shadow)}.hero-card img{width:100%;display:block;border:1px solid var(--line);border-radius:8px;background:#fff}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.two{display:grid;grid-template-columns:1fr 1fr;gap:16px}.callout{border-left:4px solid var(--green);background:#e7f0ed;padding:16px 18px;border-radius:0 8px 8px 0;margin:18px 0}.warn{border-left-color:var(--red);background:#fff0ed}.blue{border-left-color:var(--blue);background:#eaf2ff}pre{background:#151923;color:#f8fafc;border-radius:8px;padding:16px;overflow:auto;font:13px/1.6 var(--mono)}table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:8px;overflow:hidden;margin:16px 0;font-size:14px}th{background:var(--soft);text-align:left;font:800 12px var(--mono);text-transform:uppercase}td,th{padding:11px 12px;border-bottom:1px solid var(--line)}tr:last-child td{border-bottom:0}.metric{background:#fff;border:1px solid var(--line);border-radius:8px;padding:16px}.metric strong{display:block;font:800 28px var(--mono);line-height:1;margin-bottom:6px}ol{padding-left:22px}li{margin:8px 0}@media(max-width:860px){.hero,.two{grid-template-columns:1fr}.grid{grid-template-columns:1fr}.nav-inner{align-items:flex-start;flex-direction:column}}
+  </style>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><div class="brand">最终系统设计答案</div><div class="links"><a href="visual-walkthroughs.html">资料库</a><a href="#clarify">澄清</a><a href="#architecture">架构</a><a href="#engine">引擎</a><a href="#tradeoffs">取舍</a><a href="#answer">回答脚本</a></div></div></nav>
+<main class="shell">
+  <section class="hero">
+    <div>
+      <div class="label">在 Anthropic、NVIDIA、Microsoft、Meta、DeepMind 被问及</div>
+      <h1>设计一个低延迟、高吞吐的 LLM 推理系统。</h1>
+      <p class="lead">这是串联整门课的完整结业答案：硬件、KV Cache、注意力 kernel、批处理、PagedAttention、分离式服务、路由、结构化输出、评测与生产运维。</p>
+      <div class="grid" style="margin-top:20px"><div class="metric"><strong>1</strong>澄清工作负载</div><div class="metric"><strong>2</strong>拆分请求通道</div><div class="metric"><strong>3</strong>优化引擎</div></div>
+    </div>
+    <aside class="hero-card"><img src="assets/production-systems/final-system-design.jpg" alt="最终系统设计架构"></aside>
+  </section>
+
+  <section id="clarify">
+    <div class="label">第 1 步</div>
+    <h2>先约束问题本身。</h2>
+    <p>不要直接跳到 GPU。正确的架构取决于工作负载形态。</p>
+    <div class="card">
+      <h3>澄清性问题</h3>
+      <ol>
+        <li>我们要服务哪些模型规模：8B、70B、MoE，还是多个层级？</li>
+        <li>prompt 与输出长度的分布是怎样的（而不只是平均值）？</li>
+        <li>SLO 是什么：TTFT、ITL、总延迟与可用性？</li>
+        <li>流量是流式聊天、agent、工具调用、批量任务，还是混合？</li>
+        <li>结构化输出、安全、隐私与审计的要求有多严格？</li>
+        <li>有多少流量是突发性的、区域性的，或租户隔离的？</li>
+      </ol>
+    </div>
+    <div class="callout blue"><strong>面试官眼里的好信号：</strong>表明「数百万请求」这个信息是不够的。tokens/sec、上下文长度、输出长度与 P99 SLO 才真正决定设计。</div>
+  </section>
+
+  <section id="architecture">
+    <div class="label">第 2 步</div>
+    <h2>为不同工作负载使用独立的通道。</h2>
+    <table>
+      <tr><th>通道</th><th>流量</th><th>优化目标</th></tr>
+      <tr><td>实时在线</td><td>聊天、agent、语音、编程</td><td>低 TTFT 与稳定 ITL</td></tr>
+      <tr><td>长上下文在线</td><td>RAG、文档问答、代码库 agent</td><td>prefill 容量与缓存复用</td></tr>
+      <tr><td>批量通道</td><td>摘要、评测、embedding、再处理</td><td>最大化 tokens/sec 与低成本</td></tr>
+      <tr><td>回退通道</td><td>过载、区域故障、罕见任务</td><td>可用性优先于成本</td></tr>
+    </table>
+    <pre>client -> edge -> API gateway
+  -> auth, quota, rate limit
+  -> input guardrails and prompt normalization
+  -> router:
+       choose model tier
+       choose online vs batch
+       choose cache-local replica
+       choose canary or stable version
+  -> serving engine:
+       prefill, decode, stream
+  -> output validation, safety filters, telemetry</pre>
+  </section>
+
+  <section id="engine">
+    <div class="label">第 3 步</div>
+    <h2>服务引擎是课程优化技术的汇聚点。</h2>
+    <div class="grid">
+      <div class="card"><h3>PagedAttention</h3><p>以块（block）存储 KV Cache，避免连续分配的浪费，支持高并发。</p></div>
+      <div class="card"><h3>连续批处理（Continuous batching）</h3><p>每个 decode 步都接纳新请求，使已完成的序列不会让 GPU 空闲。</p></div>
+      <div class="card"><h3>分块预填充（Chunked prefill）</h3><p>把长 prompt 拆成小块，使 prefill 不会饿死 decode。</p></div>
+      <div class="card"><h3>前缀缓存（Prefix caching）</h3><p>为共享的系统 prompt、历史与文档前缀复用 KV。</p></div>
+      <div class="card"><h3>量化（Quantization）</h3><p>降低权重带宽与内存占用，发布前做质量检查。</p></div>
+      <div class="card"><h3>投机解码（Speculative decoding）</h3><p>在草稿接受率高时，用小草稿模型减少大模型的前向传播次数。</p></div>
+    </div>
+    <div class="callout"><strong>扩缩容：</strong>复制副本（replicate）换吞吐；当单模型副本放不下或需要更多带宽时用张量并行（tensor parallelism）；只在不可避免跨节点时用流水线并行（pipeline parallelism）；当长 prefill 突发干扰 decode SLO 时用分离式服务（disaggregated serving）。</div>
+  </section>
+
+  <section id="tradeoffs">
+    <div class="label">第 4 步</div>
+    <h2>明确地说出取舍。</h2>
+    <table>
+      <tr><th>选择</th><th>收益</th><th>成本</th></tr>
+      <tr><td>更大的 batch</td><td>更高 GPU 利用率</td><td>更高排队与尾延迟</td></tr>
+      <tr><td>缓存感知路由</td><td>更少 prefill 工作</td><td>可能导致负载不均</td></tr>
+      <tr><td>分离式 P/D</td><td>保护 decode 免受 prefill 突发影响</td><td>KV 传输税与更多编排</td></tr>
+      <tr><td>量化</td><td>更低内存与成本</td><td>可能的质量回退</td></tr>
+      <tr><td>投机解码</td><td>草稿准确时更低延迟</td><td>额外的模型与接受率敏感性</td></tr>
+      <tr><td>严格引导解码</td><td>合法的结构化输出</td><td>采样器开销与语法复杂度</td></tr>
+      <tr><td>预热池</td><td>低冷启动延迟</td><td>空闲 GPU 开销</td></tr>
+    </table>
+  </section>
+
+  <section id="answer">
+    <div class="label">最终脚本</div>
+    <h2>一个完整的面试回答。</h2>
+    <div class="card">
+      <p>我会先通过 prompt 长度、输出长度、请求速率、并发量、流式要求，以及 TTFT、token 间延迟（ITL）、总延迟与可用性的 SLO 来刻画工作负载。「数百万请求」不是规模单位；tokens/sec 与上下文长度分布才是。</p>
+      <p>架构从一个区域边缘（edge）与 API 网关（gateway）开始，负责认证、配额、限流、请求整形与输入安全检查。之后我会用一个智能推理路由器（router）：选择模型层级、决定在线还是批量、应用金丝雀流量规则，并把缓存敏感的请求路由到已经持有有用前缀 KV 状态的副本。</p>
+      <p>对在线服务引擎，我会用 vLLM 或 TensorRT-LLM 风格的运行时，具备：PagedAttention 做 KV 内存管理、连续批处理做吞吐、前缀缓存应对重复 prompt、分块预填充保护 decode，并在草稿接受率高的场景用投机解码。只在评测显示质量可维持后才做量化。</p>
+      <p>对大模型，我会复制模型实例换吞吐，在高带宽 NVLink 域内使用张量并行，只在模型容量迫使时跨节点用流水线并行。如果流量有很多长 prompt，我会拆分 prefill 与 decode 池，使计算密集的 prefill 不干扰内存带宽受限的 decode。在选择分离之前，我会计入 KV 传输税。</p>
+      <p>我会把批量工作负载与实时流量分开。批量任务可以排队以换取高 GPU 利用率，但在线 decode 不应排在离线摘要或评测工作之后。过载时，我会根据产品需求使用准入控制（admission control）、低层级回退、更短的最大输出，或异步交接。</p>
+      <p>每次发布都经过离线评测、影子流量、金丝雀发布与回滚门槛。仪表盘跟踪 TTFT、ITL、总延迟、队列深度、GPU 利用率、VRAM、KV Cache 命中率、输出 token 分布、schema 合法性、安全标志与每请求成本。核心取舍是「延迟 vs 利用率」：批处理、缓存与路由，就是我在「每个请求类别」而非「全局统一」地做这个取舍的方式。</p>
+    </div>
+  </section>
+</main>
+</body>
+</html>

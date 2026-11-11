@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>结构化输出与评测 - 深度可视化课堂笔记</title>
+  <style>
+    :root{--ink:#161616;--muted:#625f5a;--paper:#fbfaf7;--line:#ded8cf;--soft:#f0ebe3;--blue:#315d8d;--green:#2f765f;--red:#9a4a3c;--gold:#92742f;--violet:#72569a;--shadow:0 16px 42px rgba(30,28,25,.08);--font:"Avenir Next","Helvetica Neue","PingFang SC","Microsoft YaHei",Arial,sans-serif;--mono:"SFMono-Regular",Consolas,monospace}
+    *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;color:var(--ink);background:linear-gradient(90deg,rgba(22,22,22,.035) 1px,transparent 1px),linear-gradient(180deg,rgba(22,22,22,.03) 1px,transparent 1px),var(--paper);background-size:28px 28px;font-family:var(--font);line-height:1.65;letter-spacing:0}.nav{position:sticky;top:0;background:rgba(251,250,247,.94);backdrop-filter:blur(12px);border-bottom:1px solid var(--line);z-index:5}.nav-inner{width:min(1160px,calc(100vw - 32px));margin:auto;display:flex;justify-content:space-between;gap:16px;align-items:center;padding:12px 0}.brand{font-weight:800}.links{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.nav a{color:var(--muted);text-decoration:none;border:1px solid var(--line);background:#fff;padding:7px 10px;border-radius:999px;font-size:12px}.shell{width:min(1160px,calc(100vw - 32px));margin:auto}.hero{min-height:calc(100vh - 64px);display:grid;grid-template-columns:minmax(0,1fr) minmax(360px,.74fr);gap:28px;align-items:center;padding:48px 0}.label{font:800 12px var(--mono);text-transform:uppercase;color:var(--gold);margin-bottom:10px}h1{font-size:clamp(48px,7vw,88px);line-height:.96;margin:0;letter-spacing:0}h2{font-size:clamp(30px,4vw,50px);line-height:1.05;margin:0 0 14px;letter-spacing:0}h3{font-size:22px;margin:26px 0 10px}.lead{font-size:20px;color:#3d3a36;max-width:800px;margin-top:22px}p{margin:0 0 14px;color:#36322f}section{padding:62px 0;border-top:1px solid var(--line)}.card{background:#fff;border:1px solid var(--line);border-radius:8px;padding:20px;margin:16px 0;box-shadow:0 1px 2px rgba(0,0,0,.04)}.hero-card,.figure{background:#fff;border:1px solid var(--ink);border-radius:8px;padding:14px;box-shadow:var(--shadow);margin:18px 0}.hero-card img,.figure img{width:100%;display:block;border:1px solid var(--line);border-radius:8px;background:#fff}.caption{font-size:13px;color:var(--muted);margin:10px 2px 0}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.two{display:grid;grid-template-columns:1fr 1fr;gap:16px}.metric{background:#fff;border:1px solid var(--line);border-radius:8px;padding:16px}.metric strong{display:block;font:800 28px var(--mono);line-height:1;margin-bottom:6px}.callout{border-left:4px solid var(--green);background:#e7f0ed;padding:16px 18px;border-radius:0 8px 8px 0;margin:18px 0}.warnbox{border-left-color:var(--red);background:#fff0ed}.blue{border-left-color:var(--blue);background:#eaf2ff}.gold{border-left-color:var(--gold);background:#fff7dd}.violet{border-left-color:var(--violet);background:#f4edff}code,pre{font-family:var(--mono)}pre{background:#151923;color:#f8fafc;border-radius:8px;padding:16px;overflow:auto;font-size:13px;line-height:1.6}table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:8px;overflow:hidden;margin:16px 0;font-size:14px}th{background:var(--soft);text-align:left;font:800 12px var(--mono);text-transform:uppercase}td,th{padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:top}tr:last-child td{border-bottom:0}.diagram{background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px;margin:16px 0;overflow:auto}.flow{display:grid;grid-template-columns:repeat(5,minmax(145px,1fr));gap:10px}.node{border:1px solid var(--line);background:var(--soft);border-radius:8px;padding:12px;min-height:110px}.node b{display:block;margin-bottom:6px}.mini{font-size:13px;color:var(--muted)}.formula{font-family:var(--mono);background:#fff;border:1px solid var(--line);border-radius:8px;padding:14px;margin:14px 0;color:#1f2937;overflow:auto}.pill{display:inline-block;border:1px solid var(--line);border-radius:999px;background:#fff;padding:4px 8px;font:700 12px var(--mono);color:var(--muted);margin:2px}.tokenbar{display:grid;gap:8px;margin:12px 0}.tok{display:grid;grid-template-columns:110px 1fr 120px;gap:10px;align-items:center}.tok span:nth-child(2){height:18px;border-radius:999px;background:var(--green)}.tok.bad span:nth-child(2){background:var(--red)}.tok.masked{opacity:.55}.waterfall{display:grid;gap:8px}.wf{display:grid;grid-template-columns:170px 1fr 80px;gap:8px;align-items:center}.wf span:nth-child(2){height:20px;border-radius:6px;background:linear-gradient(90deg,var(--blue),var(--green));display:block}
+    @media(max-width:960px){.hero,.two{grid-template-columns:1fr}.grid{grid-template-columns:1fr 1fr}.flow{grid-template-columns:1fr 1fr}.nav-inner{align-items:flex-start;flex-direction:column}}
+    @media(max-width:640px){.grid,.flow{grid-template-columns:1fr}.tok,.wf{grid-template-columns:1fr}.hero-card{padding:8px}}
+  </style>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><div class="brand">结构化输出与评测</div><div class="links"><a href="visual-walkthroughs.html">资料库</a><a href="#contract">契约</a><a href="#guided">引导解码</a><a href="#repair">修复</a><a href="#evals">评测</a><a href="#judge">评判器</a><a href="#profile">延迟</a><a href="#release">发布门槛</a></div></div></nav>
+<main class="shell">
+  <section class="hero">
+    <div>
+      <div class="label">第 13 讲的延伸</div>
+      <h1>可靠性始于 token 边界。</h1>
+      <p class="lead">当模型吐出流畅文本时，生产推理并没有完成。应用需要的是「契约」：合法的 JSON、安全的工具调用、稳定的字段、可度量的质量、有界的延迟，以及在用户察觉之前抓住回归的发布门槛。</p>
+      <div class="grid" style="margin-top:20px"><div class="metric"><strong>语法</strong>解析与 schema 合法性</div><div class="metric"><strong>语义</strong>字段正确性与任务成功</div><div class="metric"><strong>SLO</strong>延迟与成本预算</div></div>
+    </div>
+    <aside class="hero-card"><img src="assets/production-systems/structured-output-evals.jpg" alt="结构化输出与评测脚手架"></aside>
+  </section>
+
+  <section id="contract">
+    <div class="label">第 1 部分</div>
+    <h2>结构化输出是 API 契约，而不是排版偏好。</h2>
+    <p>如果模型在驱动一个工作流，下游系统消费的不是「漂亮的散文」，而是「值」。一个发票 agent 需要 total 这个数字；一个浏览器 agent 需要工具名与类型化参数；一个客服自动化需要分类枚举（enum）；一个写数据库的 agent 需要经过校验的字段。</p>
+    <div class="two">
+      <div class="card">
+        <h3>仅靠 prompt 的契约</h3>
+        <pre>System:
+Return JSON with invoice_id, total, currency.
+
+Model:
+Sure, here is the JSON:
+{
+  invoice_id: INV-42,
+  total: "about twelve hundred",
+  currency: "dollars"
+}</pre>
+      </div>
+      <div class="card">
+        <h3>Schema 契约</h3>
+        <pre>{
+  "type": "object",
+  "required": ["invoice_id", "total", "currency"],
+  "properties": {
+    "invoice_id": {"type": "string"},
+    "total": {"type": "number"},
+    "currency": {"enum": ["USD", "EUR", "INR"]}
+  }
+}</pre>
+      </div>
+    </div>
+    <table>
+      <tr><th>层级</th><th>保证</th><th>不保证</th></tr>
+      <tr><td>Prompt 指令</td><td>模型被推向某种格式</td><td>合法性或一致性</td></tr>
+      <tr><td>JSON 解析器</td><td>输出是可解析的 JSON</td><td>schema 或语义正确性</td></tr>
+      <tr><td>JSON schema</td><td>类型、必填字段、枚举</td><td>值是否真实</td></tr>
+      <tr><td>业务规则</td><td>领域约束</td><td>完整任务正确性</td></tr>
+      <tr><td>评测脚手架</td><td>跨样本度量行为</td><td>未来行为完美</td></tr>
+    </table>
+  </section>
+
+  <section id="guided">
+    <div class="label">第 2 部分</div>
+    <h2>引导解码把 schema 变成 token 掩码。</h2>
+    <p>模型仍然会为词表中每个 token 生成 logit。引导解码改变的是采样器（sampler）。每一步，语法（grammar）、正则（regex）、JSON schema 或有限状态机（finite-state machine）会指出哪些 token 可以合法地作为下一个。非法 token 在采样前被屏蔽。</p>
+    <div class="figure"><img src="assets/production-systems/guided-decoding-token-mask.jpg" alt="引导解码 token 掩码"><p class="caption">PaperBanana 图示：schema/FSM 约束以 token 掩码的形式流入采样器。</p></div>
+    <div class="formula">masked_logit[token] = logit[token] if token is valid else -infinity</div>
+    <div class="card">
+      <h3>手动走查：currency 枚举</h3>
+      <p>部分输出：<code>{"currency": "</code>。模型的原始 logit 可能更倾向 "dollars"，因为它是自然的英文。但 schema 说只有三个值是合法的。</p>
+      <div class="tokenbar">
+        <div class="tok"><b>USD</b><span style="width:58%"></span><em>允许</em></div>
+        <div class="tok"><b>EUR</b><span style="width:32%"></span><em>允许</em></div>
+        <div class="tok"><b>INR</b><span style="width:26%"></span><em>允许</em></div>
+        <div class="tok bad masked"><b>dollars</b><span style="width:74%"></span><em>已屏蔽</em></div>
+        <div class="tok bad masked"><b>newline</b><span style="width:22%"></span><em>已屏蔽</em></div>
+      </div>
+    </div>
+    <table>
+      <tr><th>方法</th><th>机制</th><th>最佳用途</th><th>取舍</th></tr>
+      <tr><td>Logit 偏置（biasing）</td><td>给选定 token 加减分数</td><td>偏好引导</td><td>软性，无保证</td></tr>
+      <tr><td>JSON 模式</td><td>朝合法 JSON 偏置或约束</td><td>通用 JSON 响应</td><td>可能不强制精确 schema</td></tr>
+      <tr><td>语法引导解码</td><td>FSM/解析器屏蔽非法 token</td><td>严格格式、类 SQL 语法、工具参数</td><td>采样器开销与实现复杂度</td></tr>
+      <tr><td>约束 beam/搜索</td><td>只搜索合法续写</td><td>小输出空间</td><td>可能比采样更慢</td></tr>
+    </table>
+    <div class="callout warnbox"><strong>重要：</strong>引导解码给出的是「语法合法性」。它并不证明发票总额、引用、诊断或工具参数是正确的。</div>
+  </section>
+
+  <section id="repair">
+    <div class="label">第 3 部分</div>
+    <h2>重试与修复循环有用，但可能掩盖糟糕的系统。</h2>
+    <p>修复循环让模型去修正格式错误的输出。它能救回偶发失败，但如果修复率变成常态，你的产品就在为「第二次模型调用」付费，并掩盖了一次回归。</p>
+    <div class="diagram">
+      <div class="flow">
+        <div class="node"><b>生成（Generate）</b><span class="mini">模型产出结构化候选。</span></div>
+        <div class="node"><b>解析（Parse）</b><span class="mini">JSON 解析器接受或拒绝。</span></div>
+        <div class="node"><b>校验（Validate）</b><span class="mini">schema 与业务规则。</span></div>
+        <div class="node"><b>修复（Repair）</b><span class="mini">只在廉价且安全时进行。</span></div>
+        <div class="node"><b>回退（Fallback）</b><span class="mini">升级或返回受控错误。</span></div>
+      </div>
+    </div>
+    <pre>if parse_fails:
+  repair_once_with_small_model()
+elif schema_fails:
+  repair_once_with_error_message()
+elif semantic_check_fails:
+  route_to_stronger_model_or_human_review()
+else:
+  return result
+
+emit metrics:
+  parse_failure_rate
+  schema_failure_rate
+  repair_rate
+  repair_success_rate
+  added_latency_ms</pre>
+    <div class="callout blue"><strong>设计原则：</strong>修复循环是「异常处理器」，不是主路径。如果修复率在一次模型、prompt、schema 或解码更新后发生变化，就触发告警。</div>
+  </section>
+
+  <section id="evals">
+    <div class="label">第 4 部分</div>
+    <h2>评测脚手架是「模型行为的 CI」。</h2>
+    <p>单元测试说明「代码能跑」。评测说明「模型仍然按预期行事」。对结构化输出，脚手架必须同时测试「机器合法性」与「任务正确性」。</p>
+    <div class="figure"><img src="assets/production-systems/eval-harness-release-gate.jpg" alt="评测脚手架发布门槛"><p class="caption">PaperBanana 图示：发布门槛把确定性检查、judge 检查、延迟画像与成本画像组合在一起。</p></div>
+    <div class="card">
+      <h3>最小评测记录</h3>
+      <pre>id: invoice_042
+input: "raw OCR text from invoice..."
+expected:
+  invoice_id: INV-2026-042
+  total: 1287.50
+  currency: USD
+  risk_flags: ["late_fee"]
+checks:
+  parse_json: true
+  schema_valid: true
+  exact.invoice_id: true
+  numeric.total.abs_error <= 0.01
+  enum.currency: true
+  contains.risk_flags: late_fee
+  p99_latency_ms <= 1200
+  cost_per_1000_requests <= budget</pre>
+    </div>
+    <div class="grid">
+      <div class="card"><h3>金标集（Golden set）</h3><p>少量、经过审阅、代表产品契约的样本。精确的字段级检查就放在这里。</p></div>
+      <div class="card"><h3>合成边界集（Synthetic edge set）</h3><p>生成的对抗性变体：缺失字段、异常日期、长上下文、多语言文本、格式错乱的表格。</p></div>
+      <div class="card"><h3>生产回放（Production replay）</h3><p>匿名化的流量样本。它能捕捉手工测试遗漏的分布漂移。</p></div>
+    </div>
+    <table>
+      <tr><th>指标</th><th>定义</th><th>为什么重要</th></tr>
+      <tr><td>JSON 合法性</td><td>可解析 JSON / 总输出</td><td>应用无法消费格式错误的输出</td></tr>
+      <tr><td>Schema 合法性</td><td>schema 合法输出 / 可解析输出</td><td>类型与必填字段成立</td></tr>
+      <tr><td>字段准确率</td><td>正确字段 / 期望字段</td><td>业务正确性</td></tr>
+      <tr><td>修复率</td><td>需要修复的输出 / 总输出</td><td>隐藏成本与可靠性信号</td></tr>
+      <tr><td>拒答正确性</td><td>正确拒绝或遵从 / 策略样本</td><td>安全与助人的平衡</td></tr>
+      <tr><td>延迟画像</td><td>按阶段的 P50/P90/P99</td><td>防止质量摧毁 SLO</td></tr>
+    </table>
+  </section>
+
+  <section id="judge">
+    <div class="label">第 5 部分</div>
+    <h2>LLM 评判器只有在「框定好」时才有用。</h2>
+    <p>当精确检查不可行时，judge 模型可以为语义打分，但它们不是魔法真相机。它们需要评分细则（rubric）、校准（calibration）、分歧处理与抽查。</p>
+    <div class="two">
+      <div class="card">
+        <h3>糟糕的 judge prompt</h3>
+        <pre>Is this answer good?
+Return yes or no.</pre>
+        <p>这太模糊。它会漂移、过度奖励啰嗦，并且无法暴露究竟是哪个行为回归了。</p>
+      </div>
+      <div class="card">
+        <h3>更好的 judge 评分细则</h3>
+        <pre>Grade from 0-2 for each:
+1. all required fields present
+2. values supported by source text
+3. no unsupported risk flags
+4. no unsafe advice
+Return JSON with scores and evidence spans.</pre>
+        <p>judge 的输出本身是结构化且可审计的。</p>
+      </div>
+    </div>
+    <div class="callout gold"><strong>最佳实践：</strong>先确定性检查，再 judge，最后人工审计做校准。judge 应该解释「剩余的语义质量」，而不是取代简单的检查。</div>
+  </section>
+
+  <section id="profile">
+    <div class="label">第 6 部分</div>
+    <h2>对整个结构化输出系统做基准测试。</h2>
+    <p>结构化输出会改变延迟。引导解码可能拖慢采样。校验增加了后处理。修复增加了额外调用。要对整个流水线做基准，而不只是模型的 tokens/sec。</p>
+    <div class="waterfall">
+      <div class="wf"><b>网关 + 认证</b><span style="width:8%"></span><em>8 ms</em></div>
+      <div class="wf"><b>输入护栏</b><span style="width:12%"></span><em>12 ms</em></div>
+      <div class="wf"><b>队列</b><span style="width:40%"></span><em>40 ms</em></div>
+      <div class="wf"><b>预填充（Prefill）</b><span style="width:55%"></span><em>55 ms</em></div>
+      <div class="wf"><b>解码（Decode）</b><span style="width:92%"></span><em>420 ms</em></div>
+      <div class="wf"><b>Schema 校验</b><span style="width:6%"></span><em>6 ms</em></div>
+      <div class="wf"><b>修复 P95</b><span style="width:65%"></span><em>280 ms</em></div>
+    </div>
+    <table>
+      <tr><th>基准切片</th><th>要回答的问题</th></tr>
+      <tr><td>无约束</td><td>基线质量与延迟</td></tr>
+      <tr><td>JSON schema / 引导解码</td><td>合法性收益 vs 采样器开销</td></tr>
+      <tr><td>schema + 校验器</td><td>端到端应用契约</td></tr>
+      <tr><td>schema + 修复</td><td>尾延迟与隐藏成本</td></tr>
+      <tr><td>候选模型 vs 基线</td><td>发布决策</td></tr>
+    </table>
+  </section>
+
+  <section id="release">
+    <div class="label">第 7 部分</div>
+    <h2>发布门槛把质量与生产绑定在一起。</h2>
+    <pre>release_gate(candidate):
+  require json_validity >= 99.9%
+  require schema_validity >= 99.5%
+  require field_accuracy >= baseline - 0.5%
+  require refusal_correctness >= baseline
+  require repair_rate <= baseline + 1%
+  require p99_ttft <= baseline * 1.10
+  require p99_total_latency <= baseline * 1.15
+  require cost_per_request <= baseline * 1.15
+  require canary_rollback_ready == true</pre>
+    <div class="card">
+      <h3>本节要点</h3>
+      <p>结构化输出与评测属于推理工程，因为它们改变了「解码如何运行」「延迟如何度量」「部署如何设门槛」以及「失败如何排查」。一个很快、却返回非法工具调用的模型，不是一个生产系统。</p>
+    </div>
+  </section>
+</main>
+</body>
+</html>

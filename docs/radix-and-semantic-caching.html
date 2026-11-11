@@ -1,0 +1,1389 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>RadixAttention 与语义缓存 —— 可视化详解</title>
+<meta name="description" content="对《推理工程》第 12 章两个延伸思想的可视化解读：SGLang 的 RadixAttention（把前缀缓存实现为基数树）与连续语义缓存（按查询的语义而非 token 字节来缓存）。" />
+<link rel="icon" type="image/png" href="vizlogo.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=JetBrains+Mono:wght@400;500;700&family=Inter+Tight:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper:        #f4ecd8;
+    --paper-deep:   #ebe1c7;
+    --ink:          #1a1815;
+    --ink-soft:     #3d3833;
+    --ink-faint:    #6b6359;
+    --rule:         #2a2622;
+    --accent:       #c8351b;
+    --accent-soft:  #e08a76;
+    --gold:         #b8862f;
+    --teal:         #2f5e5a;
+    --blue:         #2e4a7b;
+    --green:        #4a6b3a;
+    --violet:       #72569a;
+    --hot:          #c8351b;
+    --cool:         #2e4a7b;
+    --margin:       max(2rem, calc(50vw - 38rem));
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'Fraunces', 'PingFang SC', 'Microsoft YaHei', 'Times New Roman', serif;
+    font-feature-settings: "ss01" on, "ss02" on, "onum" on;
+    background: var(--paper);
+    color: var(--ink);
+    line-height: 1.55;
+    font-size: 18px;
+    overflow-x: hidden;
+    position: relative;
+  }
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      radial-gradient(circle at 20% 30%, rgba(120,90,40,0.04) 0%, transparent 40%),
+      radial-gradient(circle at 80% 70%, rgba(60,40,20,0.035) 0%, transparent 40%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  body::after {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.15 0 0 0 0 0.12 0 0 0 0 0.08 0 0 0 0.18 0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
+    opacity: 0.35;
+    mix-blend-mode: multiply;
+    pointer-events: none;
+    z-index: 1;
+  }
+  main { position: relative; z-index: 2; }
+
+  h1, h2, h3, h4 {
+    font-family: 'Fraunces', 'PingFang SC', 'Microsoft YaHei', serif;
+    font-variation-settings: "opsz" 144;
+    color: var(--ink);
+    letter-spacing: -0.02em;
+    line-height: 1.05;
+    font-weight: 500;
+  }
+  h2 { font-size: clamp(2.2rem, 5vw, 3.6rem); margin-bottom: 1.5rem; font-weight: 400; }
+  h3 { font-size: clamp(1.5rem, 3vw, 2.1rem); margin: 2.5rem 0 1rem; font-weight: 500; }
+  h4 { font-size: 1.25rem; margin: 1.5rem 0 0.6rem; font-weight: 600; font-variation-settings: "opsz" 14; }
+
+  p { font-size: 1.125rem; margin-bottom: 1.25rem; max-width: 65ch; }
+  p.lede {
+    font-size: 1.45rem;
+    line-height: 1.5;
+    color: var(--ink-soft);
+    font-style: italic;
+    font-weight: 300;
+    max-width: 60ch;
+  }
+  .small-caps {
+    font-family: 'Inter Tight', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--ink-faint);
+  }
+  .drop::first-letter {
+    font-family: 'Fraunces', serif;
+    font-weight: 600;
+    font-size: 4.5rem;
+    float: left;
+    line-height: 0.85;
+    margin: 0.4rem 0.5rem 0 0;
+    color: var(--accent);
+  }
+
+  code, .mono {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.9em;
+    background: rgba(40,30,20,0.06);
+    padding: 0.1em 0.35em;
+    border-radius: 3px;
+    color: var(--ink);
+  }
+
+  section {
+    padding: 6rem var(--margin);
+    position: relative;
+    border-bottom: 1px solid rgba(40,30,20,0.08);
+  }
+  section:last-child { border-bottom: none; }
+
+  .section-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    letter-spacing: 0.05em;
+    color: var(--accent);
+    margin-bottom: 1rem;
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border: 1px solid var(--accent);
+    border-radius: 2px;
+  }
+
+  .hero {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 4rem var(--margin) 2rem;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    border-bottom: 2px solid var(--ink);
+    padding-bottom: 0.75rem;
+    margin-bottom: 3rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+  .hero-meta .vol {
+    font-family: 'Fraunces', 'PingFang SC', 'Microsoft YaHei', serif;
+    font-style: italic;
+    font-size: 1rem;
+    color: var(--ink-soft);
+  }
+  .hero h1 {
+    font-size: clamp(3rem, 9.5vw, 8rem);
+    font-weight: 300;
+    line-height: 0.92;
+    margin: 1rem 0 2rem;
+    font-variation-settings: "opsz" 144, "wght" 300;
+  }
+  .hero h1 em {
+    font-style: italic;
+    color: var(--accent);
+    font-variation-settings: "opsz" 144, "wght" 400;
+  }
+  .hero-sub {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3rem;
+    margin-top: 3rem;
+    border-top: 1px solid rgba(40,30,20,0.2);
+    padding-top: 1.5rem;
+  }
+  .hero-sub p { font-size: 1rem; color: var(--ink-soft); }
+
+  .hero-formula {
+    margin: 2rem 0;
+    padding: 2rem;
+    background: var(--ink);
+    color: var(--paper);
+    font-family: 'JetBrains Mono', monospace;
+    text-align: center;
+    border-radius: 2px;
+    position: relative;
+  }
+  .hero-formula .label {
+    position: absolute;
+    top: -0.7rem; left: 1rem;
+    background: var(--paper);
+    color: var(--ink);
+    padding: 0 0.5rem;
+    font-size: 0.7rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
+  .hero-formula .eq {
+    font-size: 1.4rem;
+    letter-spacing: 0.05em;
+    line-height: 1.5;
+  }
+  .hero-formula .eq .var { color: var(--accent-soft); }
+  .hero-formula .eq .same { color: #9bd1a8; }
+
+  .toc {
+    background: var(--paper-deep);
+    padding: 4rem var(--margin);
+    border-top: 1px solid rgba(40,30,20,0.15);
+    border-bottom: 1px solid rgba(40,30,20,0.15);
+  }
+  .toc h2 {
+    font-size: 1.2rem;
+    font-family: 'Inter Tight', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: 2rem;
+    font-weight: 600;
+  }
+  .toc-list { list-style: none; }
+  .toc-list li {
+    border-top: 1px solid rgba(40,30,20,0.15);
+    padding: 1rem 0;
+    display: flex;
+    align-items: baseline;
+    gap: 1.5rem;
+  }
+  .toc-list li:last-child { border-bottom: 1px solid rgba(40,30,20,0.15); }
+  .toc-list .num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85rem;
+    color: var(--accent);
+    width: 3rem;
+    flex-shrink: 0;
+  }
+  .toc-list a {
+    color: var(--ink);
+    text-decoration: none;
+    font-family: 'Fraunces', 'PingFang SC', 'Microsoft YaHei', serif;
+    font-size: 1.4rem;
+    flex-grow: 1;
+    transition: color 0.2s;
+  }
+  .toc-list a:hover { color: var(--accent); font-style: italic; }
+  .toc-list .pg {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--ink-faint);
+  }
+
+  figure {
+    margin: 3rem auto;
+    padding: 0;
+    text-align: center;
+    max-width: 100%;
+  }
+  figure svg {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 0 auto;
+    background: var(--paper);
+  }
+  figcaption {
+    font-family: 'Inter Tight', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    font-size: 0.85rem;
+    color: var(--ink-faint);
+    margin-top: 1rem;
+    line-height: 1.4;
+    max-width: 56ch;
+    margin-left: auto;
+    margin-right: auto;
+    text-align: center;
+  }
+  figcaption .fig-label {
+    font-weight: 700;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-size: 0.72rem;
+    margin-right: 0.5rem;
+  }
+
+  .pull-quote {
+    font-family: 'Fraunces', 'PingFang SC', 'Microsoft YaHei', serif;
+    font-style: italic;
+    font-weight: 300;
+    font-size: clamp(1.6rem, 3.8vw, 2.6rem);
+    line-height: 1.25;
+    color: var(--ink);
+    margin: 4rem auto;
+    padding: 2.5rem 0;
+    max-width: 50ch;
+    text-align: center;
+    border-top: 1px solid var(--ink);
+    border-bottom: 1px solid var(--ink);
+    position: relative;
+  }
+  .pull-quote::before {
+    content: '"';
+    position: absolute;
+    top: -1.5rem; left: 50%;
+    transform: translateX(-50%);
+    background: var(--paper);
+    padding: 0 1rem;
+    font-size: 4rem;
+    color: var(--accent);
+    line-height: 1;
+    font-style: normal;
+  }
+
+  .marginalia {
+    font-family: 'Inter Tight', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    font-size: 0.85rem;
+    color: var(--ink-faint);
+    line-height: 1.4;
+    border-left: 2px solid var(--accent);
+    padding-left: 1rem;
+    margin: 1.5rem 0;
+    font-style: italic;
+  }
+
+  .formula {
+    background: var(--paper-deep);
+    border: 1px solid rgba(40,30,20,0.15);
+    padding: 1.5rem 2rem;
+    margin: 2rem 0;
+    text-align: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1.1rem;
+    border-radius: 3px;
+    overflow-x: auto;
+  }
+  .formula em { color: var(--accent); font-style: normal; font-weight: 700; }
+
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 0;
+    margin: 2.5rem 0;
+    border-top: 1px solid var(--ink);
+    border-bottom: 1px solid var(--ink);
+  }
+  .stat {
+    padding: 1.5rem;
+    border-right: 1px solid rgba(40,30,20,0.15);
+    text-align: center;
+  }
+  .stat:last-child { border-right: none; }
+  .stat .num {
+    font-family: 'Fraunces', serif;
+    font-variation-settings: "opsz" 144, "wght" 400;
+    font-size: 2.6rem;
+    color: var(--accent);
+    line-height: 1;
+    display: block;
+  }
+  .stat .lbl {
+    font-family: 'Inter Tight', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--ink-faint);
+    margin-top: 0.5rem;
+    display: block;
+  }
+
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3rem;
+    margin: 2rem 0;
+  }
+  @media (max-width: 768px) {
+    .two-col { grid-template-columns: 1fr; gap: 1.5rem; }
+    .hero-sub { grid-template-columns: 1fr; }
+    .stat-grid { grid-template-columns: 1fr 1fr; }
+    .stat { border-right: 1px solid rgba(40,30,20,0.15); border-bottom: 1px solid rgba(40,30,20,0.15); }
+  }
+
+  /* Decision table */
+  .verdict-table {
+    margin: 3rem 0;
+    border: 1px solid var(--ink);
+    border-radius: 3px;
+    overflow: hidden;
+    font-family: 'Inter Tight', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    font-size: 0.95rem;
+  }
+  .verdict-table .row {
+    display: grid;
+    grid-template-columns: 1.4fr 1.5fr 1.5fr;
+    border-bottom: 1px solid rgba(40,30,20,0.12);
+  }
+  .verdict-table .row:last-child { border-bottom: none; }
+  .verdict-table .row.head {
+    background: var(--ink);
+    color: var(--paper);
+    font-family: 'Inter Tight', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    font-weight: 600;
+    font-size: 0.75rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .verdict-table .cell {
+    padding: 1rem 1.2rem;
+    border-right: 1px solid rgba(40,30,20,0.1);
+    line-height: 1.4;
+  }
+  .verdict-table .cell:last-child { border-right: none; }
+  .verdict-table .row .cell strong {
+    font-family: 'Fraunces', 'PingFang SC', 'Microsoft YaHei', serif;
+    font-style: italic;
+    font-weight: 500;
+    font-size: 1.1rem;
+    color: var(--ink);
+  }
+  @media (max-width: 768px) {
+    .verdict-table .row { grid-template-columns: 1fr; }
+    .verdict-table .cell { border-right: none; border-bottom: 1px solid rgba(40,30,20,0.06); }
+  }
+
+  .ornament {
+    text-align: center;
+    margin: 3rem 0;
+    color: var(--ink-faint);
+    font-size: 1.5rem;
+    letter-spacing: 1rem;
+  }
+
+  .hl { background: linear-gradient(180deg, transparent 60%, rgba(200,53,27,0.25) 60%); padding: 0 0.1em; }
+  .hl-gold { background: linear-gradient(180deg, transparent 60%, rgba(184,134,47,0.3) 60%); padding: 0 0.1em; }
+  .hl-green { background: linear-gradient(180deg, transparent 60%, rgba(74,107,58,0.3) 60%); padding: 0 0.1em; }
+  .hl-violet { background: linear-gradient(180deg, transparent 60%, rgba(114,86,154,0.32) 60%); padding: 0 0.1em; }
+
+  footer {
+    padding: 4rem var(--margin) 3rem;
+    background: var(--ink);
+    color: var(--paper);
+    text-align: center;
+  }
+  footer p { color: var(--paper); margin: 0 auto 0.5rem; max-width: none; }
+  footer .small-caps { color: var(--accent-soft); }
+
+  .svg-text {
+    font-family: 'Inter Tight', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    font-size: 13px;
+    fill: var(--ink);
+  }
+  .svg-mono { font-family: 'JetBrains Mono', monospace; }
+  .svg-serif { font-family: 'Fraunces', serif; font-style: italic; }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .anim { animation: fadeUp 0.8s ease-out backwards; }
+</style>
+</head>
+<body>
+<main>
+
+<!-- ============== HERO ============== -->
+<section class="hero">
+  <div class="hero-meta">
+    <span class="small-caps" style="display:flex;align-items:center;gap:0.6rem"><img src="vizlogo.png" alt="Vizuara" style="width:26px;height:26px;border-radius:5px;border:1px solid rgba(40,30,20,0.25);background:#fff"> Vizuara · 推理工程</span>
+    <span class="vol">卷 VI · 两层缓存</span>
+    <span class="small-caps">第 12 · 20 章</span>
+  </div>
+
+  <p class="small-caps anim" style="animation-delay:.05s">超越朴素的前缀缓存</p>
+  <h1 class="anim" style="animation-delay:.15s">
+    <em>RadixAttention</em><br>
+    与 <em>语义</em><br>
+    缓存。
+  </h1>
+  <p class="lede anim" style="animation-delay:.35s">
+    书的第 12 章给了你前缀缓存（prefix caching）：把一个前缀哈希，存下它的 KV 块，当同样的前缀再次出现时复用它们。本页讲的是接下来发生的事。SGLang 的 <em>RadixAttention</em> 把缓存变成一棵树，让任意两个请求之间任何匹配的前缀都能被复用。连续语义缓存（semantic caching）则更进一步 —— 当新查询与某个已回答过的查询<em>语义相同</em>时，它就完全跳过引擎。
+  </p>
+
+  <div class="hero-formula anim" style="animation-delay:.55s">
+    <span class="label">两层，一个目标</span>
+    <div class="eq">
+      查询 &nbsp;<span class="var">→</span>&nbsp; <span class="same">语义缓存</span> &nbsp;<span class="var">→</span>&nbsp; <span class="same">基数树</span> &nbsp;<span class="var">→</span>&nbsp; KV 页 &nbsp;<span class="var">→</span>&nbsp; 解码
+      <br>
+      <span style="font-size:0.9rem;color:#bda88f">两次跳过工作的机会 —— 一次按语义，一次按 token。</span>
+    </div>
+  </div>
+
+  <div class="hero-sub anim" style="animation-delay:.75s">
+    <p>第 12 章以一个彩蛋收尾：两个共享前缀的用户会共享一次缓存命中。这个彩蛋每次请求只能被利用一次，而且仅当前缀完全匹配时。RadixAttention 把这个彩蛋推到极限；语义缓存则认为，这个极限不该是停下的地方。</p>
+    <p style="text-align:right">向下滚动以开始。<br><span style="font-size:1.5rem">↓</span></p>
+  </div>
+</section>
+
+<!-- ============== TOC ============== -->
+<nav class="toc">
+  <h2>目录</h2>
+  <ol class="toc-list">
+    <li><span class="num">I</span><a href="#s1">为什么朴素的前缀缓存不够</a><span class="pg">p. 01</span></li>
+    <li><span class="num">II</span><a href="#s2">RadixAttention —— 把缓存变成一棵树</a><span class="pg">p. 02</span></li>
+    <li><span class="num">III</span><a href="#s3">基数树，逐步拆解</a><span class="pg">p. 03</span></li>
+    <li><span class="num">IV</span><a href="#s4">现实中的四种复用模式</a><span class="pg">p. 04</span></li>
+    <li><span class="num">V</span><a href="#s5">token 精确缓存在哪里失效</a><span class="pg">p. 05</span></li>
+    <li><span class="num">VI</span><a href="#s6">语义缓存 —— 按语义而非字节</a><span class="pg">p. 06</span></li>
+    <li><span class="num">VII</span><a href="#s7">连续查询问题</a><span class="pg">p. 07</span></li>
+    <li><span class="num">VIII</span><a href="#s8">动态 ε-网与在线学习</a><span class="pg">p. 08</span></li>
+    <li><span class="num">IX</span><a href="#s9">两层架构</a><span class="pg">p. 09</span></li>
+    <li><span class="num">X</span><a href="#s10">何时用哪一个</a><span class="pg">p. 10</span></li>
+  </ol>
+</nav>
+
+<!-- ============== § I PRELUDE ============== -->
+<section id="s1">
+  <span class="section-num">§ I</span>
+  <h2>为什么朴素的前缀缓存不够。</h2>
+  <p class="lede">第 12 章的前缀缓存把一个前缀哈希并复用其 K/V 块。当前缀恰好对齐时，它表现得非常出色。麻烦在于，在真实工作负载中，前缀往往并不对齐。</p>
+
+  <p class="drop">朴素的前缀缓存把缓存当作一张扁平的哈希表。当一个新请求到来时，引擎取其前缀 token，逐块哈希，只要每一块的哈希都匹配就继续向前走。第一个哈希缺失的块便终止匹配。此前的部分被复用；此后的部分从头重新计算。</p>
+
+  <p>这对简单情形够用了 —— 数千个用户共用同一个系统 prompt。但对于任何会分叉的工作负载都不够：思维树搜索、agent 循环、批量少样本示例，或者共享一个系统 prompt 却在第二轮分道扬镳的两场聊天会话。哈希前缀缓存一次只能沿一个前缀前进。两个请求一旦分叉，表里就是两条互不相关的条目。</p>
+
+  <figure>
+    <svg viewBox="0 0 820 320" xmlns="http://www.w3.org/2000/svg">
+      <text class="svg-text" x="40" y="22" font-size="11" letter-spacing="0.15em" fill="#6b6359">扁平哈希表 · 一个前缀，一条条目</text>
+
+      <!-- Two requests that fork after a shared prefix -->
+      <g transform="translate(40,55)">
+        <text class="svg-text svg-mono" x="0" y="0" font-size="11" fill="#1a1815">请求 A：</text>
+        <g transform="translate(80,-12)">
+          <rect x="0"   y="0" width="80" height="22" fill="#4a6b3a" opacity="0.8"/>
+          <text class="svg-text svg-mono" x="40" y="15" text-anchor="middle" fill="#fff" font-size="10">系统提示</text>
+          <rect x="84"  y="0" width="60" height="22" fill="#4a6b3a" opacity="0.8"/>
+          <text class="svg-text svg-mono" x="114" y="15" text-anchor="middle" fill="#fff" font-size="10">少样本</text>
+          <rect x="148" y="0" width="60" height="22" fill="#c8351b" opacity="0.65"/>
+          <text class="svg-text svg-mono" x="178" y="15" text-anchor="middle" fill="#fff" font-size="10">问：雨</text>
+        </g>
+      </g>
+
+      <g transform="translate(40,95)">
+        <text class="svg-text svg-mono" x="0" y="0" font-size="11" fill="#1a1815">请求 B：</text>
+        <g transform="translate(80,-12)">
+          <rect x="0"   y="0" width="80" height="22" fill="#4a6b3a" opacity="0.8"/>
+          <text class="svg-text svg-mono" x="40" y="15" text-anchor="middle" fill="#fff" font-size="10">系统提示</text>
+          <rect x="84"  y="0" width="60" height="22" fill="#4a6b3a" opacity="0.8"/>
+          <text class="svg-text svg-mono" x="114" y="15" text-anchor="middle" fill="#fff" font-size="10">少样本</text>
+          <rect x="148" y="0" width="60" height="22" fill="#c8351b" opacity="0.65"/>
+          <text class="svg-text svg-mono" x="178" y="15" text-anchor="middle" fill="#fff" font-size="10">问：雪</text>
+        </g>
+      </g>
+
+      <text class="svg-text svg-serif" x="170" y="135" text-anchor="middle" font-size="13" fill="#1a1815" font-style="italic">两个请求共享两个前缀块。</text>
+
+      <!-- Hash table -->
+      <g transform="translate(440,55)">
+        <text class="svg-text" x="160" y="0" text-anchor="middle" font-size="11" letter-spacing="0.15em" fill="#6b6359">扁平前缀哈希表</text>
+
+        <g transform="translate(0,15)">
+          <rect x="0" y="0" width="320" height="30" fill="#ebe1c7" stroke="#3d3833"/>
+          <text class="svg-text svg-mono" x="10" y="20" font-size="11" fill="#1a1815">hash(系统提示 + 少样本 + "问：雨")</text>
+          <text class="svg-text svg-mono" x="280" y="20" text-anchor="end" font-size="11" fill="#c8351b">→ 条目 A</text>
+
+          <rect x="0" y="35" width="320" height="30" fill="#ebe1c7" stroke="#3d3833"/>
+          <text class="svg-text svg-mono" x="10" y="55" font-size="11" fill="#1a1815">hash(系统提示 + 少样本 + "问：雪")</text>
+          <text class="svg-text svg-mono" x="280" y="55" text-anchor="end" font-size="11" fill="#c8351b">→ 条目 B</text>
+        </g>
+        <text class="svg-text svg-serif" x="160" y="100" text-anchor="middle" font-size="13" fill="#c8351b" font-style="italic">没有哪条条目能单独看到共享的 系统提示+少样本 前缀。</text>
+      </g>
+
+      <!-- bottom commentary -->
+      <text class="svg-text svg-serif" x="410" y="280" text-anchor="middle" font-size="14" fill="#1a1815" font-style="italic">我们希望这个数据结构理解<tspan fill="#c8351b">前缀关系</tspan>，而不仅是整个前缀的相等。</text>
+    </svg>
+    <figcaption><span class="fig-label">Fig. 1.1</span>扁平哈希版的前缀缓存把每个独特的前缀存为自己的不透明键。两个共享两个前缀块、在第三块分叉的请求，会产生两条互不相关的缓存条目 —— 共享的那部分工作对这张表而言是看不见的。</figcaption>
+  </figure>
+
+  <p>上图正是下一章的全部动机。我们想要一个<em>天生理解前缀关系</em>的数据结构。当请求 A 与请求 B 共享两个前缀块时，那部分共享内容应当在缓存中只存一份，两个请求都应挂在它的尾巴上。这个数据结构就是基数树（radix tree）。</p>
+</section>
+
+<!-- ============== § II RADIX TREE INTRO ============== -->
+<section id="s2">
+  <span class="section-num">§ II</span>
+  <h2>RadixAttention —— 把缓存变成一棵树。</h2>
+  <p class="lede">SGLang 的 RadixAttention 用基数树取代了扁平哈希表。token 成为路径上的边，缓存的 KV 块驻留在节点上，前缀匹配变成一次树遍历。</p>
+
+  <p>基数树是一种压缩的前缀树（trie）：每条边可以携带一串 token（而不只是一个）。每个节点代表某个过去请求所走过的前缀；那些前缀 token 的 KV 块被物理分配并由该节点索引。插入与查找都逐边遍历这棵树，匹配 token，直到输入用完，或直到某条边需要输入中所没有的 token。</p>
+
+  <figure>
+    <svg viewBox="0 0 820 360" xmlns="http://www.w3.org/2000/svg">
+      <text class="svg-text" x="40" y="22" font-size="11" letter-spacing="0.15em" fill="#6b6359">基数树 · 边是 token 序列</text>
+
+      <!-- root -->
+      <g transform="translate(410,60)">
+        <circle cx="0" cy="0" r="14" fill="#1a1815"/>
+        <text class="svg-mono svg-text" x="0" y="4" text-anchor="middle" fill="#fff" font-size="10">根</text>
+      </g>
+
+      <!-- edge to sysprompt node -->
+      <line x1="410" y1="74" x2="410" y2="120" stroke="#1a1815" stroke-width="1.5"/>
+      <text class="svg-text svg-mono" x="420" y="100" font-size="11" fill="#1a1815">"系统提示 + 少样本"</text>
+
+      <!-- shared node -->
+      <g transform="translate(410,140)">
+        <circle cx="0" cy="0" r="16" fill="#2e4a7b" opacity="0.85"/>
+        <text class="svg-mono svg-text" x="0" y="4" text-anchor="middle" fill="#fff" font-size="10">共享</text>
+        <text class="svg-text svg-mono" x="0" y="34" text-anchor="middle" font-size="10" fill="#1a1815">KV 页：块 0–1</text>
+      </g>
+
+      <!-- branch to A -->
+      <line x1="404" y1="153" x2="280" y2="220" stroke="#1a1815" stroke-width="1.5"/>
+      <text class="svg-text svg-mono" x="240" y="186" text-anchor="middle" font-size="11" fill="#1a1815">"问：雨"</text>
+
+      <!-- A node -->
+      <g transform="translate(280,240)">
+        <circle cx="0" cy="0" r="16" fill="#4a6b3a" opacity="0.9"/>
+        <text class="svg-mono svg-text" x="0" y="4" text-anchor="middle" fill="#fff" font-size="10">A</text>
+        <text class="svg-text svg-mono" x="0" y="34" text-anchor="middle" font-size="10" fill="#1a1815">KV：块 2A</text>
+      </g>
+
+      <!-- branch to B -->
+      <line x1="416" y1="153" x2="540" y2="220" stroke="#1a1815" stroke-width="1.5"/>
+      <text class="svg-text svg-mono" x="580" y="186" text-anchor="middle" font-size="11" fill="#1a1815">"问：雪"</text>
+
+      <!-- B node -->
+      <g transform="translate(540,240)">
+        <circle cx="0" cy="0" r="16" fill="#4a6b3a" opacity="0.9"/>
+        <text class="svg-mono svg-text" x="0" y="4" text-anchor="middle" fill="#fff" font-size="10">B</text>
+        <text class="svg-text svg-mono" x="0" y="34" text-anchor="middle" font-size="10" fill="#1a1815">KV：块 2B</text>
+      </g>
+
+      <!-- annotation -->
+      <text class="svg-text svg-serif" x="410" y="310" text-anchor="middle" font-size="13" fill="#1a1815" font-style="italic">共享前缀只存一份，分支天然共享它。</text>
+    </svg>
+    <figcaption><span class="fig-label">Fig. 2.1</span>把缓存变成一棵基数树。共享的 <span class="mono">系统提示 + 少样本</span> 前缀是单个节点，持有两个 KV 块。请求 A 与 B 都经过该节点走同一条路径，然后在各自最后的问题上分叉。前缀缓存命中是树遍历；插入则是节点分裂。</figcaption>
+  </figure>
+
+  <p>三种操作至关重要。<strong>查找</strong>从根出发遍历树，将 token 块与边匹配，返回匹配最长的节点。<strong>插入</strong>为未匹配的后缀追加一条新边。<strong>淘汰</strong>在 GPU 的 KV 内存预算耗尽时，按 LRU 策略递归地移除叶子。</p>
+
+  <p>两个重要性质。第一，<em>任何</em>两个共享前缀的请求都自动共享 KV 块 —— 无需手动配置，也无需逐模板的胶水代码。第二，树结构驻留在 CPU 上且很小（KB 级）；只有 KV 块本身驻留在 GPU 内存中，通过继承自 PagedAttention（第 11 章）的页表机制来寻址。</p>
+
+  <div class="formula">
+    查找(prefix) &nbsp;=&nbsp; 树中拼出 <em>prefix</em> 的前缀的最长路径
+  </div>
+</section>
+
+<!-- ============== § III TREE STEP BY STEP ============== -->
+<section id="s3">
+  <span class="section-num">§ III</span>
+  <h2>基数树，逐步拆解。</h2>
+  <p class="lede">这棵树是动态的 —— 每个请求都在遍历它、分裂它或生长它。跟随一串请求序列，是内化这个数据结构最干净的方式。</p>
+
+  <p>下面是基数树的五步追踪。系统处理两场聊天会话和一次批量少样本推理。绿色表示刚添加的节点，蓝色表示本步命中的节点，红色表示被淘汰的节点。</p>
+
+  <figure>
+    <svg viewBox="0 0 820 760" xmlns="http://www.w3.org/2000/svg">
+      <text class="svg-text" x="40" y="22" font-size="11" letter-spacing="0.15em" fill="#6b6359">五步 · 一棵活的基数树</text>
+
+      <!-- ============ STEP 1 ============ -->
+      <g transform="translate(40,55)">
+        <rect x="0" y="0" width="350" height="160" fill="#ebe1c7" stroke="#3d3833"/>
+        <text class="svg-text svg-mono" x="14" y="22" font-size="12" fill="#1a1815">第 1 步 · 空缓存</text>
+        <text class="svg-text" x="14" y="40" font-size="11" fill="#6b6359">用户请求："你好！"</text>
+        <!-- root -->
+        <circle cx="100" cy="80" r="12" fill="#1a1815"/>
+        <text class="svg-text svg-mono" x="100" y="84" text-anchor="middle" fill="#fff" font-size="9">根</text>
+        <!-- edge -->
+        <line x1="100" y1="92" x2="100" y2="120" stroke="#1a1815" stroke-width="1.5"/>
+        <text class="svg-text svg-mono" x="110" y="110" font-size="10" fill="#1a1815">系统 + "你好！"</text>
+        <!-- node A -->
+        <circle cx="100" cy="135" r="12" fill="#4a6b3a"/>
+        <text class="svg-mono svg-text" x="100" y="139" text-anchor="middle" fill="#fff" font-size="9">a</text>
+        <text class="svg-text svg-serif" x="200" y="100" font-size="12" fill="#4a6b3a" font-style="italic">节点 a 被创建</text>
+      </g>
+
+      <!-- ============ STEP 2 ============ -->
+      <g transform="translate(430,55)">
+        <rect x="0" y="0" width="350" height="160" fill="#ebe1c7" stroke="#3d3833"/>
+        <text class="svg-text svg-mono" x="14" y="22" font-size="12" fill="#1a1815">第 2 步 · 同一聊天继续</text>
+        <text class="svg-text" x="14" y="40" font-size="11" fill="#6b6359">用户又加了一轮 —— 越过 a 继续延伸</text>
+        <!-- root -->
+        <circle cx="100" cy="70" r="11" fill="#1a1815"/>
+        <line x1="100" y1="81" x2="100" y2="100" stroke="#1a1815" stroke-width="1.5"/>
+        <!-- node a (hit, blue) -->
+        <circle cx="100" cy="111" r="11" fill="#2e4a7b"/>
+        <text class="svg-mono svg-text" x="100" y="115" text-anchor="middle" fill="#fff" font-size="9">a</text>
+        <line x1="100" y1="122" x2="100" y2="135" stroke="#1a1815" stroke-width="1.5"/>
+        <!-- node b (new) -->
+        <circle cx="100" cy="143" r="9" fill="#4a6b3a"/>
+        <text class="svg-mono svg-text" x="100" y="146" text-anchor="middle" fill="#fff" font-size="8">b</text>
+        <text class="svg-text svg-serif" x="200" y="92" font-size="12" fill="#2e4a7b" font-style="italic">a 是命中（蓝色）</text>
+        <text class="svg-text svg-serif" x="200" y="112" font-size="12" fill="#4a6b3a" font-style="italic">b 被追加（绿色）</text>
+      </g>
+
+      <!-- ============ STEP 3 ============ -->
+      <g transform="translate(40,235)">
+        <rect x="0" y="0" width="350" height="180" fill="#ebe1c7" stroke="#3d3833"/>
+        <text class="svg-text svg-mono" x="14" y="22" font-size="12" fill="#1a1815">第 3 步 · 第二场聊天会话开始</text>
+        <text class="svg-text" x="14" y="40" font-size="11" fill="#6b6359">节点 a 被分裂 —— 系统提示共享，回复分叉</text>
+        <!-- root -->
+        <circle cx="180" cy="80" r="12" fill="#1a1815"/>
+        <line x1="180" y1="92" x2="180" y2="115" stroke="#1a1815" stroke-width="1.5"/>
+        <text class="svg-text svg-mono" x="190" y="105" font-size="10" fill="#1a1815">系统提示</text>
+        <!-- shared node S (split off) -->
+        <circle cx="180" cy="127" r="12" fill="#2e4a7b"/>
+        <text class="svg-mono svg-text" x="180" y="131" text-anchor="middle" fill="#fff" font-size="9">S</text>
+        <!-- branch left to a' -->
+        <line x1="173" y1="138" x2="120" y2="155" stroke="#1a1815" stroke-width="1.5"/>
+        <text class="svg-text svg-mono" x="115" y="150" font-size="9" fill="#1a1815" text-anchor="end">"你好！" + b</text>
+        <circle cx="115" cy="160" r="9" fill="#2e4a7b"/>
+        <text class="svg-mono svg-text" x="115" y="164" text-anchor="middle" fill="#fff" font-size="8">a-b</text>
+        <!-- branch right to c (new) -->
+        <line x1="187" y1="138" x2="240" y2="155" stroke="#1a1815" stroke-width="1.5"/>
+        <text class="svg-text svg-mono" x="245" y="150" font-size="9" fill="#1a1815">"嘿"</text>
+        <circle cx="245" cy="160" r="9" fill="#4a6b3a"/>
+        <text class="svg-mono svg-text" x="245" y="164" text-anchor="middle" fill="#fff" font-size="8">c</text>
+      </g>
+
+      <!-- ============ STEP 4 ============ -->
+      <g transform="translate(430,235)">
+        <rect x="0" y="0" width="350" height="180" fill="#ebe1c7" stroke="#3d3833"/>
+        <text class="svg-text svg-mono" x="14" y="22" font-size="12" fill="#1a1815">第 4 步 · 少样本批处理到来</text>
+        <text class="svg-text" x="14" y="40" font-size="11" fill="#6b6359">8 个查询共享一个少样本块 · 根分叉</text>
+        <!-- root -->
+        <circle cx="180" cy="75" r="12" fill="#1a1815"/>
+        <!-- two children of root -->
+        <line x1="172" y1="84" x2="100" y2="105" stroke="#1a1815" stroke-width="1.5"/>
+        <text class="svg-text svg-mono" x="100" y="100" font-size="9" text-anchor="end" fill="#1a1815">系统提示</text>
+        <circle cx="100" cy="115" r="11" fill="#2e4a7b"/>
+        <text class="svg-mono svg-text" x="100" y="119" text-anchor="middle" fill="#fff" font-size="8">S</text>
+
+        <line x1="188" y1="84" x2="270" y2="105" stroke="#1a1815" stroke-width="1.5"/>
+        <text class="svg-text svg-mono" x="280" y="100" font-size="9" fill="#1a1815">少样本前缀</text>
+        <circle cx="270" cy="115" r="11" fill="#4a6b3a"/>
+        <text class="svg-mono svg-text" x="270" y="119" text-anchor="middle" fill="#fff" font-size="8">F</text>
+
+        <!-- F has 4 question children -->
+        <g>
+          <line x1="265" y1="125" x2="220" y2="148" stroke="#1a1815" stroke-width="1"/>
+          <line x1="268" y1="125" x2="252" y2="148" stroke="#1a1815" stroke-width="1"/>
+          <line x1="272" y1="125" x2="288" y2="148" stroke="#1a1815" stroke-width="1"/>
+          <line x1="275" y1="125" x2="320" y2="148" stroke="#1a1815" stroke-width="1"/>
+          <circle cx="220" cy="150" r="6" fill="#4a6b3a"/>
+          <circle cx="252" cy="150" r="6" fill="#4a6b3a"/>
+          <circle cx="288" cy="150" r="6" fill="#4a6b3a"/>
+          <circle cx="320" cy="150" r="6" fill="#4a6b3a"/>
+        </g>
+        <text class="svg-text svg-serif" x="270" y="170" text-anchor="middle" font-size="11" fill="#4a6b3a" font-style="italic">8 个叶子共享节点 F</text>
+      </g>
+
+      <!-- ============ STEP 5 ============ -->
+      <g transform="translate(40,435)">
+        <rect x="0" y="0" width="740" height="180" fill="#ebe1c7" stroke="#3d3833"/>
+        <text class="svg-text svg-mono" x="14" y="22" font-size="12" fill="#1a1815">第 5 步 · 内存压力 · LRU 淘汰</text>
+        <text class="svg-text" x="14" y="40" font-size="11" fill="#6b6359">第二场聊天闲置最久 —— 节点 c 及其后代被淘汰</text>
+
+        <!-- mini tree -->
+        <circle cx="160" cy="80" r="12" fill="#1a1815"/>
+
+        <line x1="152" y1="89" x2="100" y2="115" stroke="#1a1815" stroke-width="1.5"/>
+        <circle cx="100" cy="120" r="11" fill="#2e4a7b"/>
+        <text class="svg-mono svg-text" x="100" y="124" text-anchor="middle" fill="#fff" font-size="8">S</text>
+        <line x1="100" y1="131" x2="100" y2="142" stroke="#1a1815" stroke-width="1.5"/>
+        <circle cx="100" cy="148" r="9" fill="#2e4a7b"/>
+        <text class="svg-mono svg-text" x="100" y="152" text-anchor="middle" fill="#fff" font-size="8">a-b</text>
+
+        <line x1="168" y1="89" x2="220" y2="115" stroke="#1a1815" stroke-width="1.5"/>
+        <circle cx="220" cy="120" r="11" fill="#4a6b3a"/>
+        <text class="svg-mono svg-text" x="220" y="124" text-anchor="middle" fill="#fff" font-size="8">F</text>
+        <g>
+          <circle cx="190" cy="148" r="6" fill="#4a6b3a"/>
+          <circle cx="210" cy="148" r="6" fill="#4a6b3a"/>
+          <circle cx="230" cy="148" r="6" fill="#4a6b3a"/>
+          <circle cx="250" cy="148" r="6" fill="#4a6b3a"/>
+          <line x1="218" y1="131" x2="190" y2="142" stroke="#1a1815" stroke-width="0.8"/>
+          <line x1="219" y1="131" x2="210" y2="142" stroke="#1a1815" stroke-width="0.8"/>
+          <line x1="221" y1="131" x2="230" y2="142" stroke="#1a1815" stroke-width="0.8"/>
+          <line x1="222" y1="131" x2="250" y2="142" stroke="#1a1815" stroke-width="0.8"/>
+        </g>
+
+        <!-- evicted (greyed out) c branch -->
+        <g opacity="0.4">
+          <circle cx="350" cy="120" r="11" fill="#c8351b"/>
+          <text class="svg-mono svg-text" x="350" y="124" text-anchor="middle" fill="#fff" font-size="8">c</text>
+          <line x1="350" y1="131" x2="350" y2="142" stroke="#c8351b" stroke-width="1" stroke-dasharray="3,3"/>
+          <circle cx="350" cy="150" r="8" fill="#c8351b"/>
+        </g>
+        <text class="svg-text svg-mono" x="395" y="125" font-size="11" fill="#c8351b">←</text>
+        <text class="svg-text svg-serif" x="410" y="125" font-size="12" fill="#c8351b" font-style="italic">先淘汰叶子，递归向上</text>
+
+        <!-- legend -->
+        <g transform="translate(540,75)">
+          <text class="svg-text" x="0" y="0" font-size="11" letter-spacing="0.12em" fill="#6b6359" font-weight="700">图例</text>
+          <circle cx="10" cy="22" r="6" fill="#4a6b3a"/>
+          <text class="svg-text" x="22" y="26" font-size="11" fill="#1a1815">刚添加</text>
+          <circle cx="10" cy="44" r="6" fill="#2e4a7b"/>
+          <text class="svg-text" x="22" y="48" font-size="11" fill="#1a1815">本步命中</text>
+          <circle cx="10" cy="66" r="6" fill="#c8351b"/>
+          <text class="svg-text" x="22" y="70" font-size="11" fill="#1a1815">被淘汰</text>
+        </g>
+
+      </g>
+
+      <!-- bottom commentary -->
+      <text class="svg-text svg-serif" x="410" y="660" text-anchor="middle" font-size="14" fill="#1a1815" font-style="italic">树的形状就是工作负载的前缀结构，被可视化出来。</text>
+
+      <!-- Pseudocode -->
+      <g transform="translate(40,675)">
+        <rect x="0" y="0" width="740" height="80" fill="#1a1815"/>
+        <text class="svg-text svg-mono" x="20" y="24" font-size="11" fill="#e08a76">def lookup(req):</text>
+        <text class="svg-text svg-mono" x="20" y="42" font-size="11" fill="#fff">    node, matched = walk(root, req.tokens)</text>
+        <text class="svg-text svg-mono" x="20" y="60" font-size="11" fill="#fff">    return node.kv_blocks[:matched], req.tokens[matched:]   # hit, miss-suffix</text>
+      </g>
+
+    </svg>
+    <figcaption><span class="fig-label">Fig. 3.1</span>一棵活的基数树。第 1 步为空。第 2 步长出一个节点。第 3 步分裂一个节点，让两场聊天会话共享系统提示。第 4 步展示少样本批处理如何全部坍缩到一个共享节点 F 上。第 5 步展示 LRU 淘汰如何回收第二场聊天的内存。底部的伪代码就是整个查找循环。</figcaption>
+  </figure>
+</section>
+
+<!-- ============== § IV FOUR PATTERNS ============== -->
+<section id="s4">
+  <span class="section-num">§ IV</span>
+  <h2>现实中的四种复用模式。</h2>
+  <p class="lede">SGLang 的作者指出，真实的 LLM 工作负载几乎总是呈现出四种前缀共享结构之一。每一种都是 RadixAttention 存在的教科书级理由。</p>
+
+  <figure>
+    <svg viewBox="0 0 820 360" xmlns="http://www.w3.org/2000/svg">
+      <text class="svg-text" x="40" y="22" font-size="11" letter-spacing="0.15em" fill="#6b6359">四种模式 · 蓝色 = 可共享前缀，绿色 = 每请求输入，金色 = 输出</text>
+
+      <!-- Few-shot -->
+      <g transform="translate(40,55)">
+        <text class="svg-text svg-mono" x="160" y="-8" text-anchor="middle" font-size="12" fill="#1a1815">少样本批处理</text>
+        <rect x="0" y="0" width="200" height="22" fill="#2e4a7b" opacity="0.8"/>
+        <text class="svg-text svg-mono" x="100" y="15" text-anchor="middle" fill="#fff" font-size="10">少样本示例</text>
+        <!-- 4 queries -->
+        <g transform="translate(0,28)">
+          <rect x="200" y="0"  width="60" height="18" fill="#4a6b3a" opacity="0.85"/>
+          <rect x="200" y="22" width="60" height="18" fill="#4a6b3a" opacity="0.85"/>
+          <rect x="200" y="44" width="60" height="18" fill="#4a6b3a" opacity="0.85"/>
+          <rect x="200" y="66" width="60" height="18" fill="#4a6b3a" opacity="0.85"/>
+          <text class="svg-text svg-mono" x="230" y="13" text-anchor="middle" fill="#fff" font-size="10">Q₁</text>
+          <text class="svg-text svg-mono" x="230" y="35" text-anchor="middle" fill="#fff" font-size="10">Q₂</text>
+          <text class="svg-text svg-mono" x="230" y="57" text-anchor="middle" fill="#fff" font-size="10">Q₃</text>
+          <text class="svg-text svg-mono" x="230" y="79" text-anchor="middle" fill="#fff" font-size="10">Q₄</text>
+        </g>
+        <!-- vertical linkage from prefix to all 4 queries -->
+        <line x1="180" y1="22" x2="180" y2="105" stroke="#3d3833" stroke-width="0.8" stroke-dasharray="2,2"/>
+        <line x1="180" y1="37" x2="200" y2="37" stroke="#3d3833" stroke-width="0.8" stroke-dasharray="2,2"/>
+        <line x1="180" y1="59" x2="200" y2="59" stroke="#3d3833" stroke-width="0.8" stroke-dasharray="2,2"/>
+        <line x1="180" y1="81" x2="200" y2="81" stroke="#3d3833" stroke-width="0.8" stroke-dasharray="2,2"/>
+        <line x1="180" y1="103" x2="200" y2="103" stroke="#3d3833" stroke-width="0.8" stroke-dasharray="2,2"/>
+        <text class="svg-text" x="100" y="155" text-anchor="middle" font-size="11" fill="#6b6359">前缀在 N 个查询间共享</text>
+      </g>
+
+      <!-- Self-consistency -->
+      <g transform="translate(420,55)">
+        <text class="svg-text svg-mono" x="160" y="-8" text-anchor="middle" font-size="12" fill="#1a1815">自一致性采样</text>
+        <rect x="0" y="0" width="240" height="22" fill="#2e4a7b" opacity="0.8"/>
+        <text class="svg-text svg-mono" x="120" y="15" text-anchor="middle" fill="#fff" font-size="10">提示 + 问题</text>
+        <!-- multiple completions -->
+        <g transform="translate(0,28)">
+          <rect x="240" y="0"  width="80" height="18" fill="#b8862f" opacity="0.85"/>
+          <rect x="240" y="22" width="80" height="18" fill="#b8862f" opacity="0.85"/>
+          <rect x="240" y="44" width="80" height="18" fill="#b8862f" opacity="0.85"/>
+          <rect x="240" y="66" width="80" height="18" fill="#b8862f" opacity="0.85"/>
+          <text class="svg-text svg-mono" x="280" y="13" text-anchor="middle" fill="#fff" font-size="9">样本 1</text>
+          <text class="svg-text svg-mono" x="280" y="35" text-anchor="middle" fill="#fff" font-size="9">样本 2</text>
+          <text class="svg-text svg-mono" x="280" y="57" text-anchor="middle" fill="#fff" font-size="9">样本 3</text>
+          <text class="svg-text svg-mono" x="280" y="79" text-anchor="middle" fill="#fff" font-size="9">样本 4</text>
+        </g>
+        <text class="svg-text" x="160" y="155" text-anchor="middle" font-size="11" fill="#6b6359">一次预填充，K 个独立解码</text>
+      </g>
+
+      <!-- Multi-turn chat -->
+      <g transform="translate(40,225)">
+        <text class="svg-text svg-mono" x="160" y="-8" text-anchor="middle" font-size="12" fill="#1a1815">多轮聊天</text>
+        <rect x="0"   y="0" width="80"  height="22" fill="#2e4a7b" opacity="0.8"/>
+        <rect x="84"  y="0" width="80"  height="22" fill="#b8862f" opacity="0.85"/>
+        <rect x="168" y="0" width="80"  height="22" fill="#2e4a7b" opacity="0.8"/>
+        <rect x="252" y="0" width="80"  height="22" fill="#b8862f" opacity="0.85"/>
+        <text class="svg-text svg-mono" x="40" y="15" text-anchor="middle" fill="#fff" font-size="9">用户 1</text>
+        <text class="svg-text svg-mono" x="124" y="15" text-anchor="middle" fill="#fff" font-size="9">回复 1</text>
+        <text class="svg-text svg-mono" x="208" y="15" text-anchor="middle" fill="#fff" font-size="9">用户 2</text>
+        <text class="svg-text svg-mono" x="292" y="15" text-anchor="middle" fill="#fff" font-size="9">回复 2</text>
+
+        <text class="svg-text" x="160" y="65" text-anchor="middle" font-size="11" fill="#6b6359">第 N 轮复用第 1…N-1 轮</text>
+      </g>
+
+      <!-- Tree-of-thought -->
+      <g transform="translate(420,225)">
+        <text class="svg-text svg-mono" x="160" y="-8" text-anchor="middle" font-size="12" fill="#1a1815">思维树搜索</text>
+        <!-- root prompt -->
+        <rect x="120" y="0" width="80" height="20" fill="#2e4a7b" opacity="0.8"/>
+        <text class="svg-text svg-mono" x="160" y="14" text-anchor="middle" fill="#fff" font-size="9">提示</text>
+
+        <!-- 2 children -->
+        <line x1="148" y1="20" x2="80" y2="40" stroke="#3d3833" stroke-width="0.8"/>
+        <line x1="172" y1="20" x2="240" y2="40" stroke="#3d3833" stroke-width="0.8"/>
+        <rect x="40"  y="40" width="80" height="20" fill="#4a6b3a" opacity="0.85"/>
+        <rect x="200" y="40" width="80" height="20" fill="#4a6b3a" opacity="0.85"/>
+        <text class="svg-text svg-mono" x="80"  y="54" text-anchor="middle" fill="#fff" font-size="9">步骤 1A</text>
+        <text class="svg-text svg-mono" x="240" y="54" text-anchor="middle" fill="#fff" font-size="9">步骤 1B</text>
+
+        <!-- 4 grandchildren -->
+        <line x1="65"  y1="60" x2="30"  y2="80" stroke="#3d3833" stroke-width="0.8"/>
+        <line x1="95"  y1="60" x2="120" y2="80" stroke="#3d3833" stroke-width="0.8"/>
+        <line x1="225" y1="60" x2="190" y2="80" stroke="#3d3833" stroke-width="0.8"/>
+        <line x1="255" y1="60" x2="290" y2="80" stroke="#3d3833" stroke-width="0.8"/>
+        <rect x="0"   y="80" width="60" height="20" fill="#4a6b3a" opacity="0.85"/>
+        <rect x="90"  y="80" width="60" height="20" fill="#4a6b3a" opacity="0.85"/>
+        <rect x="160" y="80" width="60" height="20" fill="#4a6b3a" opacity="0.85"/>
+        <rect x="260" y="80" width="60" height="20" fill="#4a6b3a" opacity="0.85"/>
+
+        <text class="svg-text" x="160" y="125" text-anchor="middle" font-size="11" fill="#6b6359">每个内部节点都被其后代共享</text>
+      </g>
+
+    </svg>
+    <figcaption><span class="fig-label">Fig. 4.1</span>SGLang 论文中的四种经典复用模式。少样本批处理共享示例块。自一致性采样在所有解码间共享预填充。多轮聊天复用每一轮历史。思维树复用搜索路径上的每个祖先。RadixAttention 用同一个数据结构接住了全部四种。</figcaption>
+  </figure>
+
+  <p>报告的吞吐数字十分惊人。在这些工作负载下，于 Llama-7B 与 Mixtral-8x7B 上，SGLang 达到 vLLM 与 Guidance <span class="hl-gold">最多 5 倍的吞吐</span> —— 不是因为它内核更快，而是因为有那么多预填充根本不必执行。</p>
+</section>
+
+<!-- ============== § V LIMIT OF TOKEN-EXACT ============== -->
+<section id="s5">
+  <span class="section-num">§ V</span>
+  <h2>token 精确缓存在哪里失效。</h2>
+  <p class="lede">RadixAttention 是把精确前缀缓存做到极致。但仍有堵墙：只有当前缀<em>逐字节相等</em>时，它才能复用计算。</p>
+
+  <p>两个语义相同但拼写不同的查询 —— 哪怕只差一个标点 —— 会产生不同的 token 序列，进而产生不同的缓存键。基数树看不到它们之间的任何关系。从用户视角看，这是一次错失的缓存命中；从引擎视角看，它只是在做它本该做的工作。</p>
+
+  <figure>
+    <svg viewBox="0 0 820 360" xmlns="http://www.w3.org/2000/svg">
+      <text class="svg-text" x="40" y="22" font-size="11" letter-spacing="0.15em" fill="#6b6359">相同语义，不同 token · 一个基数树看不见的问题</text>
+
+      <!-- Three queries -->
+      <g transform="translate(40,60)">
+        <text class="svg-text svg-mono" x="0" y="0" font-size="11" fill="#1a1815">查询 1：</text>
+        <rect x="80" y="-15" width="320" height="22" fill="#ebe1c7" stroke="#3d3833"/>
+        <text class="svg-text svg-mono" x="90" y="0" font-size="11" fill="#1a1815">"法国的首都是什么？"</text>
+      </g>
+
+      <g transform="translate(40,100)">
+        <text class="svg-text svg-mono" x="0" y="0" font-size="11" fill="#1a1815">查询 2：</text>
+        <rect x="80" y="-15" width="320" height="22" fill="#ebe1c7" stroke="#3d3833"/>
+        <text class="svg-text svg-mono" x="90" y="0" font-size="11" fill="#1a1815">"法国首都？"</text>
+      </g>
+
+      <g transform="translate(40,140)">
+        <text class="svg-text svg-mono" x="0" y="0" font-size="11" fill="#1a1815">查询 3：</text>
+        <rect x="80" y="-15" width="320" height="22" fill="#ebe1c7" stroke="#3d3833"/>
+        <text class="svg-text svg-mono" x="90" y="0" font-size="11" fill="#1a1815">"告诉我法国的首都。"</text>
+      </g>
+
+      <!-- Token verdict -->
+      <g transform="translate(440,60)">
+        <text class="svg-text" x="0" y="0" font-size="11" letter-spacing="0.12em" fill="#6b6359">RadixAttention 说</text>
+        <text class="svg-text svg-mono" x="0" y="22" font-size="11" fill="#c8351b">prefix(q1, q2) = ∅</text>
+        <text class="svg-text svg-mono" x="0" y="42" font-size="11" fill="#c8351b">prefix(q1, q3) = ∅</text>
+        <text class="svg-text svg-mono" x="0" y="62" font-size="11" fill="#c8351b">prefix(q2, q3) = ∅</text>
+        <text class="svg-text svg-serif" x="0" y="92" font-size="13" fill="#c8351b" font-style="italic">三次独立的预填充。</text>
+      </g>
+
+      <!-- Embedding verdict -->
+      <g transform="translate(440,170)">
+        <text class="svg-text" x="0" y="0" font-size="11" letter-spacing="0.12em" fill="#6b6359">嵌入空间说</text>
+        <text class="svg-text svg-mono" x="0" y="22" font-size="11" fill="#4a6b3a">‖e(q1) − e(q2)‖ = 0.07</text>
+        <text class="svg-text svg-mono" x="0" y="42" font-size="11" fill="#4a6b3a">‖e(q1) − e(q3)‖ = 0.09</text>
+        <text class="svg-text svg-mono" x="0" y="62" font-size="11" fill="#4a6b3a">‖e(q2) − e(q3)‖ = 0.05</text>
+        <text class="svg-text svg-serif" x="0" y="92" font-size="13" fill="#4a6b3a" font-style="italic">全都在 ε 之内，一个答案就够。</text>
+      </g>
+
+      <!-- Bottom: -->
+      <text class="svg-text svg-serif" x="410" y="320" text-anchor="middle" font-size="14" fill="#1a1815" font-style="italic">需要另一种抽象：按查询的<tspan fill="#c8351b">语义</tspan>来缓存，而不是按它的<tspan fill="#c8351b">拼写</tspan>。</text>
+    </svg>
+    <figcaption><span class="fig-label">Fig. 5.1</span>三个答案相同的查询。RadixAttention 认为它们互不相关，因为前缀并非逐字节匹配。基于嵌入的比较器则认为它们是语义空间中的近邻 —— 近到一条缓存答案即可同时服务三个。</figcaption>
+  </figure>
+
+  <p class="marginalia">RadixAttention 在这里并没有「错」—— token 相等的前缀正是它赖以构建的契约，而这个契约正是它既廉价又正确的原因。语义缓存是另一层上的另一份契约。</p>
+</section>
+
+<!-- ============== § VI SEMANTIC CACHING ============== -->
+<section id="s6">
+  <span class="section-num">§ VI</span>
+  <h2>语义缓存 —— 按语义而非字节。</h2>
+  <p class="lede">语义缓存按查询的<em>嵌入</em>来索引已回答的（查询，响应）对。新查询被嵌入后，通过最近邻搜索来查找。若某个已存条目足够近，就直接返回缓存响应，推理根本不会运行。</p>
+
+  <p>这个图景很具体。用一个小的编码器把每个查询嵌入到 <span class="mono">ℝᵈ</span>。选定一个相似度阈值 ε。缓存是一组点（已回答过的查询），每个点附带着响应。新查询也是一个点。若它落在一个缓存点的 ε 邻域内，就是命中，引擎返回存储的响应。若否，引擎运行推理，存储新的（点，响应）对，然后继续。</p>
+
+  <figure>
+    <svg viewBox="0 0 820 380" xmlns="http://www.w3.org/2000/svg">
+      <text class="svg-text" x="40" y="22" font-size="11" letter-spacing="0.15em" fill="#6b6359">嵌入空间 · 缓存条目即点 · ε-球即命中</text>
+
+      <!-- Embedding space (a 2D box) -->
+      <g transform="translate(60,55)">
+        <rect x="0" y="0" width="500" height="280" fill="#ebe1c7" stroke="#3d3833"/>
+
+        <!-- cached entries with epsilon balls -->
+        <g>
+          <!-- entry 1 -->
+          <circle cx="100" cy="70" r="44" fill="#72569a" opacity="0.12"/>
+          <circle cx="100" cy="70" r="8" fill="#72569a"/>
+          <text class="svg-text svg-mono" x="100" y="135" text-anchor="middle" font-size="10" fill="#1a1815">"法国首都"</text>
+          <text class="svg-text svg-mono" x="100" y="150" text-anchor="middle" font-size="10" fill="#72569a">→ 巴黎</text>
+
+          <!-- entry 2 -->
+          <circle cx="280" cy="170" r="44" fill="#72569a" opacity="0.12"/>
+          <circle cx="280" cy="170" r="8" fill="#72569a"/>
+          <text class="svg-text svg-mono" x="280" y="235" text-anchor="middle" font-size="10" fill="#1a1815">"巴黎的天气"</text>
+          <text class="svg-text svg-mono" x="280" y="250" text-anchor="middle" font-size="10" fill="#72569a">→ "20°C，晴"</text>
+
+          <!-- entry 3 -->
+          <circle cx="400" cy="80" r="44" fill="#72569a" opacity="0.12"/>
+          <circle cx="400" cy="80" r="8" fill="#72569a"/>
+          <text class="svg-text svg-mono" x="400" y="145" text-anchor="middle" font-size="10" fill="#1a1815">"西班牙首都"</text>
+          <text class="svg-text svg-mono" x="400" y="160" text-anchor="middle" font-size="10" fill="#72569a">→ 马德里</text>
+
+          <!-- entry 4 -->
+          <circle cx="170" cy="225" r="44" fill="#72569a" opacity="0.12"/>
+          <circle cx="170" cy="225" r="8" fill="#72569a"/>
+          <text class="svg-text svg-mono" x="80"  y="225" font-size="10" fill="#1a1815" text-anchor="end">"东京天气"</text>
+          <text class="svg-text svg-mono" x="80"  y="240" font-size="10" fill="#72569a" text-anchor="end">→ "14°C，雨"</text>
+        </g>
+
+        <!-- New incoming queries -->
+        <!-- HIT (lands inside ball 1) -->
+        <g>
+          <circle cx="118" cy="92" r="5" fill="#4a6b3a"/>
+          <line x1="118" y1="92" x2="160" y2="22" stroke="#4a6b3a" stroke-width="0.8" stroke-dasharray="3,2"/>
+          <text class="svg-text svg-mono" x="166" y="22" font-size="10" fill="#4a6b3a">新查询 —— 命中</text>
+        </g>
+
+        <!-- MISS (in empty space far from any ball) -->
+        <g>
+          <circle cx="465" cy="245" r="5" fill="#c8351b"/>
+          <line x1="465" y1="245" x2="455" y2="270" stroke="#c8351b" stroke-width="0.8" stroke-dasharray="3,2"/>
+          <text class="svg-text svg-mono" x="450" y="272" font-size="10" fill="#c8351b" text-anchor="end">新查询 —— 未命中</text>
+        </g>
+
+        <!-- ε label: place along entry 3's radius (least crowded area) -->
+        <g transform="translate(400,80)">
+          <line x1="0" y1="0" x2="44" y2="0" stroke="#1a1815" stroke-width="0.6"/>
+          <text class="svg-text svg-mono" x="22" y="-6" text-anchor="middle" font-size="11" fill="#1a1815" font-style="italic">ε</text>
+        </g>
+      </g>
+
+      <!-- Side panel -->
+      <g transform="translate(580,55)">
+        <rect x="0" y="0" width="200" height="280" fill="#1a1815"/>
+        <text class="svg-text" x="100" y="24" text-anchor="middle" font-size="11" letter-spacing="0.15em" fill="#e08a76">语义缓存</text>
+
+        <text class="svg-text svg-mono" x="14" y="56" font-size="11" fill="#fff">命中时：</text>
+        <text class="svg-text svg-mono" x="14" y="74" font-size="11" fill="#9bd1a8">  返回缓存</text>
+        <text class="svg-text svg-mono" x="14" y="92" font-size="11" fill="#9bd1a8">  成本：0 token</text>
+
+        <text class="svg-text svg-mono" x="14" y="124" font-size="11" fill="#fff">未命中时：</text>
+        <text class="svg-text svg-mono" x="14" y="142" font-size="11" fill="#e08a76">  完整推理</text>
+        <text class="svg-text svg-mono" x="14" y="160" font-size="11" fill="#e08a76">  存储新条目</text>
+
+        <text class="svg-text svg-mono" x="14" y="194" font-size="11" fill="#fff">每个查询的成本：</text>
+        <text class="svg-text svg-serif" x="14" y="220" font-size="13" fill="#e08a76" font-style="italic">嵌入（小）</text>
+        <text class="svg-text svg-serif" x="14" y="238" font-size="13" fill="#e08a76" font-style="italic">+ 最近邻搜索</text>
+        <text class="svg-text svg-serif" x="14" y="256" font-size="13" fill="#e08a76" font-style="italic">+ 可选的推理</text>
+      </g>
+    </svg>
+    <figcaption><span class="fig-label">Fig. 6.1</span>语义缓存的可视化。每个缓存条目都是嵌入空间中的一个点，周围有一个 ε-球 —— 即新查询「足够接近」从而可由此条目服务的区域。落在球内的查询免费得到答案；未命中的查询则成为新的缓存条目。缓存像堆叠的圆盘铺满平面那样填满嵌入空间。</figcaption>
+  </figure>
+
+  <p>其经济学十分惊人。语义缓存命中几乎零成本 —— 一次嵌入、一次最近邻查询、零 GPU 推理。语义缓存未命中则要付出推理本来的成本，外加嵌入查找的那点小开销。因此只要命中率高于任意正阈值，平均服务成本就会单调下降。</p>
+</section>
+
+<!-- ============== § VII THE CONTINUOUS QUERY PROBLEM ============== -->
+<section id="s7">
+  <span class="section-num">§ VII</span>
+  <h2>连续查询问题。</h2>
+  <p class="lede">早期的语义缓存设计假设世界像一个到达概率已知的有限查询目录。在生产中，这个假设以一种足以击穿缓存的方式失效了。</p>
+
+  <p>真实的 LLM 查询并非来自一份离散列表，而是来自一个连续的、无限维的嵌入空间，并且随着用户、产品与 prompt 的变化，其分布逐日漂移。你永远不会两次看到同一串字节。缓存无法枚举整个宇宙，它必须对之进行<em>泛化</em>。</p>
+
+  <figure>
+    <svg viewBox="0 0 820 320" xmlns="http://www.w3.org/2000/svg">
+      <text class="svg-text" x="40" y="22" font-size="11" letter-spacing="0.15em" fill="#6b6359">离散目录 vs 连续分布</text>
+
+      <!-- Left: discrete -->
+      <g transform="translate(40,60)">
+        <text class="svg-text svg-mono" x="160" y="-10" text-anchor="middle" font-size="12" fill="#1a1815">旧假设：离散目录</text>
+        <rect x="0" y="0" width="320" height="180" fill="#ebe1c7" stroke="#3d3833"/>
+        <!-- finite isolated points -->
+        <g>
+          <circle cx="50"  cy="40"  r="6" fill="#72569a"/>
+          <circle cx="150" cy="60"  r="6" fill="#72569a"/>
+          <circle cx="220" cy="50"  r="6" fill="#72569a"/>
+          <circle cx="280" cy="100" r="6" fill="#72569a"/>
+          <circle cx="120" cy="120" r="6" fill="#72569a"/>
+          <circle cx="60"  cy="140" r="6" fill="#72569a"/>
+          <circle cx="200" cy="150" r="6" fill="#72569a"/>
+          <circle cx="260" cy="160" r="6" fill="#72569a"/>
+        </g>
+        <text class="svg-text svg-serif" x="160" y="200" text-anchor="middle" font-size="13" fill="#1a1815" font-style="italic">N 个已知查询 · 学习 p(q) 与 cost(q)</text>
+      </g>
+
+      <!-- Right: continuous -->
+      <g transform="translate(440,60)">
+        <text class="svg-text svg-mono" x="160" y="-10" text-anchor="middle" font-size="12" fill="#1a1815">现实：连续嵌入空间</text>
+        <rect x="0" y="0" width="320" height="180" fill="#ebe1c7" stroke="#3d3833"/>
+        <!-- density gradient -->
+        <ellipse cx="100" cy="80" rx="80" ry="50" fill="#c8351b" opacity="0.18"/>
+        <ellipse cx="220" cy="120" rx="60" ry="40" fill="#c8351b" opacity="0.22"/>
+        <ellipse cx="180" cy="60" rx="40" ry="25" fill="#c8351b" opacity="0.25"/>
+        <!-- many sample points -->
+        <g fill="#c8351b">
+          <circle cx="60" cy="50" r="2"/>
+          <circle cx="80" cy="65" r="2"/>
+          <circle cx="100" cy="80" r="2"/>
+          <circle cx="120" cy="55" r="2"/>
+          <circle cx="140" cy="100" r="2"/>
+          <circle cx="160" cy="70" r="2"/>
+          <circle cx="180" cy="60" r="2"/>
+          <circle cx="200" cy="100" r="2"/>
+          <circle cx="220" cy="120" r="2"/>
+          <circle cx="240" cy="110" r="2"/>
+          <circle cx="180" cy="135" r="2"/>
+          <circle cx="200" cy="140" r="2"/>
+          <circle cx="260" cy="130" r="2"/>
+          <circle cx="120" cy="120" r="2"/>
+          <circle cx="280" cy="100" r="2"/>
+          <circle cx="60" cy="120" r="2"/>
+          <circle cx="80" cy="150" r="2"/>
+          <circle cx="100" cy="160" r="2"/>
+          <circle cx="40" cy="100" r="2"/>
+        </g>
+        <text class="svg-text svg-serif" x="160" y="200" text-anchor="middle" font-size="13" fill="#c8351b" font-style="italic">无限且漂移 · 我们永远看不到同一个 q 两次</text>
+      </g>
+
+    </svg>
+    <figcaption><span class="fig-label">Fig. 7.1</span>视角的转变。旧式语义缓存把查询当作一部电影目录 —— 有限列表、已知热度。2026 年的论文《Continuous Semantic Caching for Low-Cost LLM Serving》（Atalar 等）论证了这一假设从未匹配过 LLM 工作负载。正确的图景中没有离散的点，只有缓存必须去泛化的密度。</figcaption>
+  </figure>
+
+  <p>两个问题由此成为头等大事。<strong>嵌入空间的哪些邻域值得缓存？</strong> —— 因为有些区域查询密集、答案昂贵，另一些区域稀疏而廉价。<strong>在不确定下如何决策？</strong> —— 因为我们永远只能看到部分反馈（我们实际回答过的那些查询的成本），却看不到完整的成本曲面。</p>
+</section>
+
+<!-- ============== § VIII EPSILON NETS ============== -->
+<section id="s8">
+  <span class="section-num">§ VIII</span>
+  <h2>动态 ε-网与在线学习。</h2>
+  <p class="lede">Atalar 等人框架的核心技巧，是用一个动态 ε-网把连续嵌入空间离散化，再用核岭回归在每个单元上估计成本曲面。这以一座干净的理论之桥，连接了离散缓存文献与连续查询现实。</p>
+
+  <p>ε-网是嵌入空间中的一组有限「锚」点，使得其他每个点都落在至少一个锚的 ε 邻域内。随着查询到来，系统维护这样一个覆盖，并把每个锚的邻域当作单个缓存单元。单元 c 中查询的成本，由在该单元内及附近观测到的查询上的 KRR 来估计，并带有<em>量化的不确定性</em>：观测较少的单元得到更宽的置信区间，算法便去探索它们；估计紧致且估计成本高的单元则被纳入缓存。</p>
+
+  <figure>
+    <svg viewBox="0 0 820 380" xmlns="http://www.w3.org/2000/svg">
+      <text class="svg-text" x="40" y="22" font-size="11" letter-spacing="0.15em" fill="#6b6359">ε-网离散化 + 核岭回归</text>
+
+      <!-- Embedding space tiled by anchors -->
+      <g transform="translate(60,55)">
+        <rect x="0" y="0" width="500" height="290" fill="#ebe1c7" stroke="#3d3833"/>
+
+        <!-- Hex-like tiling: draw circles around anchors -->
+        <g opacity="0.28">
+          <circle cx="80"  cy="60"  r="46" fill="#72569a"/>
+          <circle cx="180" cy="100" r="46" fill="#72569a"/>
+          <circle cx="280" cy="60"  r="46" fill="#72569a"/>
+          <circle cx="380" cy="100" r="46" fill="#72569a"/>
+          <circle cx="130" cy="170" r="46" fill="#72569a"/>
+          <circle cx="230" cy="200" r="46" fill="#72569a"/>
+          <circle cx="330" cy="170" r="46" fill="#72569a"/>
+          <circle cx="430" cy="200" r="46" fill="#72569a"/>
+          <circle cx="80"  cy="220" r="46" fill="#72569a"/>
+        </g>
+
+        <!-- Anchor points -->
+        <g fill="#1a1815">
+          <circle cx="80"  cy="60"  r="4"/>
+          <circle cx="180" cy="100" r="4"/>
+          <circle cx="280" cy="60"  r="4"/>
+          <circle cx="380" cy="100" r="4"/>
+          <circle cx="130" cy="170" r="4"/>
+          <circle cx="230" cy="200" r="4"/>
+          <circle cx="330" cy="170" r="4"/>
+          <circle cx="430" cy="200" r="4"/>
+          <circle cx="80"  cy="220" r="4"/>
+        </g>
+
+        <!-- Per-cell cost estimate annotated -->
+        <text class="svg-text svg-mono" x="80"  y="50"  text-anchor="middle" font-size="9" fill="#1a1815">ĉ=2.1</text>
+        <text class="svg-text svg-mono" x="180" y="90"  text-anchor="middle" font-size="9" fill="#1a1815">ĉ=4.3 ★</text>
+        <text class="svg-text svg-mono" x="280" y="50"  text-anchor="middle" font-size="9" fill="#1a1815">ĉ=1.8</text>
+        <text class="svg-text svg-mono" x="380" y="90"  text-anchor="middle" font-size="9" fill="#1a1815">ĉ=3.2 ★</text>
+        <text class="svg-text svg-mono" x="130" y="160" text-anchor="middle" font-size="9" fill="#1a1815">ĉ=2.6</text>
+        <text class="svg-text svg-mono" x="230" y="190" text-anchor="middle" font-size="9" fill="#1a1815">ĉ=5.1 ★</text>
+        <text class="svg-text svg-mono" x="330" y="160" text-anchor="middle" font-size="9" fill="#1a1815">ĉ=1.5</text>
+        <text class="svg-text svg-mono" x="430" y="190" text-anchor="middle" font-size="9" fill="#1a1815">ĉ=2.0</text>
+        <text class="svg-text svg-mono" x="80"  y="210" text-anchor="middle" font-size="9" fill="#1a1815">ĉ=0.9</text>
+
+        <!-- Star: cached cells -->
+        <text class="svg-text svg-mono" x="250" y="278" text-anchor="middle" font-size="10" fill="#b8862f">★ = 已缓存单元 · 其他 = 按需计算</text>
+      </g>
+
+      <!-- Side: equations / takeaway -->
+      <g transform="translate(580,55)">
+        <rect x="0" y="0" width="200" height="290" fill="#1a1815"/>
+        <text class="svg-text" x="100" y="22" text-anchor="middle" font-size="11" letter-spacing="0.15em" fill="#e08a76">算法</text>
+
+        <text class="svg-text svg-mono" x="14" y="55" font-size="11" fill="#fff">1. 嵌入 q</text>
+        <text class="svg-text svg-mono" x="14" y="75" font-size="11" fill="#fff">2. 找到锚 a*</text>
+        <text class="svg-text svg-mono" x="14" y="95" font-size="11" fill="#fff">3. 若 a* 已缓存：</text>
+        <text class="svg-text svg-mono" x="14" y="113" font-size="11" fill="#9bd1a8">     返回缓存</text>
+        <text class="svg-text svg-mono" x="14" y="133" font-size="11" fill="#fff">4. 否则：</text>
+        <text class="svg-text svg-mono" x="14" y="151" font-size="11" fill="#e08a76">     运行推理</text>
+        <text class="svg-text svg-mono" x="14" y="169" font-size="11" fill="#e08a76">     更新 KRR(a*)</text>
+        <text class="svg-text svg-mono" x="14" y="187" font-size="11" fill="#e08a76">     重新排序单元</text>
+
+        <text class="svg-text svg-serif" x="100" y="220" text-anchor="middle" font-size="12" fill="#e08a76" font-style="italic">次线性遗憾，相对于</text>
+        <text class="svg-text svg-serif" x="100" y="238" text-anchor="middle" font-size="12" fill="#e08a76" font-style="italic">连续 oracle</text>
+      </g>
+
+    </svg>
+    <figcaption><span class="fig-label">Fig. 8.1</span>ε-网用有限的锚点覆盖连续嵌入空间。每个锚的邻域都从观测查询上通过核岭回归得到一个估计成本 ĉ。算法缓存估计成本最高的单元（★），并在线地改进估计。论文的主定理：相对于最优连续 oracle 的遗憾是次线性的，且当查询分布有限时，它退化为已知的离散缓存上界。</figcaption>
+  </figure>
+
+  <p>两条实践上的结论。查询模式漂移时缓存会自适应 —— 一个变热的区域会被检测到，其单元被纳入缓存。切换成本被显式计入，因此算法不会在每次微小变化时都翻动缓存。</p>
+
+  <p class="marginalia">「次线性遗憾」是 bandit 算法给出的同一个理论承诺：算法长期平均成本趋近于你在事后本可选择的那个最佳固定策略的成本。在这里，那个「最佳固定策略」就是在真实连续查询分布下的最优缓存布局。</p>
+</section>
+
+<!-- ============== § IX TWO TIER ============== -->
+<section id="s9">
+  <span class="section-num">§ IX</span>
+  <h2>两层架构。</h2>
+  <p class="lede">语义缓存与 RadixAttention 并非二选一。它们位于不同层，回答不同问题。现代服务栈两者都会部署。</p>
+
+  <figure>
+    <svg viewBox="0 0 820 420" xmlns="http://www.w3.org/2000/svg">
+      <text class="svg-text" x="40" y="22" font-size="11" letter-spacing="0.15em" fill="#6b6359">请求路径 · 两次跳过工作的机会</text>
+
+      <!-- Request -->
+      <g transform="translate(40,60)">
+        <rect x="0" y="0" width="120" height="42" fill="#ebe1c7" stroke="#3d3833"/>
+        <text class="svg-text svg-mono" x="60" y="20" text-anchor="middle" font-size="12" fill="#1a1815">进入</text>
+        <text class="svg-text svg-mono" x="60" y="36" text-anchor="middle" font-size="12" fill="#1a1815">查询</text>
+      </g>
+
+      <!-- Arrow 1 -->
+      <line x1="160" y1="81" x2="200" y2="81" stroke="#1a1815" stroke-width="1.5"/>
+      <polygon points="200,81 192,76 192,86" fill="#1a1815"/>
+
+      <!-- Tier 1: semantic cache -->
+      <g transform="translate(200,60)">
+        <rect x="0" y="0" width="170" height="42" fill="#72569a" opacity="0.18" stroke="#72569a" stroke-width="1.5"/>
+        <text class="svg-text svg-mono" x="85" y="20" text-anchor="middle" font-size="12" fill="#1a1815">语义缓存</text>
+        <text class="svg-text svg-mono" x="85" y="36" text-anchor="middle" font-size="11" fill="#72569a">第 1 层 · 按语义</text>
+      </g>
+
+      <!-- Hit branch up: bypasses radix and engine entirely -->
+      <line x1="285" y1="60" x2="285" y2="44" stroke="#4a6b3a" stroke-width="1.5"/>
+      <line x1="285" y1="44" x2="790" y2="44" stroke="#4a6b3a" stroke-width="1.5"/>
+      <polygon points="790,44 782,39 782,49" fill="#4a6b3a"/>
+      <text class="svg-text svg-mono" x="535" y="38" text-anchor="middle" font-size="11" fill="#4a6b3a">命中 —— 返回缓存响应（跳过引擎）</text>
+
+      <!-- Miss arrow -->
+      <line x1="370" y1="81" x2="410" y2="81" stroke="#1a1815" stroke-width="1.5"/>
+      <polygon points="410,81 402,76 402,86" fill="#1a1815"/>
+      <text class="svg-text svg-mono" x="390" y="98" text-anchor="middle" font-size="10" fill="#c8351b">未命中</text>
+
+      <!-- Tier 2: radix attention -->
+      <g transform="translate(410,60)">
+        <rect x="0" y="0" width="170" height="42" fill="#2e4a7b" opacity="0.18" stroke="#2e4a7b" stroke-width="1.5"/>
+        <text class="svg-text svg-mono" x="85" y="20" text-anchor="middle" font-size="12" fill="#1a1815">RadixAttention</text>
+        <text class="svg-text svg-mono" x="85" y="36" text-anchor="middle" font-size="11" fill="#2e4a7b">第 2 层 · 按 token</text>
+      </g>
+
+      <!-- Partial hit annotation -->
+      <line x1="495" y1="102" x2="495" y2="135" stroke="#1a1815" stroke-width="1.5" stroke-dasharray="3,2"/>
+      <text class="svg-text svg-mono" x="510" y="120" font-size="11" fill="#2e4a7b">前缀命中 → 复用 KV 块</text>
+
+      <!-- Arrow to engine -->
+      <line x1="580" y1="81" x2="620" y2="81" stroke="#1a1815" stroke-width="1.5"/>
+      <polygon points="620,81 612,76 612,86" fill="#1a1815"/>
+
+      <!-- Engine -->
+      <g transform="translate(620,60)">
+        <rect x="0" y="0" width="160" height="42" fill="#1a1815"/>
+        <text class="svg-text svg-mono" x="80" y="20" text-anchor="middle" font-size="12" fill="#fff">解码循环</text>
+        <text class="svg-text svg-mono" x="80" y="36" text-anchor="middle" font-size="11" fill="#e08a76">PagedAttention + FA</text>
+      </g>
+
+      <!-- Below: cost model -->
+      <g transform="translate(40,180)">
+        <text class="svg-text" x="0" y="0" font-size="11" letter-spacing="0.12em" fill="#6b6359" font-weight="700">每请求成本 · 三种结果</text>
+
+        <g transform="translate(0,30)">
+          <!-- semantic hit -->
+          <rect x="0" y="0" width="40" height="22" fill="#4a6b3a" opacity="0.85"/>
+          <text class="svg-text svg-mono" x="50" y="15" font-size="11" fill="#1a1815">语义命中：embed(q) + 最近邻搜索 · 约 1 ms</text>
+        </g>
+        <g transform="translate(0,60)">
+          <rect x="0" y="0" width="220" height="22" fill="#b8862f" opacity="0.7"/>
+          <text class="svg-text svg-mono" x="230" y="15" font-size="11" fill="#1a1815">前缀命中（基数）：跳过预填充，解码运行 · 约 0.3× 完整</text>
+        </g>
+        <g transform="translate(0,90)">
+          <rect x="0" y="0" width="700" height="22" fill="#c8351b" opacity="0.75"/>
+          <text class="svg-text svg-mono" x="350" y="15" text-anchor="middle" font-size="11" fill="#fff">冷未命中：完整预填充 + 完整解码 · 1× 基线</text>
+        </g>
+      </g>
+
+      <!-- Bottom commentary -->
+      <text class="svg-text svg-serif" x="410" y="380" text-anchor="middle" font-size="14" fill="#1a1815" font-style="italic">两种抽象，两处成本悬崖。目标是把请求挡在最右侧那根柱子之外。</text>
+
+    </svg>
+    <figcaption><span class="fig-label">Fig. 9.1</span>两层路径。语义缓存位于引擎之前，决定是否根本不需要运行推理。若要运行，RadixAttention 决定可以跳过多少预填充。解码循环只见到两层都无法吸收的那部分。下方的每请求成本条展示了三种结果 —— 以及为什么命中率主导着平均服务成本。</figcaption>
+  </figure>
+
+  <p>一个重要的实践细节：语义缓存是<em>响应级</em>缓存，因此只对确定性的、幂等的、非个性化的查询安全。客户专属查找、时效性问题、任何采样温度大于零的情况 —— 这些都必须绕过第 1 层，直奔第 2 层。生产系统通常用标签或查询分类器来把关语义缓存，而让 RadixAttention 成为常开的路径。</p>
+</section>
+
+<!-- ============== § X DECISION TABLE ============== -->
+<section id="s10">
+  <span class="section-num">§ X</span>
+  <h2>何时用哪一个。</h2>
+  <p class="lede">一张简短的裁决表。两种技术位于不同层 —— 问题在于哪种工作负载该用哪种。</p>
+
+  <div class="verdict-table">
+    <div class="row head">
+      <div class="cell">工作负载</div>
+      <div class="cell">RadixAttention</div>
+      <div class="cell">语义缓存</div>
+    </div>
+
+    <div class="row">
+      <div class="cell"><strong>少样本批处理</strong><br><span class="mono" style="font-size:0.8rem">N 个查询，相同示例</span></div>
+      <div class="cell">★ 极佳 —— 一个共享节点 F 服务全部 N 个。报告称吞吐为 vLLM 的 5 倍。</div>
+      <div class="cell">关闭 —— 每个查询答案唯一。</div>
+    </div>
+
+    <div class="row">
+      <div class="cell"><strong>多轮聊天</strong><br><span class="mono" style="font-size:0.8rem">对话不断累积</span></div>
+      <div class="cell">★ 极佳 —— 第 N 轮复用第 1…N−1 轮。天然契合。</div>
+      <div class="cell">关闭 —— 答案个性化且依赖上下文。</div>
+    </div>
+
+    <div class="row">
+      <div class="cell"><strong>思维树 / agent</strong><br><span class="mono" style="font-size:0.8rem">分叉搜索</span></div>
+      <div class="cell">★ 杀手级用例 —— 每个内部节点都被所有后代共享。</div>
+      <div class="cell">关闭 —— 分支天然发散。</div>
+    </div>
+
+    <div class="row">
+      <div class="cell"><strong>公共知识问答</strong><br><span class="mono" style="font-size:0.8rem">"法国首都？"</span></div>
+      <div class="cell">对共享系统提示有帮助；但抓不住同义改写。</div>
+      <div class="cell">★ 杀手级用例 —— 同义改写坍缩到一个缓存答案。</div>
+    </div>
+
+    <div class="row">
+      <div class="cell"><strong>稳定语料库的 RAG</strong><br><span class="mono" style="font-size:0.8rem">长文档检索</span></div>
+      <div class="cell">★ 文档分块成为共享前缀节点；TTFT 大幅改善。</div>
+      <div class="cell">当查询措辞重叠且检索上下文稳定时有帮助。</div>
+    </div>
+
+    <div class="row">
+      <div class="cell"><strong>个性化 / 时效性</strong><br><span class="mono" style="font-size:0.8rem">用户专属，T&gt;0</span></div>
+      <div class="cell">对共享系统 + 用户模板前缀有帮助。</div>
+      <div class="cell">不安全 —— 必须绕过。</div>
+    </div>
+  </div>
+
+  <div class="pull-quote">RadixAttention 复用计算。语义缓存避免计算。生产系统两者都做，且按此顺序。</div>
+
+  <h3>这在书中处于什么位置。</h3>
+  <p>第 12 章把前缀缓存作为基础引入。RadixAttention 是数据结构的升级，让前缀缓存能跨无关请求工作，而不只是在会话内 —— 它是引擎层的瑰宝，让 SGLang 在树搜索与 agentic 工作负载上胜过 vLLM（第 20 章）。反过来，连续语义缓存完全位于引擎之上的一层：一个请求路由决策，在模型为该查询加载之前就已做出。两者都是缓存思想；两者都关乎少做工作；两者都是第 12 章结尾那个彩蛋的延伸。</p>
+
+  <div class="ornament">· · ·</div>
+
+  <p style="text-align:center;font-style:italic;color:var(--ink-faint)">两层，一种哲学：最便宜的 token，是你根本不去计算的那个。</p>
+</section>
+
+<footer>
+  <p class="small-caps">Vizuara · 推理工程</p>
+  <p style="margin-top:1rem;font-size:1rem;font-style:italic">第 12 章与第 20 章的可视化伴读。</p>
+  <p style="margin-top:2rem;font-size:0.85rem;color:#bda88f">
+    <a href="visual-walkthroughs.html" style="color:#e08a76;text-decoration:none">← 返回资料库</a> &nbsp;·&nbsp;
+    <a href="book.html" style="color:#e08a76;text-decoration:none">阅读原书 →</a>
+  </p>
+  <p style="margin-top:2rem;font-size:0.78rem;color:#9b8970">
+    来源：Zheng 等，《Fast and Expressive LLM Inference with RadixAttention and SGLang》，LMSYS 2024 ·
+    Atalar 等，《Continuous Semantic Caching for Low-Cost LLM Serving》，arXiv:2604.20021（2026）。
+  </p>
+</footer>
+
+</main>
+</body>
+</html>

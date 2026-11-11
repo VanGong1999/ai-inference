@@ -1,0 +1,2631 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>深入 Mamba 模块 —— 逐步可视化讲解</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --purple: #7c5cfc;
+  --blue: #3b82f6;
+  --green: #10b981;
+  --orange: #f59e0b;
+  --red: #ef4444;
+  --bg: #ffffff;
+  --bg-alt: #faf9f7;
+  --border: #e8e5e0;
+  --text: #1a1a1a;
+  --text-muted: #6b7280;
+  --card-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
+
+body {
+  font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.7;
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* NAV */
+.top-nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  background: rgba(255,255,255,0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 32px;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+}
+.nav-logo { font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif; font-weight: 700; font-size: 14px; letter-spacing: -0.02em; color: var(--text); flex-shrink: 0; }
+.nav-logo span { color: var(--purple); }
+.nav-links { display: flex; gap: 12px 18px; flex-wrap: wrap; justify-content: flex-end; min-width: 0; }
+.nav-links a { font-size: 13px; font-weight: 500; color: var(--text-muted); text-decoration: none; transition: color 0.2s; }
+.nav-links a:hover { color: var(--purple); }
+
+/* LAYOUT */
+.container { max-width: 860px; margin: 0 auto; padding: 0 24px; }
+section { padding: 80px 0; }
+section:nth-child(even) { background: var(--bg-alt); }
+section:first-of-type { padding-top: 140px; }
+
+/* TYPOGRAPHY */
+h1 { font-family: 'Instrument Serif', 'PingFang SC', 'Microsoft YaHei', serif; font-size: 56px; line-height: 1.1; letter-spacing: -0.02em; }
+h2 { font-family: 'Instrument Serif', 'PingFang SC', 'Microsoft YaHei', serif; font-size: 36px; line-height: 1.2; letter-spacing: -0.01em; margin-bottom: 12px; }
+h3 { font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 20px; font-weight: 700; margin-bottom: 8px; }
+h4 { font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+p { margin-bottom: 16px; color: #374151; }
+.mono { font-family: 'JetBrains Mono', monospace; }
+.chapter-label { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 600; color: var(--purple); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+
+/* GRADIENT TEXT */
+.gradient-text {
+  background: linear-gradient(135deg, var(--purple), var(--blue));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* CARDS */
+.card {
+  background: #fff; border: 1px solid var(--border); border-radius: 16px;
+  box-shadow: var(--card-shadow); padding: 28px; margin-bottom: 24px;
+}
+
+/* CALLOUTS */
+.callout {
+  border-left: 3px solid var(--purple);
+  background: #f5f3ff;
+  border-radius: 0 12px 12px 0;
+  padding: 20px 24px;
+  margin: 24px 0;
+  font-size: 15px;
+}
+.callout.blue { border-left-color: var(--blue); background: #eff6ff; }
+.callout.green { border-left-color: var(--green); background: #ecfdf5; }
+.callout.orange { border-left-color: var(--orange); background: #fffbeb; }
+.callout.red { border-left-color: var(--red); background: #fef2f2; }
+.callout strong { font-weight: 700; }
+
+/* BUTTONS */
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 12px 28px; border-radius: 980px; border: none;
+  font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif; font-weight: 600; font-size: 14px;
+  cursor: pointer; transition: all 0.2s;
+}
+.btn-primary { background: var(--purple); color: #fff; }
+.btn-primary:hover { background: #6a4ae8; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(124,92,252,0.3); }
+
+/* FADE-IN */
+.fade-in { opacity: 0; transform: translateY(24px); transition: opacity 0.7s ease, transform 0.7s ease; }
+.fade-in.visible { opacity: 1; transform: translateY(0); }
+
+/* VISUAL BLOCKS */
+.arch-box {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 10px 18px; border-radius: 10px; font-size: 13px; font-weight: 600;
+  text-align: center; min-width: 100px; position: relative;
+}
+.arch-box.purple { background: #f0ecff; color: var(--purple); border: 1.5px solid #d4ccff; }
+.arch-box.blue { background: #eff6ff; color: var(--blue); border: 1.5px solid #bfdbfe; }
+.arch-box.green { background: #ecfdf5; color: var(--green); border: 1.5px solid #a7f3d0; }
+.arch-box.orange { background: #fffbeb; color: #b45309; border: 1.5px solid #fcd34d; }
+.arch-box.red { background: #fef2f2; color: var(--red); border: 1.5px solid #fca5a5; }
+.arch-box.gray { background: #f3f4f6; color: #374151; border: 1.5px solid #d1d5db; }
+
+.arrow-down {
+  width: 2px; height: 28px; background: #cbd5e1; margin: 0 auto; position: relative;
+}
+.arrow-down::after {
+  content: ''; position: absolute; bottom: -4px; left: 50%; transform: translateX(-50%);
+  border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid #cbd5e1;
+}
+
+.flow-col { display: flex; flex-direction: column; align-items: center; gap: 0; }
+.flow-row { display: flex; align-items: center; justify-content: center; gap: 24px; flex-wrap: wrap; }
+
+/* MATRIX GRID */
+.matrix-grid {
+  display: inline-grid; gap: 2px; font-family: 'JetBrains Mono', monospace; font-size: 12px;
+}
+.matrix-cell {
+  width: 48px; height: 32px; display: flex; align-items: center; justify-content: center;
+  border-radius: 4px; font-weight: 500;
+}
+.matrix-cell.input { background: #eff6ff; color: var(--blue); }
+.matrix-cell.weight { background: #f0ecff; color: var(--purple); }
+.matrix-cell.output { background: #ecfdf5; color: #059669; }
+
+/* VALUE BAR */
+.value-bar {
+  display: flex; align-items: center; gap: 8px; margin: 4px 0;
+}
+.value-bar .label { font-size: 13px; font-weight: 600; min-width: 36px; font-family: 'JetBrains Mono', monospace; }
+.value-bar .bar { height: 24px; border-radius: 6px; display: flex; align-items: center; padding: 0 8px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #fff; font-weight: 600; min-width: 30px; }
+
+/* COMPARISON */
+.comparison { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+@media (max-width: 700px) { .comparison { grid-template-columns: 1fr; } }
+
+/* HERO */
+.hero { padding-top: 120px; padding-bottom: 60px; text-align: center; }
+.hero .subtitle { font-size: 18px; color: var(--text-muted); max-width: 560px; margin: 16px auto 32px; line-height: 1.6; font-weight: 400; }
+
+/* TRACE ANIMATION */
+.trace-highlight { transition: all 0.4s ease; }
+.trace-highlight.active { box-shadow: 0 0 0 3px var(--purple), 0 0 20px rgba(124,92,252,0.2); transform: scale(1.05); }
+
+/* FOOTER */
+footer {
+  padding: 48px 0; text-align: center; border-top: 1px solid var(--border);
+  font-size: 13px; color: var(--text-muted);
+}
+footer .footer-brand { font-weight: 700; color: var(--text); margin-bottom: 4px; }
+
+/* SVG GRAPH */
+.silu-graph { max-width: 320px; margin: 16px auto; }
+
+/* KEY INSIGHT */
+.key-insight {
+  background: linear-gradient(135deg, #f0ecff, #eff6ff);
+  border: 1.5px solid #d4ccff;
+  border-radius: 16px; padding: 24px 28px; margin: 24px 0;
+}
+.key-insight h4 { color: var(--purple); font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
+
+/* TANK VISUAL */
+.tank {
+  width: 120px; height: 160px; border: 3px solid #94a3b8; border-top: none;
+  border-radius: 0 0 12px 12px; position: relative; overflow: hidden; margin: 0 auto;
+}
+.tank-water {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  background: linear-gradient(to top, var(--blue), #93c5fd);
+  transition: height 0.6s ease;
+}
+.tank-label { text-align: center; font-size: 12px; font-weight: 600; margin-top: 8px; font-family: 'JetBrains Mono', monospace; }
+
+/* SUMMARY CARD */
+.summary-item { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 16px; }
+.summary-num {
+  width: 28px; height: 28px; border-radius: 50%; background: var(--purple); color: #fff;
+  display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700;
+  flex-shrink: 0;
+}
+
+/* MISC */
+.step-equation {
+  background: #f8fafc; border: 1px solid var(--border); border-radius: 12px;
+  padding: 16px 20px; margin: 12px 0; font-family: 'JetBrains Mono', monospace;
+  font-size: 14px; overflow-x: auto;
+}
+.dim-tag {
+  display: inline-block; font-family: 'JetBrains Mono', monospace; font-size: 11px;
+  background: #f3f4f6; color: #6b7280; padding: 2px 8px; border-radius: 6px; font-weight: 500;
+}
+.vs-divider {
+  display: flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px; border-radius: 50%; background: #f3f4f6;
+  font-weight: 800; font-size: 12px; color: var(--text-muted); margin: 0 auto;
+  align-self: center;
+}
+.op-symbol {
+  font-size: 24px; font-weight: 700; color: var(--purple); display: flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px;
+}
+
+/* PARALLEL SCAN WALKTHROUGH */
+.scan-token-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin: 18px 0;
+}
+.scan-token-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  background: #fff;
+}
+.scan-token-card .token-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+.scan-token-card .scan-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  line-height: 1.8;
+}
+.scan-token-card.important {
+  background: #fffbeb;
+  border-color: #fcd34d;
+}
+.scan-token-card.rewrite {
+  background: #fef2f2;
+  border-color: #fca5a5;
+}
+.scan-stage-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  margin-top: 16px;
+}
+.scan-mini-box {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  background: #fff;
+}
+.scan-mini-box.purple { background: #f5f3ff; border-color: #d4ccff; }
+.scan-mini-box.blue { background: #eff6ff; border-color: #bfdbfe; }
+.scan-mini-box.green { background: #ecfdf5; border-color: #a7f3d0; }
+.scan-mini-box.orange { background: #fffbeb; border-color: #fcd34d; }
+.scan-formula {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  line-height: 1.8;
+  overflow-x: auto;
+}
+.scan-prefix-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-top: 16px;
+}
+.scan-prefix {
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  text-align: center;
+}
+.scan-prefix .mono {
+  font-size: 12px;
+  line-height: 1.7;
+}
+.scan-time-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: stretch;
+}
+.scan-chain {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 12px 0;
+}
+.scan-chip {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #fff;
+}
+.scan-zoom-card {
+  background: linear-gradient(135deg, #fff, #faf9f7);
+  border-top: 3px solid var(--purple);
+}
+.scan-round-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+.scan-round-row {
+  display: grid;
+  grid-template-columns: 86px 112px 116px 1fr;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #fff;
+}
+.scan-round-row.highlight {
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+}
+.scan-round-row .round-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--purple);
+}
+.scan-round-row .round-stat {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-weight: 600;
+}
+.scan-round-row .round-example {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: #374151;
+  overflow-x: auto;
+}
+.scan-tree-visual {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+.scan-tree-line {
+  display: grid;
+  grid-template-columns: 92px 1fr;
+  gap: 12px;
+  align-items: center;
+}
+.scan-tree-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+.scan-blocks {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+}
+.scan-block {
+  min-height: 34px;
+  border-radius: 8px;
+  border: 1px solid #d4ccff;
+  background: #f5f3ff;
+  color: var(--purple);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 8px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.scan-block.blue {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: var(--blue);
+}
+.scan-block.green {
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+  color: var(--green);
+}
+.scan-block.orange {
+  background: #fffbeb;
+  border-color: #fcd34d;
+  color: #b45309;
+}
+.scan-block.grow-1 { flex: 1; }
+.scan-block.grow-2 { flex: 2; }
+.scan-block.grow-4 { flex: 4; }
+.scan-block.grow-8 { flex: 8; }
+.scan-identity {
+  color: var(--green);
+  font-weight: 700;
+}
+@media (max-width: 700px) {
+  .scan-token-grid,
+  .scan-stage-grid,
+  .scan-prefix-grid,
+  .scan-time-grid {
+    grid-template-columns: 1fr;
+  }
+  .scan-round-row,
+  .scan-tree-line {
+    grid-template-columns: 1fr;
+  }
+  .scan-blocks {
+    overflow-x: auto;
+  }
+  .top-nav {
+    padding: 10px 16px;
+    align-items: flex-start;
+  }
+  .nav-links {
+    gap: 6px 12px;
+  }
+  .nav-links a {
+    font-size: 12px;
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="top-nav">
+  <div class="nav-logo">VIZUARA <span>AI LABS</span></div>
+  <div class="nav-links">
+    <a href="#ch1">被替换的部分</a>
+    <a href="#ch2">鸟瞰视图</a>
+    <a href="#ch6">选择性</a>
+    <a href="#parallel-scan">并行扫描</a>
+    <a href="#inference-state">缓存与内存</a>
+    <a href="#final">总结</a>
+  </div>
+</nav>
+
+<!-- PRESENTS -->
+<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:100px 24px 32px;background:#fff;">
+  <img src="vizlogo.png" alt="Vizuara AI Labs" style="width:80px;height:80px;border-radius:16px;margin-bottom:16px;">
+  <div style="font-family:'Inter','PingFang SC','Microsoft YaHei',sans-serif;font-size:13px;letter-spacing:3px;text-transform:uppercase;color:#6b7280;font-weight:500;">Vizuara AI Labs</div>
+  <div style="font-family:'Instrument Serif','PingFang SC','Microsoft YaHei',serif;font-style:italic;font-size:18px;color:#1a1a1a;margin-top:6px;">倾情呈现</div>
+</div>
+
+<!-- HERO -->
+<section class="hero" style="background:#fff;">
+  <div class="container fade-in">
+    <div class="chapter-label">可视化讲解</div>
+    <h1 class="gradient-text" style="font-size:56px;">深入 Mamba 模块</h1>
+    <p class="subtitle">逐步可视化讲解 Mamba 如何在一个模块中同时取代 Attention 和 FFN。</p>
+    <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
+      <span class="dim-tag">Mamba (Gu & Dao, 2023)</span>
+      <span class="dim-tag">选择性状态空间（Selective State Spaces）</span>
+      <span class="dim-tag">每个 token O(1) 推理</span>
+    </div>
+  </div>
+</section>
+
+<!-- CHAPTER 1 -->
+<section id="ch1" style="background:var(--bg-alt);">
+  <div class="container">
+    <div class="fade-in">
+      <div class="chapter-label">第 1 章</div>
+      <h2>被替换的部分</h2>
+      <p>在标准 Transformer 中，每一层都有<strong>两个子模块</strong>：一个用于跨 token 混合（Attention），一个用于逐 token 处理（FFN）。Mamba 用一个统一的模块同时取代了这两者。</p>
+    </div>
+
+    <div class="comparison fade-in" style="margin-top:32px;">
+      <!-- TRANSFORMER -->
+      <div class="card">
+        <h3 style="margin-bottom:16px; color:var(--red);">标准 Transformer 层</h3>
+        <div class="flow-col" style="gap:0;">
+          <div class="arch-box gray" style="width:100%;">输入 x</div>
+          <div class="arrow-down"></div>
+
+          <!-- Sub-block 1 -->
+          <div style="border:2px dashed #fca5a5; border-radius:12px; padding:16px; width:100%;">
+            <div style="font-size:11px;font-weight:700;color:var(--red);margin-bottom:8px;">子模块 1：跨 Token 混合</div>
+            <div class="flow-col" style="gap:0;">
+              <div class="arch-box gray" style="width:100%;font-size:12px;">LayerNorm</div>
+              <div class="arrow-down" style="height:16px;"></div>
+              <div class="arch-box red" style="width:100%;font-size:12px;">多头注意力（Multi-Head Attention）<br><span class="dim-tag" style="margin-top:4px;">Q、K、V 投影（projection）</span></div>
+              <div class="arrow-down" style="height:16px;"></div>
+              <div class="arch-box gray" style="width:100%;font-size:12px;">+ 残差</div>
+            </div>
+          </div>
+
+          <div class="arrow-down"></div>
+
+          <!-- Sub-block 2 -->
+          <div style="border:2px dashed #fca5a5; border-radius:12px; padding:16px; width:100%;">
+            <div style="font-size:11px;font-weight:700;color:var(--red);margin-bottom:8px;">子模块 2：逐 Token 处理</div>
+            <div class="flow-col" style="gap:0;">
+              <div class="arch-box gray" style="width:100%;font-size:12px;">LayerNorm</div>
+              <div class="arrow-down" style="height:16px;"></div>
+              <div class="arch-box red" style="width:100%;font-size:12px;">FFN<br><span class="dim-tag" style="margin-top:4px;">升维 → SiLU → 降维</span></div>
+              <div class="arrow-down" style="height:16px;"></div>
+              <div class="arch-box gray" style="width:100%;font-size:12px;">+ 残差</div>
+            </div>
+          </div>
+
+          <div class="arrow-down"></div>
+          <div class="arch-box gray" style="width:100%;">输出</div>
+        </div>
+        <div style="text-align:center;margin-top:12px;">
+          <span class="dim-tag" style="background:#fef2f2;color:var(--red);">2 个子模块，约 12d&sup2; 参数</span>
+        </div>
+      </div>
+
+      <!-- MAMBA -->
+      <div class="card">
+        <h3 style="margin-bottom:16px; color:var(--purple);">Mamba 层</h3>
+        <div class="flow-col" style="gap:0;">
+          <div class="arch-box gray" style="width:100%;">输入 x</div>
+          <div class="arrow-down"></div>
+
+          <div style="border:2px dashed #d4ccff; border-radius:12px; padding:16px; width:100%;">
+            <div style="font-size:11px;font-weight:700;color:var(--purple);margin-bottom:8px;">单一模块：混合 + 处理</div>
+            <div class="flow-col" style="gap:0;">
+              <div class="arch-box gray" style="width:100%;font-size:12px;">LayerNorm</div>
+              <div class="arrow-down" style="height:16px;"></div>
+              <div class="arch-box purple" style="width:100%;padding:20px 18px;font-size:13px;">
+                Mamba 模块<br>
+                <span class="dim-tag" style="margin-top:4px;">Conv1D + 选择性 SSM + 门控（Gate）</span>
+              </div>
+              <div class="arrow-down" style="height:16px;"></div>
+              <div class="arch-box gray" style="width:100%;font-size:12px;">+ 残差</div>
+            </div>
+          </div>
+
+          <div class="arrow-down"></div>
+          <div class="arch-box gray" style="width:100%;">输出</div>
+        </div>
+        <div style="text-align:center;margin-top:12px;">
+          <span class="dim-tag" style="background:#f0ecff;color:var(--purple);">1 个模块，约 6d&sup2; 参数</span>
+        </div>
+        <div style="margin-top:60px;text-align:center;font-size:13px;color:var(--text-muted);">参数减半。<br>表达能力相同。</div>
+      </div>
+    </div>
+
+    <div class="callout fade-in" style="margin-top:24px;">
+      <strong>关键洞察：</strong>Mamba 用一个单一模块同时取代了 Attention 和 FFN。Attention 负责跨 token 混合，FFN 负责逐 token 处理。Mamba 通过选择性 SSM（selective SSM，经由递推进行跨 token 混合）和门控（gating，逐 token 输出过滤）同时完成这两件事。
+    </div>
+  </div>
+</section>
+
+<!-- CHAPTER 2 -->
+<section id="ch2">
+  <div class="container">
+    <div class="fade-in">
+      <div class="chapter-label">第 2 章</div>
+      <h2>Mamba 模块 —— 鸟瞰视图</h2>
+      <p>这是流经单个 Mamba 模块的完整数据流。每个彩色方框代表一个不同的操作。我们将在接下来的章节中逐一讲解其中的每一个。</p>
+    </div>
+
+    <div class="card fade-in" style="padding:36px 24px; overflow-x:auto;">
+      <div class="flow-col" style="gap:0;" id="arch-diagram">
+
+        <div class="arch-box gray trace-highlight" data-step="0" style="width:220px;">
+          输入 x <span class="dim-tag" style="margin-left:6px;">d=4</span>
+        </div>
+        <div class="arrow-down"></div>
+
+        <div class="arch-box purple trace-highlight" data-step="1" style="width:220px;">
+          线性投影（Linear）<span class="dim-tag" style="margin-left:6px;">d &rarr; 2E</span>
+        </div>
+        <div class="arrow-down"></div>
+
+        <!-- SPLIT -->
+        <div style="display:flex; gap:80px; align-items:flex-start; justify-content:center; position:relative;">
+          <!-- left connector -->
+          <svg style="position:absolute;top:-4px;left:50%;transform:translateX(-50%);width:240px;height:40px;" viewBox="0 0 240 40">
+            <path d="M120,0 L120,10 L40,10 L40,40" fill="none" stroke="#cbd5e1" stroke-width="2"/>
+            <polygon points="36,38 40,46 44,38" fill="#cbd5e1"/>
+            <path d="M120,0 L120,10 L200,10 L200,40" fill="none" stroke="#cbd5e1" stroke-width="2"/>
+            <polygon points="196,38 200,46 204,38" fill="#cbd5e1"/>
+          </svg>
+          <div style="height:36px;"></div>
+        </div>
+
+        <div style="display:flex; gap:60px; align-items:flex-start; justify-content:center;">
+          <!-- LEFT PATH (x') -->
+          <div class="flow-col" style="gap:0;">
+            <div class="arch-box blue trace-highlight" data-step="2" style="min-width:140px;">
+              x' <span class="dim-tag" style="margin-left:4px;">E=4</span>
+            </div>
+            <div class="arrow-down"></div>
+            <div class="arch-box blue trace-highlight" data-step="3" style="min-width:140px;">
+              Conv1D <span class="dim-tag" style="margin-left:4px;">k=4</span>
+            </div>
+            <div class="arrow-down"></div>
+            <div class="arch-box green trace-highlight" data-step="4" style="min-width:140px;">
+              SiLU
+            </div>
+            <div class="arrow-down"></div>
+            <div class="arch-box orange trace-highlight" data-step="5" style="min-width:140px; padding:16px 18px;">
+              选择性 SSM<br>
+              <span style="font-size:11px;font-weight:400;">B<sub>t</sub>, C<sub>t</sub>, &Delta;<sub>t</sub></span>
+            </div>
+            <div class="arrow-down"></div>
+            <div class="arch-box gray" style="min-width:140px; font-size:12px;">y<sub>ssm</sub></div>
+          </div>
+
+          <!-- RIGHT PATH (z) -->
+          <div class="flow-col" style="gap:0;">
+            <div class="arch-box green trace-highlight" data-step="2" style="min-width:120px;">
+              z <span class="dim-tag" style="margin-left:4px;">E=4</span>
+            </div>
+            <div class="arrow-down" style="height:114px;"></div>
+            <div class="arch-box green trace-highlight" data-step="6" style="min-width:120px;">
+              SiLU
+            </div>
+            <div class="arrow-down" style="height:84px;"></div>
+            <div class="arch-box gray" style="min-width:120px; font-size:12px;">门控（gate）</div>
+          </div>
+        </div>
+
+        <!-- MERGE -->
+        <div style="height:8px;"></div>
+        <svg style="width:240px;height:40px;margin:0 auto;" viewBox="0 0 240 40">
+          <path d="M60,0 L60,15 L120,15 L120,40" fill="none" stroke="#cbd5e1" stroke-width="2"/>
+          <path d="M180,0 L180,15 L120,15" fill="none" stroke="#cbd5e1" stroke-width="2"/>
+          <circle cx="120" cy="15" r="8" fill="#f0ecff" stroke="#d4ccff" stroke-width="1.5"/>
+          <text x="120" y="19" text-anchor="middle" font-size="12" font-weight="700" fill="#7c5cfc">&otimes;</text>
+          <polygon points="116,38 120,46 124,38" fill="#cbd5e1"/>
+        </svg>
+
+        <div class="arch-box purple trace-highlight" data-step="7" style="width:220px;">
+          线性投影（Linear）<span class="dim-tag" style="margin-left:6px;">E &rarr; d</span>
+        </div>
+        <div class="arrow-down"></div>
+
+        <div style="display:flex;align-items:center;justify-content:center;gap:12px;">
+          <div class="arch-box gray trace-highlight" data-step="8" style="width:220px;">
+            + 残差 &rarr; 输出 <span class="dim-tag" style="margin-left:6px;">d=4</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="text-align:center;margin-top:28px;">
+        <button class="btn btn-primary" id="traceBtn" onclick="traceToken()">&#9654; 追踪一个 Token</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CHAPTER 3 -->
+<section id="ch3" style="background:var(--bg-alt);">
+  <div class="container">
+    <div class="fade-in">
+      <div class="chapter-label">第 3 章</div>
+      <h2>步骤 1 —— 线性投影（Linear Projection）</h2>
+      <p>我们从单个 token 的嵌入（embedding）开始。让我们用玩具模型维度 d=4 来追踪单词 <strong>「France」</strong>。</p>
+    </div>
+
+    <div class="card fade-in">
+      <h4>输入向量 x（token「France」）</h4>
+      <div style="display:flex;gap:6px;margin:12px 0;">
+        <div class="matrix-cell input" style="width:64px;height:38px;font-size:14px;">0.70</div>
+        <div class="matrix-cell input" style="width:64px;height:38px;font-size:14px;">0.20</div>
+        <div class="matrix-cell input" style="width:64px;height:38px;font-size:14px;">0.30</div>
+        <div class="matrix-cell input" style="width:64px;height:38px;font-size:14px;">0.60</div>
+      </div>
+      <div class="dim-tag">形状：(4,)</div>
+    </div>
+
+    <div class="card fade-in">
+      <h4>权重矩阵（weight matrix）W<sub>xz</sub> &nbsp;<span class="dim-tag">4 &times; 8</span></h4>
+      <p style="font-size:14px;color:var(--text-muted);margin-bottom:12px;">这个单一的线性层将 d=4 投影为 2E=8，随后我们将其拆分为 x'（前 4 维）和 z（后 4 维）。</p>
+
+      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;justify-content:center;">
+        <!-- Input vector vertical -->
+        <div style="display:flex;flex-direction:column;gap:2px;">
+          <div style="font-size:11px;text-align:center;color:var(--blue);font-weight:600;margin-bottom:4px;">x</div>
+          <div class="matrix-cell input">0.70</div>
+          <div class="matrix-cell input">0.20</div>
+          <div class="matrix-cell input">0.30</div>
+          <div class="matrix-cell input">0.60</div>
+        </div>
+
+        <div class="op-symbol">&times;</div>
+
+        <!-- Weight matrix -->
+        <div>
+          <div style="font-size:11px;text-align:center;color:var(--purple);font-weight:600;margin-bottom:4px;">W<sub>xz</sub></div>
+          <div class="matrix-grid" style="grid-template-columns:repeat(8, 1fr);">
+            <div class="matrix-cell weight">0.2</div><div class="matrix-cell weight">0.1</div><div class="matrix-cell weight">-0.1</div><div class="matrix-cell weight">0.3</div>
+            <div class="matrix-cell weight" style="background:#ecfdf5;color:#059669;">0.1</div><div class="matrix-cell weight" style="background:#ecfdf5;color:#059669;">0.4</div><div class="matrix-cell weight" style="background:#ecfdf5;color:#059669;">-0.2</div><div class="matrix-cell weight" style="background:#ecfdf5;color:#059669;">0.0</div>
+            <div class="matrix-cell weight">0.3</div><div class="matrix-cell weight">-0.2</div><div class="matrix-cell weight">0.1</div><div class="matrix-cell weight">0.4</div>
+            <div class="matrix-cell weight" style="background:#ecfdf5;color:#059669;">0.0</div><div class="matrix-cell weight" style="background:#ecfdf5;color:#059669;">0.2</div><div class="matrix-cell weight" style="background:#ecfdf5;color:#059669;">0.1</div><div class="matrix-cell weight" style="background:#ecfdf5;color:#059669;">0.3</div>
+            <div class="matrix-cell weight">0.1</div><div class="matrix-cell weight">0.0</div><div class="matrix-cell weight">0.2</div><div class="matrix-cell weight">0.1</div>
+            <div class="matrix-cell weight" style="background:#ecfdf5;color:#059669;">-0.1</div><div class="matrix-cell weight" style="background:#ecfdf5;color:#059669;">0.3</div><div class="matrix-cell weight" style="background:#ecfdf5;color:#059669;">-0.1</div><div class="matrix-cell weight" style="background:#ecfdf5;color:#059669;">0.1</div>
+            <div class="matrix-cell weight">0.4</div><div class="matrix-cell weight">0.1</div><div class="matrix-cell weight">0.0</div><div class="matrix-cell weight">0.5</div>
+            <div class="matrix-cell weight" style="background:#ecfdf5;color:#059669;">0.2</div><div class="matrix-cell weight" style="background:#ecfdf5;color:#059669;">0.5</div><div class="matrix-cell weight" style="background:#ecfdf5;color:#059669;">0.0</div><div class="matrix-cell weight" style="background:#ecfdf5;color:#059669;">0.2</div>
+          </div>
+          <div style="display:flex;gap:2px;margin-top:6px;justify-content:center;">
+            <div style="flex:1;text-align:center;font-size:10px;color:var(--purple);font-weight:600;">x' 列</div>
+            <div style="flex:1;text-align:center;font-size:10px;color:#059669;font-weight:600;">z 列</div>
+          </div>
+        </div>
+
+        <div class="op-symbol">=</div>
+
+        <!-- Output -->
+        <div>
+          <div style="font-size:11px;text-align:center;color:#059669;font-weight:600;margin-bottom:4px;">输出（8）</div>
+          <div style="display:flex;gap:2px;">
+            <div class="matrix-cell" style="background:#eff6ff;color:var(--blue);">0.41</div>
+            <div class="matrix-cell" style="background:#eff6ff;color:var(--blue);">0.16</div>
+            <div class="matrix-cell" style="background:#eff6ff;color:var(--blue);">0.17</div>
+            <div class="matrix-cell" style="background:#eff6ff;color:var(--blue);">0.53</div>
+            <div class="matrix-cell" style="background:#ecfdf5;color:#059669;">0.22</div>
+            <div class="matrix-cell" style="background:#ecfdf5;color:#059669;">0.63</div>
+            <div class="matrix-cell" style="background:#ecfdf5;color:#059669;">0.09</div>
+            <div class="matrix-cell" style="background:#ecfdf5;color:#059669;">0.23</div>
+          </div>
+          <div style="display:flex;gap:2px;margin-top:4px;">
+            <div style="flex:4;text-align:center;"><span class="dim-tag" style="background:#eff6ff;color:var(--blue);">x' 路径</span></div>
+            <div style="flex:4;text-align:center;"><span class="dim-tag" style="background:#ecfdf5;color:#059669;">z 路径</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="fade-in" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;">
+      <div class="card" style="border-left:3px solid var(--blue);">
+        <h4 style="color:var(--blue);">x' = [0.41, 0.16, 0.17, 0.53]</h4>
+        <p style="font-size:14px;margin:0;">经过 Conv1D &rarr; SiLU &rarr; SSM</p>
+      </div>
+      <div class="card" style="border-left:3px solid var(--green);">
+        <h4 style="color:var(--green);">z = [0.22, 0.63, 0.09, 0.23]</h4>
+        <p style="font-size:14px;margin:0;">经过 SiLU &rarr; 变成门控（gate）</p>
+      </div>
+    </div>
+
+    <div class="callout fade-in">
+      <strong>为什么有两条路径？</strong>x' 路径让 token 经过 SSM 以提取序列信息。z 路径生成一个门控，控制 SSM 输出有多少可以通过——就像 LSTM 的输出门（output gate）。这种双路径设计让模型能够调制自己的输出。
+    </div>
+  </div>
+</section>
+
+<!-- CHAPTER 4 -->
+<section id="ch4">
+  <div class="container">
+    <div class="fade-in">
+      <div class="chapter-label">第 4 章</div>
+      <h2>步骤 2 —— Conv1D（局部上下文）</h2>
+      <p>在进入 SSM 之前，我们对 token 序列运行一个<strong>深度可分离的 1D 卷积（depthwise 1D convolution）</strong>。「深度可分离」意味着每个通道独立进行卷积——通道之间没有混合。当卷积核大小 k=4（在我们的例子中是 2）时，每个 token 都会与其紧邻的前一个 token 混合。</p>
+    </div>
+
+    <div class="card fade-in">
+      <h4>深度可分离 Conv1D：每个通道独立处理</h4>
+      <p style="font-size:14px;color:var(--text-muted);">当卷积核大小为 2 时，每个输出是当前 token 与前一个 token 的加权和（按通道分别计算）。</p>
+
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-top:20px;">
+        <!-- Channel 0 -->
+        <div style="background:#eff6ff;border-radius:12px;padding:16px;">
+          <div style="font-size:12px;font-weight:700;color:var(--blue);margin-bottom:8px;">通道 0</div>
+          <div style="display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:13px;">
+            <div style="background:#fff;padding:6px 10px;border-radius:6px;">上一个：0.30</div>
+            <span style="color:var(--text-muted);">&times;</span>
+            <div style="background:#d4ccff;padding:6px 10px;border-radius:6px;color:var(--purple);">权重：0.3</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:13px;margin-top:4px;">
+            <div style="background:#fff;padding:6px 10px;border-radius:6px;">当前：0.41</div>
+            <span style="color:var(--text-muted);">&times;</span>
+            <div style="background:#d4ccff;padding:6px 10px;border-radius:6px;color:var(--purple);">权重：0.7</div>
+          </div>
+          <div style="border-top:1px solid #bfdbfe;margin-top:8px;padding-top:8px;font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;color:var(--blue);">
+            = 0.09 + 0.29 = 0.377
+          </div>
+        </div>
+
+        <!-- Channel 1 -->
+        <div style="background:#eff6ff;border-radius:12px;padding:16px;">
+          <div style="font-size:12px;font-weight:700;color:var(--blue);margin-bottom:8px;">通道 1</div>
+          <div style="display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:13px;">
+            <div style="background:#fff;padding:6px 10px;border-radius:6px;">上一个：0.10</div>
+            <span style="color:var(--text-muted);">&times;</span>
+            <div style="background:#d4ccff;padding:6px 10px;border-radius:6px;color:var(--purple);">权重：0.4</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:13px;margin-top:4px;">
+            <div style="background:#fff;padding:6px 10px;border-radius:6px;">当前：0.16</div>
+            <span style="color:var(--text-muted);">&times;</span>
+            <div style="background:#d4ccff;padding:6px 10px;border-radius:6px;color:var(--purple);">权重：0.6</div>
+          </div>
+          <div style="border-top:1px solid #bfdbfe;margin-top:8px;padding-top:8px;font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;color:var(--blue);">
+            = 0.04 + 0.10 = 0.136
+          </div>
+        </div>
+
+        <!-- Channel 2 -->
+        <div style="background:#eff6ff;border-radius:12px;padding:16px;">
+          <div style="font-size:12px;font-weight:700;color:var(--blue);margin-bottom:8px;">通道 2</div>
+          <div style="display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:13px;">
+            <div style="background:#fff;padding:6px 10px;border-radius:6px;">上一个：0.05</div>
+            <span style="color:var(--text-muted);">&times;</span>
+            <div style="background:#d4ccff;padding:6px 10px;border-radius:6px;color:var(--purple);">权重：0.5</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:13px;margin-top:4px;">
+            <div style="background:#fff;padding:6px 10px;border-radius:6px;">当前：0.17</div>
+            <span style="color:var(--text-muted);">&times;</span>
+            <div style="background:#d4ccff;padding:6px 10px;border-radius:6px;color:var(--purple);">权重：0.5</div>
+          </div>
+          <div style="border-top:1px solid #bfdbfe;margin-top:8px;padding-top:8px;font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;color:var(--blue);">
+            = 0.025 + 0.085 = 0.110
+          </div>
+        </div>
+
+        <!-- Channel 3 -->
+        <div style="background:#eff6ff;border-radius:12px;padding:16px;">
+          <div style="font-size:12px;font-weight:700;color:var(--blue);margin-bottom:8px;">通道 3</div>
+          <div style="display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:13px;">
+            <div style="background:#fff;padding:6px 10px;border-radius:6px;">上一个：0.40</div>
+            <span style="color:var(--text-muted);">&times;</span>
+            <div style="background:#d4ccff;padding:6px 10px;border-radius:6px;color:var(--purple);">权重：0.2</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:13px;margin-top:4px;">
+            <div style="background:#fff;padding:6px 10px;border-radius:6px;">当前：0.53</div>
+            <span style="color:var(--text-muted);">&times;</span>
+            <div style="background:#d4ccff;padding:6px 10px;border-radius:6px;color:var(--purple);">权重：0.8</div>
+          </div>
+          <div style="border-top:1px solid #bfdbfe;margin-top:8px;padding-top:8px;font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;color:var(--blue);">
+            = 0.08 + 0.42 = 0.504
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:16px;">
+        <h4>Conv1D 后的结果：</h4>
+        <div style="display:flex;gap:6px;margin-top:8px;">
+          <div class="matrix-cell" style="background:#eff6ff;color:var(--blue);width:72px;height:38px;font-size:14px;">0.377</div>
+          <div class="matrix-cell" style="background:#eff6ff;color:var(--blue);width:72px;height:38px;font-size:14px;">0.136</div>
+          <div class="matrix-cell" style="background:#eff6ff;color:var(--blue);width:72px;height:38px;font-size:14px;">0.110</div>
+          <div class="matrix-cell" style="background:#eff6ff;color:var(--blue);width:72px;height:38px;font-size:14px;">0.504</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout blue fade-in">
+      <strong>如果没有 Conv1D，</strong>每个 token 在进入 SSM 之前只能看到自己的嵌入。这个短卷积将每个 token 与其邻近的 token 混合——在昂贵的序列处理之前进行一次廉价的「环顾四周」。它对捕捉局部模式（如词边界或标点上下文）特别有用。
+    </div>
+  </div>
+</section>
+
+<!-- CHAPTER 5 -->
+<section id="ch5" style="background:var(--bg-alt);">
+  <div class="container">
+    <div class="fade-in">
+      <div class="chapter-label">第 5 章</div>
+      <h2>步骤 3 —— SiLU 激活函数</h2>
+      <p>在卷积之后，我们应用 SiLU（Sigmoid Linear Unit）非线性函数，也被称为「Swish」。这赋予了模型非线性表达能力。</p>
+    </div>
+
+    <div class="card fade-in">
+      <h4>SiLU(x) = x &times; &sigma;(x)</h4>
+      <p style="font-size:14px;color:var(--text-muted);">其中 &sigma;(x) = 1/(1 + e<sup>-x</sup>) 是 sigmoid 函数。SiLU 是平滑的，在零点附近非单调，并允许较小的负值。</p>
+
+      <!-- SiLU graph as SVG -->
+      <div class="silu-graph">
+        <svg viewBox="0 0 320 200" style="width:100%;border:1px solid var(--border);border-radius:12px;background:#fff;">
+          <!-- Grid -->
+          <line x1="40" y1="100" x2="300" y2="100" stroke="#e5e7eb" stroke-width="1"/>
+          <line x1="160" y1="20" x2="160" y2="180" stroke="#e5e7eb" stroke-width="1"/>
+          <!-- Axis labels -->
+          <text x="300" y="96" font-size="10" fill="#9ca3af" font-family="JetBrains Mono">x</text>
+          <text x="164" y="24" font-size="10" fill="#9ca3af" font-family="JetBrains Mono">y</text>
+          <text x="38" y="112" font-size="9" fill="#9ca3af" font-family="JetBrains Mono">-4</text>
+          <text x="270" y="112" font-size="9" fill="#9ca3af" font-family="JetBrains Mono">4</text>
+          <!-- SiLU curve -->
+          <path d="M40,108 Q60,112 80,110 Q100,108 120,104 Q140,102 160,100 Q180,88 200,72 Q220,56 240,40 Q260,24 280,8" fill="none" stroke="var(--green)" stroke-width="2.5" stroke-linecap="round"/>
+          <!-- Identity line for reference -->
+          <path d="M40,180 L280,20" fill="none" stroke="#e5e7eb" stroke-width="1" stroke-dasharray="4,4"/>
+          <text x="260" y="34" font-size="8" fill="#d1d5db" font-family="Inter">y=x</text>
+          <text x="200" y="76" font-size="10" fill="var(--green)" font-weight="600" font-family="Inter">SiLU</text>
+          <!-- Point near zero dip -->
+          <circle cx="120" cy="104" r="3" fill="var(--green)"/>
+          <text x="90" y="120" font-size="8" fill="var(--text-muted)" font-family="JetBrains Mono">最小值 &asymp; -0.28</text>
+        </svg>
+      </div>
+    </div>
+
+    <div class="card fade-in">
+      <h4>对每个元素应用 SiLU：</h4>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px;">
+        <div style="background:#ecfdf5;border-radius:10px;padding:12px;text-align:center;">
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">输入</div>
+          <div class="mono" style="font-size:16px;font-weight:600;">0.377</div>
+          <div style="margin:8px 0;color:var(--green);">&darr; SiLU</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">输出</div>
+          <div class="mono" style="font-size:16px;font-weight:600;color:var(--green);">0.209</div>
+        </div>
+        <div style="background:#ecfdf5;border-radius:10px;padding:12px;text-align:center;">
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">输入</div>
+          <div class="mono" style="font-size:16px;font-weight:600;">0.136</div>
+          <div style="margin:8px 0;color:var(--green);">&darr; SiLU</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">输出</div>
+          <div class="mono" style="font-size:16px;font-weight:600;color:var(--green);">0.207</div>
+        </div>
+        <div style="background:#ecfdf5;border-radius:10px;padding:12px;text-align:center;">
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">输入</div>
+          <div class="mono" style="font-size:16px;font-weight:600;">0.110</div>
+          <div style="margin:8px 0;color:var(--green);">&darr; SiLU</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">输出</div>
+          <div class="mono" style="font-size:16px;font-weight:600;color:var(--green);">0.068</div>
+        </div>
+        <div style="background:#ecfdf5;border-radius:10px;padding:12px;text-align:center;">
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">输入</div>
+          <div class="mono" style="font-size:16px;font-weight:600;">0.504</div>
+          <div style="margin:8px 0;color:var(--green);">&darr; SiLU</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">输出</div>
+          <div class="mono" style="font-size:16px;font-weight:600;color:var(--green);">0.295</div>
+        </div>
+      </div>
+      <div style="margin-top:16px;">
+        <span class="mono" style="font-size:14px;font-weight:600;">x'<sub>act</sub> = [0.209, 0.207, 0.068, 0.295]</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CHAPTER 6 -->
+<section id="ch6">
+  <div class="container">
+    <div class="fade-in">
+      <div class="chapter-label">第 6 章</div>
+      <h2>步骤 4 —— 选择性的核心</h2>
+      <p>这是最重要的一步。token 自身的表示被用来计算控制 SSM 的<strong>三组参数</strong>。这就是让 Mamba 具有「选择性」的原因——不同的 token 获得不同的动力学。</p>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-top:24px;" class="fade-in">
+      <!-- B_t -->
+      <div class="card" style="border-top:3px solid var(--blue);">
+        <h4 style="color:var(--blue);">B<sub>t</sub> —— 编码（Encode）</h4>
+        <p style="font-size:13px;">「如何将这个 token <strong>写入</strong>状态」</p>
+        <div class="step-equation">
+          B<sub>t</sub> = x'<sub>act</sub> &times; W<sub>B</sub>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;margin:8px 0;flex-wrap:wrap;">
+          <div style="display:flex;gap:2px;">
+            <div class="matrix-cell input" style="width:40px;height:26px;font-size:11px;">0.21</div>
+            <div class="matrix-cell input" style="width:40px;height:26px;font-size:11px;">0.21</div>
+            <div class="matrix-cell input" style="width:40px;height:26px;font-size:11px;">0.07</div>
+            <div class="matrix-cell input" style="width:40px;height:26px;font-size:11px;">0.30</div>
+          </div>
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">&times; W<sub>B</sub> (4&times;2)</div>
+        <div style="display:flex;gap:4px;">
+          <div class="matrix-cell" style="background:#eff6ff;color:var(--blue);width:56px;font-size:14px;font-weight:700;">0.135</div>
+          <div class="matrix-cell" style="background:#eff6ff;color:var(--blue);width:56px;font-size:14px;font-weight:700;">0.135</div>
+        </div>
+        <div class="dim-tag" style="margin-top:8px;">形状：(N=2,)</div>
+      </div>
+
+      <!-- C_t -->
+      <div class="card" style="border-top:3px solid var(--green);">
+        <h4 style="color:var(--green);">C<sub>t</sub> —— 解码（Decode）</h4>
+        <p style="font-size:13px;">「如何从状态中<strong>读取</strong>以生成输出」</p>
+        <div class="step-equation">
+          C<sub>t</sub> = x'<sub>act</sub> &times; W<sub>C</sub>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;margin:8px 0;flex-wrap:wrap;">
+          <div style="display:flex;gap:2px;">
+            <div class="matrix-cell input" style="width:40px;height:26px;font-size:11px;">0.21</div>
+            <div class="matrix-cell input" style="width:40px;height:26px;font-size:11px;">0.21</div>
+            <div class="matrix-cell input" style="width:40px;height:26px;font-size:11px;">0.07</div>
+            <div class="matrix-cell input" style="width:40px;height:26px;font-size:11px;">0.30</div>
+          </div>
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">&times; W<sub>C</sub> (4&times;2)</div>
+        <div style="display:flex;gap:4px;">
+          <div class="matrix-cell" style="background:#ecfdf5;color:#059669;width:56px;font-size:14px;font-weight:700;">0.141</div>
+          <div class="matrix-cell" style="background:#ecfdf5;color:#059669;width:56px;font-size:14px;font-weight:700;">0.193</div>
+        </div>
+        <div class="dim-tag" style="margin-top:8px;">形状：(N=2,)</div>
+      </div>
+
+      <!-- Delta -->
+      <div class="card" style="border-top:3px solid var(--orange);">
+        <h4 style="color:var(--orange);">&Delta;<sub>t</sub> —— 注意力（Attention）</h4>
+        <p style="font-size:13px;">「要给予多少<strong>关注</strong>」</p>
+        <div class="step-equation">
+          &Delta;<sub>t</sub> = softplus(x'<sub>act</sub> &middot; w<sub>&Delta;</sub>)
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);margin:8px 0;">
+          点积 &rarr; -0.51<br>
+          softplus(-0.51)&thinsp;=&thinsp;ln(1+e<sup>-0.51</sup>)
+        </div>
+        <div style="display:flex;gap:4px;justify-content:center;">
+          <div class="matrix-cell" style="background:#fffbeb;color:#b45309;width:72px;height:36px;font-size:16px;font-weight:700;">0.079</div>
+        </div>
+        <div class="dim-tag" style="margin-top:8px;">标量（始终 &gt;0）</div>
+      </div>
+    </div>
+
+    <div class="key-insight fade-in">
+      <h4>这就是选择性（Selectivity）</h4>
+      <p style="margin:0;">不同的 token 会产生不同的 B、C 和 &Delta;。像 <strong>「France」</strong> 这样的实词可能产生 &Delta;=2.0（强力写入状态！）。像 <strong>「of」</strong> 这样的虚词产生 &Delta;=0.05（几乎不写——跳过它）。模型学会了哪些 token 重要，并相应地调整其状态动力学。这正是相对于 S4 等经典（非选择性）SSM 的根本优势。</p>
+    </div>
+  </div>
+</section>
+
+<!-- CHAPTER 7 -->
+<section id="ch7" style="background:var(--bg-alt);">
+  <div class="container">
+    <div class="fade-in">
+      <div class="chapter-label">第 7 章</div>
+      <h2>步骤 5 —— 离散化（Discretization）</h2>
+      <p>SSM 是在连续时间中定义的，但我们以离散步骤处理 token。我们必须使用步长 &Delta;<sub>t</sub> 将连续参数 A 和 B 转换为它们的离散时间等价形式。</p>
+    </div>
+
+    <div class="card fade-in">
+      <h4>离散化公式</h4>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;">
+        <div class="step-equation" style="text-align:center;">
+          <div style="font-size:13px;color:var(--text-muted);margin-bottom:4px;">衰减（decay，保留多少旧状态）</div>
+          <span style="font-size:16px;">A&#x0304;<sub>t</sub> = exp(A &times; &Delta;<sub>t</sub>)</span>
+        </div>
+        <div class="step-equation" style="text-align:center;">
+          <div style="font-size:13px;color:var(--text-muted);margin-bottom:4px;">输入缩放（input scale，写入多少新输入）</div>
+          <span style="font-size:16px;">B&#x0304;<sub>t</sub> = &Delta;<sub>t</sub> &times; B<sub>t</sub></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card fade-in">
+      <h4>可学习的基参数 A</h4>
+      <p style="font-size:14px;color:var(--text-muted);">A 是一个对角矩阵（以向量形式存储），包含可学习的负值。它们代表「自然」的衰减速率。</p>
+      <div style="display:flex;gap:6px;margin:12px 0;">
+        <div class="matrix-cell weight" style="width:72px;height:38px;font-size:15px;">-1.0</div>
+        <div class="matrix-cell weight" style="width:72px;height:38px;font-size:15px;">-0.5</div>
+      </div>
+      <div class="dim-tag">形状：(N=2,)</div>
+    </div>
+
+    <div class="card fade-in">
+      <h4>以 &Delta;<sub>t</sub> = 0.079 逐步走完计算过程</h4>
+
+      <div style="margin-top:16px;">
+        <div style="font-weight:600;margin-bottom:8px;">A&#x0304;<sub>t</sub>（离散衰减）：</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div class="step-equation">
+            A&#x0304;[0] = exp(-1.0 &times; 0.079)<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;= exp(-0.079)<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;= <strong style="color:var(--purple);">0.924</strong>
+          </div>
+          <div class="step-equation">
+            A&#x0304;[1] = exp(-0.5 &times; 0.079)<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;= exp(-0.040)<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;= <strong style="color:var(--purple);">0.961</strong>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:16px;">
+        <div style="font-weight:600;margin-bottom:8px;">B&#x0304;<sub>t</sub>（输入缩放）：</div>
+        <div class="step-equation">
+          B&#x0304;<sub>t</sub> = 0.079 &times; [0.135, 0.135] = [<strong style="color:var(--blue);">0.011</strong>, <strong style="color:var(--blue);">0.011</strong>]
+        </div>
+      </div>
+    </div>
+
+    <div class="fade-in" style="margin-top:24px;">
+      <h4 style="margin-bottom:12px;">这些数字的含义：</h4>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+        <!-- A_bar viz -->
+        <div class="card" style="text-align:center;">
+          <div style="font-weight:700;color:var(--purple);margin-bottom:8px;">A&#x0304; &asymp; 0.92 &ndash; 0.96</div>
+          <div style="font-size:13px;margin-bottom:12px;">「保留旧状态的 92&ndash;96%」</div>
+          <div style="background:#f3f4f6;border-radius:8px;height:24px;overflow:hidden;">
+            <div style="background:linear-gradient(90deg,var(--purple),#a78bfa);height:100%;width:94%;border-radius:8px;display:flex;align-items:center;justify-content:flex-end;padding-right:8px;">
+              <span class="mono" style="color:#fff;font-size:11px;font-weight:600;">94%</span>
+            </div>
+          </div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:8px;">接近满值——保留大部分旧状态</div>
+        </div>
+
+        <!-- B_bar viz -->
+        <div class="card" style="text-align:center;">
+          <div style="font-weight:700;color:var(--blue);margin-bottom:8px;">B&#x0304; &asymp; 0.011</div>
+          <div style="font-size:13px;margin-bottom:12px;">「只写入新输入的 1%」</div>
+          <div style="background:#f3f4f6;border-radius:8px;height:24px;overflow:hidden;">
+            <div style="background:linear-gradient(90deg,var(--blue),#93c5fd);height:100%;width:2%;border-radius:8px;min-width:4px;"></div>
+          </div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:8px;">极小的一条——极少的新信息</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout orange fade-in">
+      <strong>这个较小的 &Delta; 意味着模型在说</strong>「这个上下文不需要大的状态变化。」如果这里是 &Delta;=2.0 的「France」，A&#x0304; 将约为 0.14（抹除 86% 的状态！），B&#x0304; 也会大得多——模型记忆的内容将被彻底重写。
+    </div>
+  </div>
+</section>
+
+<!-- CHAPTER 8 -->
+<section id="ch8">
+  <div class="container">
+    <div class="fade-in">
+      <div class="chapter-label">第 8 章</div>
+      <h2>步骤 6 —— SSM 递推（Recurrence）</h2>
+      <p>现在我们运行核心的状态更新。模型的「记忆」在这里被新 token 更新。把它想象成一个漏水的桶：旧内容缓慢流出（由 A&#x0304; 控制），新内容流入（由 B&#x0304; 控制）。</p>
+    </div>
+
+    <div class="card fade-in">
+      <h4>核心方程</h4>
+      <div class="step-equation" style="text-align:center;font-size:16px;">
+        h<sub>t</sub> = A&#x0304;<sub>t</sub> &times; h<sub>prev</sub> + B&#x0304;<sub>t</sub> &times; x<sub>t</sub>
+      </div>
+      <p style="font-size:14px;text-align:center;color:var(--text-muted);margin-top:8px;">旧状态（已衰减）+ 新输入（已缩放）= 新状态</p>
+    </div>
+
+    <!-- Tank metaphor -->
+    <div class="fade-in" style="display:flex;justify-content:center;gap:48px;align-items:flex-end;margin:32px 0;">
+      <div style="text-align:center;">
+        <div style="font-size:12px;font-weight:600;margin-bottom:8px;">旧状态 h<sub>prev</sub></div>
+        <div class="tank">
+          <div class="tank-water" style="height:65%;"></div>
+        </div>
+        <div class="tank-label">[0.50, -0.30]</div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;align-items:center;gap:8px;padding-bottom:40px;">
+        <div style="font-size:24px;color:var(--purple);">&times; A&#x0304;</div>
+        <div style="font-size:12px;color:var(--text-muted);">排出 6%</div>
+        <div style="font-size:24px;">+</div>
+        <div style="font-size:24px;color:var(--blue);">&times; B&#x0304;</div>
+        <div style="font-size:12px;color:var(--text-muted);">加入 1%</div>
+      </div>
+
+      <div style="text-align:center;">
+        <div style="font-size:12px;font-weight:600;margin-bottom:8px;">新状态 h<sub>t</sub></div>
+        <div class="tank">
+          <div class="tank-water" style="height:60%;"></div>
+        </div>
+        <div class="tank-label">[0.464, -0.286]</div>
+      </div>
+    </div>
+
+    <div class="card fade-in">
+      <h4>计算过程（每个状态维度，针对一个通道）：</h4>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;">
+        <div class="step-equation">
+          <div style="color:var(--text-muted);font-size:12px;margin-bottom:4px;">状态维度 0：</div>
+          h<sub>new</sub>[0] = 0.924 &times; 0.500 + 0.011 &times; 0.209<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;= 0.462 + 0.002<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;= <strong style="color:var(--purple);">0.464</strong>
+        </div>
+        <div class="step-equation">
+          <div style="color:var(--text-muted);font-size:12px;margin-bottom:4px;">状态维度 1：</div>
+          h<sub>new</sub>[1] = 0.961 &times; (-0.300) + 0.011 &times; 0.209<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;= -0.288 + 0.002<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;= <strong style="color:var(--purple);">-0.286</strong>
+        </div>
+      </div>
+    </div>
+
+    <div class="card fade-in" style="margin-top:16px;">
+      <h4>从状态读取：计算输出</h4>
+      <div class="step-equation" style="text-align:center;font-size:15px;">
+        y<sub>ssm</sub> = C<sub>t</sub> &middot; h<sub>new</sub>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;justify-content:center;margin:16px 0;flex-wrap:wrap;">
+        <div style="text-align:center;">
+          <div style="font-size:11px;color:var(--green);font-weight:600;margin-bottom:4px;">C<sub>t</sub></div>
+          <div style="display:flex;gap:3px;">
+            <div class="matrix-cell" style="background:#ecfdf5;color:#059669;font-size:13px;">0.141</div>
+            <div class="matrix-cell" style="background:#ecfdf5;color:#059669;font-size:13px;">0.193</div>
+          </div>
+        </div>
+        <div class="op-symbol">&middot;</div>
+        <div style="text-align:center;">
+          <div style="font-size:11px;color:var(--purple);font-weight:600;margin-bottom:4px;">h<sub>new</sub></div>
+          <div style="display:flex;gap:3px;">
+            <div class="matrix-cell weight" style="font-size:13px;">0.464</div>
+            <div class="matrix-cell weight" style="font-size:13px;">-0.286</div>
+          </div>
+        </div>
+        <div class="op-symbol">=</div>
+        <div style="text-align:center;">
+          <div style="font-size:11px;color:var(--orange);font-weight:600;margin-bottom:4px;">y<sub>ssm</sub></div>
+          <div class="step-equation" style="margin:0;padding:8px 16px;">
+            0.141&times;0.464 + 0.193&times;(-0.286)<br>
+            = 0.065 + (-0.055)<br>
+            = <strong style="color:var(--orange);">0.010</strong>
+          </div>
+        </div>
+      </div>
+      <p style="font-size:13px;color:var(--text-muted);text-align:center;">这是单个通道的 SSM 输出。实际上，它会在所有 E 个通道上并行独立地运行。</p>
+    </div>
+
+    <div class="callout green fade-in">
+      <strong>C<sub>t</sub>（由当前 token 计算得到）</strong>控制着如何从状态中读取。不同的 token 向状态提出不同的问题。试图预测国家的 token 可能会高度重视某些状态维度，而预测标点的 token 则会读取完全不同的维度。
+    </div>
+  </div>
+</section>
+
+<!-- PARALLEL SCAN -->
+<section id="parallel-scan" style="background:var(--bg-alt);">
+  <div class="container">
+    <div class="fade-in">
+      <div class="chapter-label">第 8.5 章</div>
+      <h2 class="gradient-text">并行扫描（Parallel Scan）究竟如何计算 SSM</h2>
+      <p>
+        第 8 章展示了一个 token 的更新。在训练期间，我们需要长序列中
+        <strong>每个 token</strong> 的隐藏状态。普通的递推会从左到右依次进行：
+        h<sub>1</sub>、然后是 h<sub>2</sub>、然后是 h<sub>3</sub>。Mamba 使用并行扫描，让其中许多合并操作同时发生。
+      </p>
+    </div>
+
+    <div class="card fade-in">
+      <h4>玩具设置：一个通道，一个状态维度</h4>
+      <p style="font-size:14px;color:var(--text-muted);">
+        在真实模型中，这会在 E 个通道和 n 个状态维度上运行。为了清楚地看到运算过程，
+        我们将其简化为一个标量状态：
+      </p>
+      <div class="step-equation" style="text-align:center;font-size:16px;">
+        h<sub>t</sub> = a<sub>t</sub> h<sub>t-1</sub> + b<sub>t</sub>
+      </div>
+      <p style="font-size:14px;color:var(--text-muted);">
+        这里 <span class="mono">a<sub>t</sub></span> 是离散化的衰减 A&#x0304;<sub>t</sub>，而
+        <span class="mono">b<sub>t</sub></span> 是已经缩放的写入项 B&#x0304;<sub>t</sub>x<sub>t</sub>。
+        从 <span class="mono">h<sub>0</sub> = 0.50</span> 开始。
+      </p>
+
+      <div class="scan-token-grid">
+        <div class="scan-token-card">
+          <div class="token-name">Token 1：「The」</div>
+          <div class="scan-value">
+            a<sub>1</sub> = <strong style="color:var(--purple);">0.96</strong><br>
+            b<sub>1</sub> = <strong style="color:var(--blue);">0.01</strong><br>
+            <span style="color:var(--text-muted);">大多保留</span>
+          </div>
+        </div>
+        <div class="scan-token-card important">
+          <div class="token-name">Token 2：「capital」</div>
+          <div class="scan-value">
+            a<sub>2</sub> = <strong style="color:var(--purple);">0.72</strong><br>
+            b<sub>2</sub> = <strong style="color:var(--blue);">0.18</strong><br>
+            <span style="color:var(--text-muted);">写入一些</span>
+          </div>
+        </div>
+        <div class="scan-token-card">
+          <div class="token-name">Token 3：「of」</div>
+          <div class="scan-value">
+            a<sub>3</sub> = <strong style="color:var(--purple);">0.94</strong><br>
+            b<sub>3</sub> = <strong style="color:var(--blue);">0.02</strong><br>
+            <span style="color:var(--text-muted);">大多保留</span>
+          </div>
+        </div>
+        <div class="scan-token-card rewrite">
+          <div class="token-name">Token 4：「France」</div>
+          <div class="scan-value">
+            a<sub>4</sub> = <strong style="color:var(--purple);">0.35</strong><br>
+            b<sub>4</sub> = <strong style="color:var(--blue);">0.60</strong><br>
+            <span style="color:var(--text-muted);">强力重写</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card fade-in">
+      <h4>顺序递推做了什么</h4>
+      <p style="font-size:14px;color:var(--text-muted);">
+        这是正确的，但每一行都要等待前一行。在 GPU 上，这条依赖链才是慢的部分。
+      </p>
+
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <tr style="background:#fff;border-bottom:2px solid var(--border);">
+            <th style="text-align:left;padding:10px 12px;">步骤</th>
+            <th style="text-align:left;padding:10px 12px;">计算</th>
+            <th style="text-align:right;padding:10px 12px;">状态</th>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border);">
+            <td style="padding:10px 12px;font-weight:600;">h<sub>1</sub></td>
+            <td style="padding:10px 12px;" class="mono">0.96 &times; 0.50 + 0.01</td>
+            <td style="padding:10px 12px;text-align:right;" class="mono"><strong>0.490</strong></td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border);">
+            <td style="padding:10px 12px;font-weight:600;">h<sub>2</sub></td>
+            <td style="padding:10px 12px;" class="mono">0.72 &times; 0.490 + 0.18</td>
+            <td style="padding:10px 12px;text-align:right;" class="mono"><strong>0.533</strong></td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border);">
+            <td style="padding:10px 12px;font-weight:600;">h<sub>3</sub></td>
+            <td style="padding:10px 12px;" class="mono">0.94 &times; 0.533 + 0.02</td>
+            <td style="padding:10px 12px;text-align:right;" class="mono"><strong>0.521</strong></td>
+          </tr>
+          <tr>
+            <td style="padding:10px 12px;font-weight:600;">h<sub>4</sub></td>
+            <td style="padding:10px 12px;" class="mono">0.35 &times; 0.521 + 0.60</td>
+            <td style="padding:10px 12px;text-align:right;" class="mono"><strong style="color:var(--green);">0.782</strong></td>
+          </tr>
+        </table>
+      </div>
+
+      <div class="scan-chain">
+        <span class="scan-chip">h0</span>
+        <span style="color:var(--text-muted);">&rarr;</span>
+        <span class="scan-chip">h1</span>
+        <span style="color:var(--text-muted);">&rarr;</span>
+        <span class="scan-chip">h2</span>
+        <span style="color:var(--text-muted);">&rarr;</span>
+        <span class="scan-chip">h3</span>
+        <span style="color:var(--text-muted);">&rarr;</span>
+        <span class="scan-chip">h4</span>
+      </div>
+    </div>
+
+    <div class="card fade-in">
+      <h4>并行扫描的视角：每个 token 都是一个小的函数</h4>
+      <p style="font-size:14px;color:var(--text-muted);">
+        与其把它想成「状态更新」，不如想成「应用到前一个状态的函数」。
+      </p>
+
+      <div class="scan-token-grid">
+        <div class="scan-mini-box purple">
+          <div class="scan-formula">f<sub>1</sub>(h) = 0.96h + 0.01</div>
+        </div>
+        <div class="scan-mini-box purple">
+          <div class="scan-formula">f<sub>2</sub>(h) = 0.72h + 0.18</div>
+        </div>
+        <div class="scan-mini-box purple">
+          <div class="scan-formula">f<sub>3</sub>(h) = 0.94h + 0.02</div>
+        </div>
+        <div class="scan-mini-box purple">
+          <div class="scan-formula">f<sub>4</sub>(h) = 0.35h + 0.60</div>
+        </div>
+      </div>
+
+      <div class="step-equation" style="font-size:15px;">
+        (a<sub>R</sub>, b<sub>R</sub>) &otimes; (a<sub>L</sub>, b<sub>L</sub>)
+        = (a<sub>R</sub>a<sub>L</sub>, a<sub>R</sub>b<sub>L</sub> + b<sub>R</sub>)
+      </div>
+      <p style="font-size:14px;color:var(--text-muted);margin:0;">
+        这只是函数复合。如果 f<sub>L</sub>(h)=a<sub>L</sub>h+b<sub>L</sub> 且
+        f<sub>R</sub>(h)=a<sub>R</sub>h+b<sub>R</sub>，那么 f<sub>R</sub>(f<sub>L</sub>(h)) 是另一个相同形式的函数。
+        因为复合运算满足结合律，GPU 可以以树状结构合并各块。
+      </p>
+    </div>
+
+    <div class="card fade-in">
+      <h4>第 1 轮：并行复合各对</h4>
+      <div class="scan-stage-grid">
+        <div class="scan-mini-box blue">
+          <div style="font-size:12px;font-weight:700;color:var(--blue);margin-bottom:8px;">对 1：f<sub>2</sub> 在 f<sub>1</sub> 之后</div>
+          <div class="scan-formula">
+            (0.72, 0.18) &otimes; (0.96, 0.01)<br>
+            a = 0.72 &times; 0.96 = <strong>0.6912</strong><br>
+            b = 0.72 &times; 0.01 + 0.18 = <strong>0.1872</strong><br>
+            <span style="color:var(--blue);font-weight:700;">f<sub>2</sub>&compfn;f<sub>1</sub> = (0.6912, 0.1872)</span>
+          </div>
+        </div>
+
+        <div class="scan-mini-box orange">
+          <div style="font-size:12px;font-weight:700;color:#b45309;margin-bottom:8px;">对 2：f<sub>4</sub> 在 f<sub>3</sub> 之后</div>
+          <div class="scan-formula">
+            (0.35, 0.60) &otimes; (0.94, 0.02)<br>
+            a = 0.35 &times; 0.94 = <strong>0.3290</strong><br>
+            b = 0.35 &times; 0.02 + 0.60 = <strong>0.6070</strong><br>
+            <span style="color:#b45309;font-weight:700;">f<sub>4</sub>&compfn;f<sub>3</sub> = (0.3290, 0.6070)</span>
+          </div>
+        </div>
+      </div>
+      <p style="font-size:13px;color:var(--text-muted);margin:12px 0 0;">
+        注意重点：这两个对的计算是相互独立的，因此它们可以同时运行。
+      </p>
+    </div>
+
+    <div class="card fade-in">
+      <h4>第 2 轮：合并各块</h4>
+      <div class="scan-stage-grid">
+        <div class="scan-mini-box green">
+          <div style="font-size:12px;font-weight:700;color:var(--green);margin-bottom:8px;">完整块：f<sub>4</sub>&compfn;f<sub>3</sub>&compfn;f<sub>2</sub>&compfn;f<sub>1</sub></div>
+          <div class="scan-formula">
+            (0.3290, 0.6070) &otimes; (0.6912, 0.1872)<br>
+            a = 0.3290 &times; 0.6912 = <strong>0.2274</strong><br>
+            b = 0.3290 &times; 0.1872 + 0.6070 = <strong>0.6686</strong><br>
+            F<sub>4</sub>(h) = 0.2274h + 0.6686
+          </div>
+        </div>
+
+        <div class="scan-mini-box green">
+          <div style="font-size:12px;font-weight:700;color:var(--green);margin-bottom:8px;">应用到 h<sub>0</sub></div>
+          <div class="scan-formula">
+            h<sub>4</sub> = F<sub>4</sub>(0.50)<br>
+            = 0.2274 &times; 0.50 + 0.6686<br>
+            = 0.1137 + 0.6686<br>
+            = <strong style="color:var(--green);">0.782</strong>
+          </div>
+        </div>
+      </div>
+
+      <div class="callout green" style="margin-bottom:0;">
+        <strong>结果与顺序递推相同。</strong>区别在于我们是靠合并各块得到结果的，而不是逐一等待每个隐藏状态。
+      </div>
+    </div>
+
+    <div class="card fade-in">
+      <h4>但训练需要所有隐藏状态，而不仅仅是 h<sub>4</sub></h4>
+      <p style="font-size:14px;color:var(--text-muted);">
+        一个完整的前缀扫描会恢复出每个前缀函数 F<sub>t</sub> = f<sub>t</sub>&compfn;...&compfn;f<sub>1</sub>。
+        然后将每个 F<sub>t</sub> 应用到 h<sub>0</sub>。以下是实际的前缀：
+      </p>
+
+      <div class="scan-prefix-grid">
+        <div class="scan-prefix">
+          <div style="font-size:12px;font-weight:700;color:var(--purple);">前缀 F<sub>1</sub></div>
+          <div class="mono">(0.9600, 0.0100)</div>
+          <div class="mono">h<sub>1</sub> = 0.490</div>
+        </div>
+        <div class="scan-prefix">
+          <div style="font-size:12px;font-weight:700;color:var(--blue);">前缀 F<sub>2</sub></div>
+          <div class="mono">(0.6912, 0.1872)</div>
+          <div class="mono">h<sub>2</sub> = 0.533</div>
+        </div>
+        <div class="scan-prefix">
+          <div style="font-size:12px;font-weight:700;color:#b45309;">前缀 F<sub>3</sub></div>
+          <div class="mono">(0.6497, 0.1960)</div>
+          <div class="mono">h<sub>3</sub> = 0.521</div>
+        </div>
+        <div class="scan-prefix">
+          <div style="font-size:12px;font-weight:700;color:var(--green);">前缀 F<sub>4</sub></div>
+          <div class="mono">(0.2274, 0.6686)</div>
+          <div class="mono">h<sub>4</sub> = 0.782</div>
+        </div>
+      </div>
+
+      <div style="margin-top:16px;overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <tr style="background:#fff;border-bottom:2px solid var(--border);">
+            <th style="text-align:left;padding:10px 12px;">前缀</th>
+            <th style="text-align:left;padding:10px 12px;">函数</th>
+            <th style="text-align:left;padding:10px 12px;">应用 h<sub>0</sub>=0.50</th>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border);">
+            <td style="padding:10px 12px;font-weight:600;">F<sub>1</sub></td>
+            <td style="padding:10px 12px;" class="mono">0.9600h + 0.0100</td>
+            <td style="padding:10px 12px;" class="mono">0.9600&times;0.50 + 0.0100 = 0.490</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border);">
+            <td style="padding:10px 12px;font-weight:600;">F<sub>2</sub></td>
+            <td style="padding:10px 12px;" class="mono">0.6912h + 0.1872</td>
+            <td style="padding:10px 12px;" class="mono">0.6912&times;0.50 + 0.1872 = 0.533</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border);">
+            <td style="padding:10px 12px;font-weight:600;">F<sub>3</sub></td>
+            <td style="padding:10px 12px;" class="mono">0.6497h + 0.1960</td>
+            <td style="padding:10px 12px;" class="mono">0.6497&times;0.50 + 0.1960 = 0.521</td>
+          </tr>
+          <tr>
+            <td style="padding:10px 12px;font-weight:600;">F<sub>4</sub></td>
+            <td style="padding:10px 12px;" class="mono">0.2274h + 0.6686</td>
+            <td style="padding:10px 12px;" class="mono">0.2274&times;0.50 + 0.6686 = 0.782</td>
+          </tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="card fade-in">
+      <h4>时间节省来自哪里</h4>
+      <div class="scan-time-grid">
+        <div class="scan-mini-box">
+          <h4 style="color:var(--red);">顺序递推</h4>
+          <p style="font-size:13px;color:var(--text-muted);">
+            关键路径是整个序列。Token 1 必须完成后 Token 2 才能完成，依此类推。
+          </p>
+          <div class="step-equation" style="font-size:13px;">N 个 token &rarr; N 个依赖轮次</div>
+        </div>
+        <div class="scan-mini-box green">
+          <h4 style="color:var(--green);">并行扫描</h4>
+          <p style="font-size:13px;color:var(--text-muted);">
+            关键路径是复合树的高度。工作量仍然近似线性，但等待链要短得多。
+          </p>
+          <div class="step-equation" style="font-size:13px;">N 个 token &rarr; 约 2log<sub>2</sub>(N) 个树轮次</div>
+        </div>
+      </div>
+
+      <div style="overflow-x:auto;margin-top:16px;">
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <tr style="background:#fff;border-bottom:2px solid var(--border);">
+            <th style="text-align:left;padding:10px 12px;">序列长度</th>
+            <th style="text-align:right;padding:10px 12px;color:var(--red);">顺序轮次</th>
+            <th style="text-align:right;padding:10px 12px;color:var(--green);">扫描轮次</th>
+            <th style="text-align:left;padding:10px 12px;">直觉理解</th>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border);">
+            <td style="padding:10px 12px;" class="mono">4</td>
+            <td style="padding:10px 12px;text-align:right;" class="mono">4</td>
+            <td style="padding:10px 12px;text-align:right;" class="mono">~4</td>
+            <td style="padding:10px 12px;">玩具示例：数量级相同，有助于看清运算。</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border);">
+            <td style="padding:10px 12px;" class="mono">8</td>
+            <td style="padding:10px 12px;text-align:right;" class="mono">8</td>
+            <td style="padding:10px 12px;text-align:right;" class="mono">~6</td>
+            <td style="padding:10px 12px;">现在树开始占优势。</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border);">
+            <td style="padding:10px 12px;" class="mono">1,024</td>
+            <td style="padding:10px 12px;text-align:right;" class="mono">1,024</td>
+            <td style="padding:10px 12px;text-align:right;" class="mono">~20</td>
+            <td style="padding:10px 12px;">依赖深度大幅减少。</td>
+          </tr>
+          <tr>
+            <td style="padding:10px 12px;" class="mono">1,048,576</td>
+            <td style="padding:10px 12px;text-align:right;" class="mono">1,048,576</td>
+            <td style="padding:10px 12px;text-align:right;" class="mono">~40</td>
+            <td style="padding:10px 12px;">长上下文在 GPU 硬件上变得可训练。</td>
+          </tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="card fade-in scan-zoom-card" id="scan-1024">
+      <h4>放大来看：扫描对 N = 1024 做了什么？</h4>
+      <p style="font-size:14px;color:var(--text-muted);">
+        令 <span class="mono">G[i:j]</span> 表示复合块
+        <span class="mono">f<sub>j</sub>&compfn;f<sub>j-1</sub>&compfn;...&compfn;f<sub>i</sub></span>。
+        例如：
+      </p>
+
+      <div class="step-equation" style="font-size:13px;">
+        G[1:2] = f<sub>2</sub> &compfn; f<sub>1</sub><br>
+        G[1:4] = f<sub>4</sub> &compfn; f<sub>3</sub> &compfn; f<sub>2</sub> &compfn; f<sub>1</sub><br>
+        G[1:1024] = f<sub>1024</sub> &compfn; ... &compfn; f<sub>3</sub> &compfn; f<sub>2</sub> &compfn; f<sub>1</sub>
+      </div>
+
+      <h4 style="margin-top:24px;color:var(--purple);">前 10 轮：上扫（up-sweep）构建块摘要</h4>
+      <p style="font-size:14px;color:var(--text-muted);">
+        每一轮都使块大小翻倍。同一行内的合并是独立的，因此它们可以一起运行。
+      </p>
+
+      <div class="scan-tree-visual" aria-label="1024 个 token 的上扫">
+        <div class="scan-tree-line">
+          <div class="scan-tree-label">token</div>
+          <div class="scan-blocks">
+            <span class="scan-block blue grow-1">f1</span>
+            <span class="scan-block blue grow-1">f2</span>
+            <span class="scan-block blue grow-1">f3</span>
+            <span class="scan-block blue grow-1">f4</span>
+            <span class="scan-block blue grow-1">...</span>
+            <span class="scan-block blue grow-1">f1023</span>
+            <span class="scan-block blue grow-1">f1024</span>
+          </div>
+        </div>
+        <div class="scan-tree-line">
+          <div class="scan-tree-label">第 1 轮</div>
+          <div class="scan-blocks">
+            <span class="scan-block grow-2">G[1:2]</span>
+            <span class="scan-block grow-2">G[3:4]</span>
+            <span class="scan-block grow-2">...</span>
+            <span class="scan-block grow-2">G[1023:1024]</span>
+          </div>
+        </div>
+        <div class="scan-tree-line">
+          <div class="scan-tree-label">第 2 轮</div>
+          <div class="scan-blocks">
+            <span class="scan-block orange grow-4">G[1:4]</span>
+            <span class="scan-block orange grow-4">G[5:8]</span>
+            <span class="scan-block orange grow-4">...</span>
+            <span class="scan-block orange grow-4">G[1021:1024]</span>
+          </div>
+        </div>
+        <div class="scan-tree-line">
+          <div class="scan-tree-label">第 3 轮</div>
+          <div class="scan-blocks">
+            <span class="scan-block grow-8">G[1:8]</span>
+            <span class="scan-block grow-8">G[9:16]</span>
+            <span class="scan-block grow-8">...</span>
+            <span class="scan-block grow-8">G[1017:1024]</span>
+          </div>
+        </div>
+        <div class="scan-tree-line">
+          <div class="scan-tree-label">第 10 轮</div>
+          <div class="scan-blocks">
+            <span class="scan-block green grow-8">G[1:1024]</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="scan-round-list">
+        <div class="scan-round-row">
+          <div class="round-label">第 1 轮</div>
+          <div class="round-stat">块 = 2</div>
+          <div class="round-stat">512 次合并</div>
+          <div class="round-example">G[1:2], G[3:4], ..., G[1023:1024]</div>
+        </div>
+        <div class="scan-round-row">
+          <div class="round-label">第 2 轮</div>
+          <div class="round-stat">块 = 4</div>
+          <div class="round-stat">256 次合并</div>
+          <div class="round-example">G[1:4] = G[3:4] &otimes; G[1:2], ..., G[1021:1024]</div>
+        </div>
+        <div class="scan-round-row">
+          <div class="round-label">第 3 轮</div>
+          <div class="round-stat">块 = 8</div>
+          <div class="round-stat">128 次合并</div>
+          <div class="round-example">G[1:8], G[9:16], ..., G[1017:1024]</div>
+        </div>
+        <div class="scan-round-row">
+          <div class="round-label">...</div>
+          <div class="round-stat">...</div>
+          <div class="round-stat">...</div>
+          <div class="round-example">块大小持续翻倍</div>
+        </div>
+        <div class="scan-round-row highlight">
+          <div class="round-label">第 10 轮</div>
+          <div class="round-stat">块 = 1024</div>
+          <div class="round-stat">1 combine</div>
+          <div class="round-example">G[1:1024] = G[513:1024] &otimes; G[1:512]</div>
+        </div>
+      </div>
+
+      <div class="callout orange" style="margin-top:18px;">
+        <strong>重要：</strong>经过这 10 轮，我们得到了整个序列的摘要
+        <span class="mono">G[1:1024]</span>。这足以得到最终状态 h<sub>1024</sub>，
+        但训练需要 h<sub>1</sub>, h<sub>2</sub>, ..., h<sub>1024</sub>。所以我们做一次下扫（down-sweep）。
+      </div>
+
+      <h4 style="margin-top:24px;color:var(--green);">接下来的 10 轮：下扫分发左侧上下文</h4>
+      <p style="font-size:14px;color:var(--text-muted);">
+        下扫告诉每个块：「这是在你之前发生的一切。」
+        恒等函数是 <span class="mono scan-identity">I = (1, 0)</span>，意思是「这个块之前没有任何东西」。
+      </p>
+
+      <div class="scan-stage-grid">
+        <div class="scan-mini-box green">
+          <div style="font-size:12px;font-weight:700;color:var(--green);margin-bottom:8px;">第 11 轮：将 1024 拆成两个 512 的块</div>
+          <div class="scan-formula">
+            进位 [1:512] = <span class="scan-identity">I</span><br>
+            进位 [513:1024] = G[1:512]
+          </div>
+        </div>
+        <div class="scan-mini-box green">
+          <div style="font-size:12px;font-weight:700;color:var(--green);margin-bottom:8px;">第 12 轮：将每个 512 拆成 256 的块</div>
+          <div class="scan-formula">
+            进位 [1:256] = I<br>
+            进位 [257:512] = G[1:256]<br>
+            进位 [513:768] = G[1:512]<br>
+            进位 [769:1024] = G[1:768]
+          </div>
+        </div>
+      </div>
+
+      <div class="scan-round-list">
+        <div class="scan-round-row">
+          <div class="round-label">第 11 轮</div>
+          <div class="round-stat">块 = 512</div>
+          <div class="round-stat">2 个进位</div>
+          <div class="round-example">右半部分获得进位 G[1:512]</div>
+        </div>
+        <div class="scan-round-row">
+          <div class="round-label">第 12 轮</div>
+          <div class="round-stat">块 = 256</div>
+          <div class="round-stat">4 个进位</div>
+          <div class="round-example">各四分之一获得进位 I、G[1:256]、G[1:512]、G[1:768]</div>
+        </div>
+        <div class="scan-round-row">
+          <div class="round-label">第 13 轮</div>
+          <div class="round-stat">块 = 128</div>
+          <div class="round-stat">8 个进位</div>
+          <div class="round-example">每个 128-token 的块接收其左侧上下文</div>
+        </div>
+        <div class="scan-round-row">
+          <div class="round-label">...</div>
+          <div class="round-stat">...</div>
+          <div class="round-stat">...</div>
+          <div class="round-example">块大小持续减半</div>
+        </div>
+        <div class="scan-round-row highlight">
+          <div class="round-label">第 20 轮</div>
+          <div class="round-stat">块 = 1</div>
+          <div class="round-stat">1024 个前缀</div>
+          <div class="round-example">现在每个 token 都拥有它所需的精确的前文上下文</div>
+        </div>
+      </div>
+
+      <h4 style="margin-top:24px;">每个 token 最终获得的内容</h4>
+      <div class="scan-stage-grid">
+        <div class="scan-mini-box">
+          <div class="scan-formula">
+            token 1 进位 = I<br>
+            F<sub>1</sub> = f<sub>1</sub> &otimes; I = G[1:1]
+          </div>
+        </div>
+        <div class="scan-mini-box">
+          <div class="scan-formula">
+            token 2 进位 = G[1:1]<br>
+            F<sub>2</sub> = f<sub>2</sub> &otimes; G[1:1] = G[1:2]
+          </div>
+        </div>
+        <div class="scan-mini-box">
+          <div class="scan-formula">
+            token 513 进位 = G[1:512]<br>
+            F<sub>513</sub> = f<sub>513</sub> &otimes; G[1:512] = G[1:513]
+          </div>
+        </div>
+        <div class="scan-mini-box">
+          <div class="scan-formula">
+            token 1024 进位 = G[1:1023]<br>
+            F<sub>1024</sub> = f<sub>1024</sub> &otimes; G[1:1023] = G[1:1024]
+          </div>
+        </div>
+      </div>
+
+      <div class="key-insight" style="margin-bottom:0;">
+        <h4>为什么是 20 轮？</h4>
+        <p style="margin:0;">
+          <span class="mono">1024 = 2<sup>10</sup></span>。上扫需要 10 个树层级来构建
+          <span class="mono">G[1:1024]</span>。下扫需要 10 个树层级来将正确的左侧上下文分发给每个 token。
+          因此依赖深度约为 <strong>10 + 10 = 20 轮</strong>，而不是
+          <strong>1024 次从左到右的等待</strong>。
+        </p>
+      </div>
+
+      <h4 style="margin-top:28px;">这是否意味着只需要 20 次计算？</h4>
+      <div class="callout red">
+        <strong>不是。</strong>总运算量并不会变成 20 次操作。真正减少的是
+        <strong>关键路径</strong>：即必须等待前面步骤的步骤数量。
+      </div>
+
+      <div class="scan-stage-grid">
+        <div class="scan-mini-box">
+          <h4 style="color:var(--red);">顺序递推</h4>
+          <div class="scan-formula">
+            h<sub>1</sub> 等待h<sub>0</sub><br>
+            h<sub>2</sub> 等待h<sub>1</sub><br>
+            h<sub>3</sub> 等待h<sub>2</sub><br>
+            ...<br>
+            h<sub>1024</sub> 等待h<sub>1023</sub>
+          </div>
+          <div class="step-equation" style="font-size:13px;">
+            工作量：约 1024 次状态更新<br>
+            依赖深度：1024 轮
+          </div>
+        </div>
+        <div class="scan-mini-box green">
+          <h4 style="color:var(--green);">并行扫描</h4>
+          <div class="scan-formula">
+            第 1 轮：512 次对合并同时进行<br>
+            第 2 轮：256 次块合并同时进行<br>
+            ...<br>
+            第 10 轮：1 次整个序列的合并<br>
+            第 11-20 轮：分发前缀
+          </div>
+          <div class="step-equation" style="font-size:13px;">
+            工作量：仍为 O(1024)，外加扫描开销<br>
+            依赖深度：约 20 轮
+          </div>
+        </div>
+      </div>
+
+      <p style="font-size:14px;color:var(--text-muted);margin-top:12px;">
+        因此，扫描甚至可能比普通的从左到右循环做<em>更多</em>的原始合并簿记工作。
+        它能取胜，是因为 GPU 讨厌长的依赖链，而喜欢同时进行大量独立操作。
+      </p>
+
+      <h4 style="margin-top:28px;">预填充（Prefill）对比：Mamba 有扫描 vs 无扫描</h4>
+      <p style="font-size:14px;color:var(--text-muted);">
+        这对<strong>预填充（prefill）</strong>很重要：在生成开始之前处理整个 prompt。
+        在单 token 解码期间，Mamba 只更新一次状态，因此扫描在那里并不是主要技巧。
+        在预填充期间，扫描让 prompt 的 token 以并行批次的方式运行。
+      </p>
+
+      <div style="overflow-x:auto;margin-top:16px;">
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <tr style="background:#fff;border-bottom:2px solid var(--border);">
+            <th style="text-align:left;padding:10px 12px;">针对 N=1024 的预填充方法</th>
+            <th style="text-align:right;padding:10px 12px;">原始递推工作量</th>
+            <th style="text-align:right;padding:10px 12px;">顺序等待次数</th>
+            <th style="text-align:left;padding:10px 12px;">墙钟时间直觉</th>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border);">
+            <td style="padding:10px 12px;font-weight:600;color:var(--red);">无并行扫描</td>
+            <td style="padding:10px 12px;text-align:right;" class="mono">约 1024 次更新</td>
+            <td style="padding:10px 12px;text-align:right;" class="mono">1024</td>
+            <td style="padding:10px 12px;">必须沿着序列逐个 token 推进。</td>
+          </tr>
+          <tr>
+            <td style="padding:10px 12px;font-weight:600;color:var(--green);">有并行扫描</td>
+            <td style="padding:10px 12px;text-align:right;" class="mono">O(1024) 次合并</td>
+            <td style="padding:10px 12px;text-align:right;" class="mono">约 20</td>
+            <td style="padding:10px 12px;">许多合并同时发生；等待链是树的高度。</td>
+          </tr>
+        </table>
+      </div>
+
+      <div class="key-insight" style="margin-bottom:0;">
+        <h4>有用的速度直觉</h4>
+        <p style="margin:0;">
+          如果递推依赖是整个瓶颈，且 GPU 有足够的并行工作，
+          那么对 1024 个 token 而言，依赖深度的改善大约为
+          <span class="mono">1024 / 20 &asymp; 51&times;</span>。实际的端到端预填充加速会更小，因为
+          投影、卷积、内存搬运、kernel 开销和硬件限制也同样重要。
+        </p>
+      </div>
+    </div>
+
+    <div class="callout fade-in">
+      <strong>底层心智模型：</strong>Mamba 不能使用固定的卷积核，因为每个 token 都会创建
+      自己的 <span class="mono">a<sub>t</sub></span> 和 <span class="mono">b<sub>t</sub></span>。但每个 token 仍然会创建一个可复合的仿射函数。
+      并行扫描把「逐个执行 N 步递推」变成了「在一棵树中复合许多小函数，然后读出每个前缀」。
+    </div>
+  </div>
+</section>
+
+<!-- CHAPTER 9 -->
+<section id="ch9">
+  <div class="container">
+    <div class="fade-in">
+      <div class="chapter-label">第 9 章</div>
+      <h2>步骤 7 —— 门控（Gating，输出过滤器）</h2>
+      <p>还记得我们最开始分离出去的 z 路径吗？它一直在耐心等待。现在它经过 SiLU 变成一个门控（gate），然后我们将其与 SSM 输出逐元素相乘。</p>
+    </div>
+
+    <div class="card fade-in">
+      <h4>z 分支：通过 SiLU 激活生成门控值</h4>
+      <div style="display:flex;align-items:center;gap:24px;justify-content:center;margin:20px 0;flex-wrap:wrap;">
+        <div style="text-align:center;">
+          <div style="font-size:12px;font-weight:600;color:var(--green);margin-bottom:6px;">z（原始）</div>
+          <div style="display:flex;gap:4px;">
+            <div class="matrix-cell" style="background:#ecfdf5;color:#059669;">0.22</div>
+            <div class="matrix-cell" style="background:#ecfdf5;color:#059669;">0.63</div>
+            <div class="matrix-cell" style="background:#ecfdf5;color:#059669;">0.09</div>
+            <div class="matrix-cell" style="background:#ecfdf5;color:#059669;">0.23</div>
+          </div>
+        </div>
+        <div style="font-size:20px;color:var(--green);">&rarr; SiLU &rarr;</div>
+        <div style="text-align:center;">
+          <div style="font-size:12px;font-weight:600;color:var(--green);margin-bottom:6px;">门控（gate）</div>
+          <div style="display:flex;gap:4px;">
+            <div class="matrix-cell" style="background:#d1fae5;color:#059669;font-weight:600;">0.12</div>
+            <div class="matrix-cell" style="background:#d1fae5;color:#059669;font-weight:600;">0.41</div>
+            <div class="matrix-cell" style="background:#d1fae5;color:#059669;font-weight:600;">0.05</div>
+            <div class="matrix-cell" style="background:#d1fae5;color:#059669;font-weight:600;">0.13</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card fade-in">
+      <h4>逐元素相乘：y<sub>ssm</sub> &otimes; gate</h4>
+      <p style="font-size:14px;color:var(--text-muted);">每个 SSM 通道输出都由其对应的门控值进行缩放。门控决定每个通道的信号有多少可以通过。</p>
+
+      <div style="margin-top:20px;">
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;">
+          <div style="text-align:center;">
+            <div style="font-size:11px;font-weight:600;color:var(--orange);margin-bottom:4px;">y<sub>ssm</sub>[0]</div>
+            <div style="background:#fffbeb;padding:8px;border-radius:8px;font-family:'JetBrains Mono',monospace;font-weight:600;">0.010</div>
+            <div style="margin:4px 0;font-size:18px;color:var(--purple);">&times;</div>
+            <div style="font-size:11px;font-weight:600;color:var(--green);margin-bottom:4px;">gate[0]</div>
+            <div style="background:#ecfdf5;padding:8px;border-radius:8px;font-family:'JetBrains Mono',monospace;font-weight:600;">0.12</div>
+            <div style="border-top:2px solid var(--border);margin-top:8px;padding-top:8px;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:14px;">0.0012</div>
+          </div>
+          <div style="text-align:center;">
+            <div style="font-size:11px;font-weight:600;color:var(--orange);margin-bottom:4px;">y<sub>ssm</sub>[1]</div>
+            <div style="background:#fffbeb;padding:8px;border-radius:8px;font-family:'JetBrains Mono',monospace;font-weight:600;">0.048</div>
+            <div style="margin:4px 0;font-size:18px;color:var(--purple);">&times;</div>
+            <div style="font-size:11px;font-weight:600;color:var(--green);margin-bottom:4px;">gate[1]</div>
+            <div style="background:#ecfdf5;padding:8px;border-radius:8px;font-family:'JetBrains Mono',monospace;font-weight:600;">0.41</div>
+            <div style="border-top:2px solid var(--border);margin-top:8px;padding-top:8px;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:14px;">0.0197</div>
+          </div>
+          <div style="text-align:center;">
+            <div style="font-size:11px;font-weight:600;color:var(--orange);margin-bottom:4px;">y<sub>ssm</sub>[2]</div>
+            <div style="background:#fffbeb;padding:8px;border-radius:8px;font-family:'JetBrains Mono',monospace;font-weight:600;">0.024</div>
+            <div style="margin:4px 0;font-size:18px;color:var(--purple);">&times;</div>
+            <div style="font-size:11px;font-weight:600;color:var(--green);margin-bottom:4px;">gate[2]</div>
+            <div style="background:#ecfdf5;padding:8px;border-radius:8px;font-family:'JetBrains Mono',monospace;font-weight:600;">0.05</div>
+            <div style="border-top:2px solid var(--border);margin-top:8px;padding-top:8px;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:14px;">0.0012</div>
+          </div>
+          <div style="text-align:center;">
+            <div style="font-size:11px;font-weight:600;color:var(--orange);margin-bottom:4px;">y<sub>ssm</sub>[3]</div>
+            <div style="background:#fffbeb;padding:8px;border-radius:8px;font-family:'JetBrains Mono',monospace;font-weight:600;">0.017</div>
+            <div style="margin:4px 0;font-size:18px;color:var(--purple);">&times;</div>
+            <div style="font-size:11px;font-weight:600;color:var(--green);margin-bottom:4px;">gate[3]</div>
+            <div style="background:#ecfdf5;padding:8px;border-radius:8px;font-family:'JetBrains Mono',monospace;font-weight:600;">0.13</div>
+            <div style="border-top:2px solid var(--border);margin-top:8px;padding-top:8px;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:14px;">0.0022</div>
+          </div>
+        </div>
+
+        <div style="margin-top:16px;">
+          <span class="mono" style="font-size:14px;font-weight:600;">门控输出（gated output）= [0.0012, 0.0197, 0.0012, 0.0022]</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout fade-in">
+      <strong>门控控制着哪些 SSM 通道能够通过。</strong>就像 LSTM 的输出门一样，这是学习到的输出过滤。门控可以放大信息量大的通道（gate &asymp; 1），并抑制有噪声的通道（gate &asymp; 0），让模型对自己的输出进行精细控制。
+    </div>
+  </div>
+</section>
+
+<!-- CHAPTER 10 -->
+<section id="ch10">
+  <div class="container">
+    <div class="fade-in">
+      <div class="chapter-label">第 10 章</div>
+      <h2>步骤 8 —— 输出投影 + 残差</h2>
+      <p>门控输出（维度 E）被投影回模型维度 d，然后通过残差连接加回原始输入。</p>
+    </div>
+
+    <div class="card fade-in">
+      <h4>线性投影（E &rarr; d）</h4>
+      <div style="display:flex;align-items:center;gap:16px;justify-content:center;margin:16px 0;flex-wrap:wrap;">
+        <div style="text-align:center;">
+          <div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:4px;">门控（E=4）</div>
+          <div style="display:flex;gap:3px;">
+            <div class="matrix-cell output" style="font-size:11px;">0.001</div>
+            <div class="matrix-cell output" style="font-size:11px;">0.020</div>
+            <div class="matrix-cell output" style="font-size:11px;">0.001</div>
+            <div class="matrix-cell output" style="font-size:11px;">0.002</div>
+          </div>
+        </div>
+        <div class="op-symbol">&times;</div>
+        <div style="text-align:center;">
+          <div style="font-size:11px;font-weight:600;color:var(--purple);margin-bottom:4px;">W<sub>out</sub> (4&times;4)</div>
+          <div class="arch-box purple" style="padding:16px 24px;">4&times;4 矩阵</div>
+        </div>
+        <div class="op-symbol">=</div>
+        <div style="text-align:center;">
+          <div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:4px;">mamba_out (d=4)</div>
+          <div style="display:flex;gap:3px;">
+            <div class="matrix-cell output" style="font-size:11px;">0.001</div>
+            <div class="matrix-cell output" style="font-size:11px;">0.005</div>
+            <div class="matrix-cell output" style="font-size:11px;">0.002</div>
+            <div class="matrix-cell output" style="font-size:11px;">0.002</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card fade-in" style="margin-top:16px;">
+      <h4>残差连接：output = x + mamba_output</h4>
+      <div style="display:flex;align-items:center;gap:16px;justify-content:center;margin:20px 0;flex-wrap:wrap;">
+        <div style="text-align:center;">
+          <div style="font-size:12px;font-weight:600;color:var(--blue);margin-bottom:6px;">原始 x</div>
+          <div style="display:flex;gap:4px;">
+            <div class="matrix-cell input" style="width:64px;font-size:15px;font-weight:700;">0.700</div>
+            <div class="matrix-cell input" style="width:64px;font-size:15px;font-weight:700;">0.200</div>
+            <div class="matrix-cell input" style="width:64px;font-size:15px;font-weight:700;">0.300</div>
+            <div class="matrix-cell input" style="width:64px;font-size:15px;font-weight:700;">0.600</div>
+          </div>
+        </div>
+
+        <div style="font-size:28px;font-weight:700;color:var(--purple);">+</div>
+
+        <div style="text-align:center;">
+          <div style="font-size:12px;font-weight:600;color:var(--green);margin-bottom:6px;">Mamba 输出</div>
+          <div style="display:flex;gap:4px;">
+            <div class="matrix-cell output" style="width:64px;font-size:15px;">0.001</div>
+            <div class="matrix-cell output" style="width:64px;font-size:15px;">0.005</div>
+            <div class="matrix-cell output" style="width:64px;font-size:15px;">0.002</div>
+            <div class="matrix-cell output" style="width:64px;font-size:15px;">0.002</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="text-align:center;margin-top:16px;">
+        <div style="font-size:24px;color:var(--purple);margin-bottom:12px;">&darr;</div>
+        <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:8px;">最终输出</div>
+        <div style="display:flex;gap:6px;justify-content:center;">
+          <div style="background:linear-gradient(135deg,var(--purple),var(--blue));color:#fff;padding:10px 16px;border-radius:10px;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:17px;">0.7008</div>
+          <div style="background:linear-gradient(135deg,var(--purple),var(--blue));color:#fff;padding:10px 16px;border-radius:10px;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:17px;">0.2048</div>
+          <div style="background:linear-gradient(135deg,var(--purple),var(--blue));color:#fff;padding:10px 16px;border-radius:10px;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:17px;">0.3024</div>
+          <div style="background:linear-gradient(135deg,var(--purple),var(--blue));color:#fff;padding:10px 16px;border-radius:10px;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:17px;">0.6017</div>
+        </div>
+        <div class="dim-tag" style="margin-top:8px;">形状：(d=4,) —— 与输入相同</div>
+      </div>
+    </div>
+
+    <!-- COMPLETE FLOW SUMMARY -->
+    <div class="card fade-in" style="margin-top:24px;background:linear-gradient(135deg,#faf9f7,#f0ecff);">
+      <h4 style="text-align:center;margin-bottom:20px;">完整数值追踪：输入 &rarr; 输出</h4>
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-family:'JetBrains Mono',monospace;font-size:12px;">
+          <tr style="background:#fff;">
+            <td style="padding:8px 12px;border:1px solid var(--border);font-weight:600;font-family:'Inter','PingFang SC','Microsoft YaHei',sans-serif;font-size:13px;">输入 x</td>
+            <td style="padding:8px 12px;border:1px solid var(--border);">[0.700, 0.200, 0.300, 0.600]</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border:1px solid var(--border);font-weight:600;font-family:'Inter','PingFang SC','Microsoft YaHei',sans-serif;font-size:13px;">x'（拆分后）</td>
+            <td style="padding:8px 12px;border:1px solid var(--border);color:var(--blue);">[0.410, 0.160, 0.170, 0.530]</td>
+          </tr>
+          <tr style="background:#fff;">
+            <td style="padding:8px 12px;border:1px solid var(--border);font-weight:600;font-family:'Inter','PingFang SC','Microsoft YaHei',sans-serif;font-size:13px;">Conv1D 之后</td>
+            <td style="padding:8px 12px;border:1px solid var(--border);color:var(--blue);">[0.377, 0.136, 0.110, 0.504]</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border:1px solid var(--border);font-weight:600;font-family:'Inter','PingFang SC','Microsoft YaHei',sans-serif;font-size:13px;">SiLU 之后（x'<sub>act</sub>）</td>
+            <td style="padding:8px 12px;border:1px solid var(--border);color:var(--green);">[0.209, 0.207, 0.068, 0.295]</td>
+          </tr>
+          <tr style="background:#fff;">
+            <td style="padding:8px 12px;border:1px solid var(--border);font-weight:600;font-family:'Inter','PingFang SC','Microsoft YaHei',sans-serif;font-size:13px;">B<sub>t</sub>, C<sub>t</sub>, &Delta;<sub>t</sub></td>
+            <td style="padding:8px 12px;border:1px solid var(--border);color:var(--orange);">B=[0.135,0.135] C=[0.141,0.193] &Delta;=0.079</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border:1px solid var(--border);font-weight:600;font-family:'Inter','PingFang SC','Microsoft YaHei',sans-serif;font-size:13px;">A&#x0304;, B&#x0304;</td>
+            <td style="padding:8px 12px;border:1px solid var(--border);color:var(--purple);">A&#x0304;=[0.924,0.961] B&#x0304;=[0.011,0.011]</td>
+          </tr>
+          <tr style="background:#fff;">
+            <td style="padding:8px 12px;border:1px solid var(--border);font-weight:600;font-family:'Inter','PingFang SC','Microsoft YaHei',sans-serif;font-size:13px;">SSM 输出</td>
+            <td style="padding:8px 12px;border:1px solid var(--border);color:var(--orange);">[0.010, 0.048, 0.024, 0.017]</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border:1px solid var(--border);font-weight:600;font-family:'Inter','PingFang SC','Microsoft YaHei',sans-serif;font-size:13px;">门控之后</td>
+            <td style="padding:8px 12px;border:1px solid var(--border);color:var(--green);">[0.0012, 0.0197, 0.0012, 0.0022]</td>
+          </tr>
+          <tr style="background:#fff;">
+            <td style="padding:8px 12px;border:1px solid var(--border);font-weight:700;font-family:'Inter','PingFang SC','Microsoft YaHei',sans-serif;font-size:13px;">最终输出</td>
+            <td style="padding:8px 12px;border:1px solid var(--border);font-weight:700;">[0.7008, 0.2048, 0.3024, 0.6017]</td>
+          </tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- INFERENCE STATE & MEMORY -->
+<section id="inference-state">
+  <div class="container">
+    <div class="fade-in">
+      <div class="chapter-label">第 9 章</div>
+      <h2 class="gradient-text">缓存了什么——以及为什么 Mamba 永不增长</h2>
+      <p style="font-size:17px;color:var(--text-muted);max-width:660px;line-height:1.7;">
+        在推理期间，每个模型都必须记住一些关于已经见过的 token 的信息。
+        问题是：<strong style="color:var(--text);">需要记多少？</strong>这正是 Mamba 与 Transformer 根本不同的地方。
+      </p>
+    </div>
+
+    <!-- TRANSFORMER KV CACHE -->
+    <div class="fade-in">
+      <h3 style="margin-top:36px;">Transformer 的问题：KV Cache 无限增长</h3>
+      <p>
+        在 Transformer 中，自回归生成期间，每个新 token 都需要关注
+        <strong>所有先前的 token</strong>。为避免重新计算过去 token 的 Key 和 Value，
+        它们被存储在一个 <strong>KV cache</strong> 中。
+      </p>
+    </div>
+
+    <div class="card fade-in">
+      <h4>Transformer 的 KV Cache —— 每层</h4>
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:8px 16px;font-size:14px;margin:12px 0;">
+        <span class="mono" style="color:var(--purple);font-weight:600;">存储：</span>
+        <span>到目前为止见过的<strong>每个 token</strong> 的 K 向量 + V 向量</span>
+        <span class="mono" style="color:var(--purple);font-weight:600;">形状：</span>
+        <span class="mono">2 &times; N &times; d</span>
+        <span class="mono" style="color:var(--purple);font-weight:600;">当 N=100K 时：</span>
+        <span class="mono" style="color:var(--red);">2 &times; 100,000 &times; 2,048 &times; 2 字节 = 每层 781 MB</span>
+      </div>
+
+      <!-- Visual: growing bars -->
+      <div style="margin-top:20px;">
+        <div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:8px;">缓存大小随 token 数量增加：</div>
+        <div class="value-bar">
+          <div class="label" style="min-width:80px;">N=10</div>
+          <div class="bar" style="width:2%;background:var(--orange);">极小</div>
+        </div>
+        <div class="value-bar">
+          <div class="label" style="min-width:80px;">N=1K</div>
+          <div class="bar" style="width:10%;background:var(--orange);">16 KB</div>
+        </div>
+        <div class="value-bar">
+          <div class="label" style="min-width:80px;">N=10K</div>
+          <div class="bar" style="width:30%;background:var(--red);">160 KB</div>
+        </div>
+        <div class="value-bar">
+          <div class="label" style="min-width:80px;">N=100K</div>
+          <div class="bar" style="width:70%;background:var(--red);">781 MB</div>
+        </div>
+        <div class="value-bar">
+          <div class="label" style="min-width:80px;">N=1M</div>
+          <div class="bar" style="width:100%;background:#991b1b;">7.8 GB &#128165;</div>
+        </div>
+      </div>
+      <p style="font-size:13px;color:var(--text-muted);margin:8px 0 0;">KV cache 随序列长度<strong>线性</strong>增长。在长上下文中，它可能超出 GPU 内存。</p>
+    </div>
+
+    <!-- MAMBA STATE -->
+    <div class="fade-in">
+      <h3 style="margin-top:36px;">Mamba 的状态：固定大小，无论序列多长</h3>
+      <p>
+        Mamba 没有 KV cache。相反，它维护一个<strong>固定大小的隐藏状态</strong>，
+        该状态会随着每个 token 被<em>更新</em>——而不是追加。处理完一个 token 后，
+        旧状态就消失了，只剩下更新后的状态。以下是确切存储的内容：
+      </p>
+    </div>
+
+    <div class="card fade-in" style="border-top:3px solid var(--green);">
+      <h4 style="color:var(--green);">Mamba 推理状态 —— 每层</h4>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:16px 0;">
+        <!-- SSM state -->
+        <div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:12px;padding:20px;">
+          <div style="font-size:13px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">1. SSM 隐藏状态</div>
+          <div class="mono" style="font-size:15px;font-weight:700;margin-bottom:8px;">h &isin; &reals;<sup>E &times; n</sup></div>
+          <p style="font-size:13px;margin:0;">
+            <strong>E</strong> 个扩展维度中的每一个都维护自己的 <strong>n</strong> 维状态向量。
+            这个状态概括了<em>所有过去的 token</em>——就像一段被压缩的记忆。
+          </p>
+          <div style="margin-top:12px;padding-top:12px;border-top:1px solid #a7f3d0;">
+            <div class="mono" style="font-size:12px;color:var(--text-muted);">玩具：E=4, n=2 &rarr; <strong>8 个数字</strong></div>
+            <div class="mono" style="font-size:12px;color:var(--text-muted);">真实：E=4096, n=16 &rarr; <strong>65,536 个数字</strong></div>
+          </div>
+        </div>
+
+        <!-- Conv buffer -->
+        <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:20px;">
+          <div style="font-size:13px;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">2. Conv1D 缓冲区</div>
+          <div class="mono" style="font-size:15px;font-weight:700;margin-bottom:8px;">buf &isin; &reals;<sup>E &times; (k-1)</sup></div>
+          <p style="font-size:13px;margin:0;">
+            Conv1D 需要看到前 <strong>k-1</strong> 个 token 的 x' 值（其中 k 是卷积核大小，通常为 4）。
+            这是一个很小的循环缓冲区。
+          </p>
+          <div style="margin-top:12px;padding-top:12px;border-top:1px solid #bfdbfe;">
+            <div class="mono" style="font-size:12px;color:var(--text-muted);">玩具：E=4, k=2 &rarr; <strong>4 个数字</strong></div>
+            <div class="mono" style="font-size:12px;color:var(--text-muted);">真实：E=4096, k=4 &rarr; <strong>12,288 个数字</strong></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Total -->
+      <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:12px;padding:16px 20px;margin-top:12px;">
+        <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;">
+          <span style="font-size:14px;font-weight:700;color:var(--green);">每层总状态：</span>
+          <span class="mono" style="font-size:14px;">E &times; n + E &times; (k &minus; 1)</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;">
+          <div class="mono" style="font-size:13px;">玩具：8 + 4 = <strong>12 个数字</strong></div>
+          <div class="mono" style="font-size:13px;">真实：65,536 + 12,288 = <strong>77,824 个数字</strong></div>
+        </div>
+        <div class="mono" style="font-size:13px;margin-top:4px;">在 FP16 下：77,824 &times; 2 字节 = <strong style="color:var(--green);">每层 156 KB</strong></div>
+      </div>
+    </div>
+
+    <div class="callout green fade-in">
+      <strong>关键点：</strong>这个状态是<strong>固定的</strong>。Token 1 和 token 1,000,000 使用
+      <em>完全相同的</em>状态内存量。状态不会增长——它会被<em>原地更新</em>。
+      旧信息通过递推被压缩进状态中，而不是原样存储。
+    </div>
+
+    <!-- WHY E×n AND NOT SOMETHING ELSE -->
+    <div class="fade-in">
+      <h3 style="margin-top:36px;">为什么是 E &times; n？理解状态的形状</h3>
+      <p>
+        你可能会问：为什么状态是 E &times; n，而不是 d &times; d 或 N &times; d？
+        让我们追溯每个维度的来源：
+      </p>
+    </div>
+
+    <div class="card fade-in">
+      <div style="display:grid;grid-template-columns:auto auto 1fr;gap:8px 16px;font-size:14px;align-items:baseline;">
+        <span class="mono" style="color:var(--purple);font-weight:700;">E</span>
+        <span style="font-weight:600;">（扩展维度）</span>
+        <span>输入 x（维度 d）被向上投影到维度 E = 2d。SSM 运行 E 份<em>独立的</em>递推副本——每个扩展维度一份。每份副本都有自己的状态。</span>
+
+        <span class="mono" style="color:var(--blue);font-weight:700;">n</span>
+        <span style="font-weight:600;">（状态维度）</span>
+        <span>每份独立的 SSM 副本维护一个 n 维状态向量。在真实 Mamba 中，n 通常为 <strong>16</strong>。这是每个通道的「记忆容量」——即每个通道能同时记住多少种不同的信息。</span>
+      </div>
+
+      <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);">
+        <div style="font-size:13px;font-weight:600;color:var(--text-muted);margin-bottom:8px;">可视化：状态是 E 个独立的 n 维向量</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <div style="background:#f0ecff;border:1px solid #d4ccff;border-radius:8px;padding:8px 12px;text-align:center;min-width:80px;">
+            <div style="font-size:10px;font-weight:600;color:var(--purple);margin-bottom:4px;">通道 0</div>
+            <div class="mono" style="font-size:11px;">h &isin; &reals;<sup>n</sup></div>
+            <div class="mono" style="font-size:10px;color:var(--text-muted);">[0.46, -0.29]</div>
+          </div>
+          <div style="background:#f0ecff;border:1px solid #d4ccff;border-radius:8px;padding:8px 12px;text-align:center;min-width:80px;">
+            <div style="font-size:10px;font-weight:600;color:var(--purple);margin-bottom:4px;">通道 1</div>
+            <div class="mono" style="font-size:11px;">h &isin; &reals;<sup>n</sup></div>
+            <div class="mono" style="font-size:10px;color:var(--text-muted);">[0.31, 0.18]</div>
+          </div>
+          <div style="background:#f0ecff;border:1px solid #d4ccff;border-radius:8px;padding:8px 12px;text-align:center;min-width:80px;">
+            <div style="font-size:10px;font-weight:600;color:var(--purple);margin-bottom:4px;">通道 2</div>
+            <div class="mono" style="font-size:11px;">h &isin; &reals;<sup>n</sup></div>
+            <div class="mono" style="font-size:10px;color:var(--text-muted);">[-0.12, 0.54]</div>
+          </div>
+          <div style="background:#f0ecff;border:1px solid #d4ccff;border-radius:8px;padding:8px 12px;text-align:center;min-width:80px;">
+            <div style="font-size:10px;font-weight:600;color:var(--purple);margin-bottom:4px;">通道 3</div>
+            <div class="mono" style="font-size:11px;">h &isin; &reals;<sup>n</sup></div>
+            <div class="mono" style="font-size:10px;color:var(--text-muted);">[0.73, -0.05]</div>
+          </div>
+          <div style="color:var(--text-muted);display:flex;align-items:center;font-size:14px;padding:0 8px;">&hellip;</div>
+          <div style="background:#f0ecff;border:1px solid #d4ccff;border-radius:8px;padding:8px 12px;text-align:center;min-width:80px;">
+            <div style="font-size:10px;font-weight:600;color:var(--purple);margin-bottom:4px;">通道 E-1</div>
+            <div class="mono" style="font-size:11px;">h &isin; &reals;<sup>n</sup></div>
+            <div class="mono" style="font-size:10px;color:var(--text-muted);">[0.22, 0.67]</div>
+          </div>
+        </div>
+        <p style="font-size:13px;color:var(--text-muted);margin:12px 0 0;">
+          E = 4096 个通道，每个通道有 n = 16 个状态值。总计：4096 &times; 16 = 65,536 个数字。
+          <strong>整个网格就是 SSM 对整个序列的「记忆」。</strong>
+        </p>
+      </div>
+    </div>
+
+    <!-- FLOPs PER TOKEN -->
+    <div class="fade-in">
+      <h3 style="margin-top:36px;">推理期间每个 Token 的 FLOPs</h3>
+      <p>
+        在解码（生成一个新 token）期间，Mamba 模块中的每个操作都会运行一次。
+        让我们数一数 FLOPs：
+      </p>
+    </div>
+
+    <div class="card fade-in">
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:14px;">
+          <thead>
+            <tr style="border-bottom:2px solid var(--border);">
+              <th style="text-align:left;padding:8px 12px;font-weight:700;">操作</th>
+              <th style="text-align:left;padding:8px 12px;font-weight:700;">计算</th>
+              <th style="text-align:right;padding:8px 12px;font-weight:700;">FLOPs</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:8px 12px;">线性投影（d &rarr; 2E）</td>
+              <td style="padding:8px 12px;" class="mono">x @ W<sub>xz</sub></td>
+              <td style="padding:8px 12px;text-align:right;" class="mono">4dE</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:8px 12px;">Conv1D（深度可分离，k 个抽头）</td>
+              <td style="padding:8px 12px;" class="mono">每个通道 k 次乘法</td>
+              <td style="padding:8px 12px;text-align:right;" class="mono">2Ek</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:8px 12px;">SiLU（x' 路径）</td>
+              <td style="padding:8px 12px;" class="mono">x &times; sigmoid(x)</td>
+              <td style="padding:8px 12px;text-align:right;" class="mono">~4E</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:8px 12px;">计算 B<sub>t</sub></td>
+              <td style="padding:8px 12px;" class="mono">x'<sub>act</sub> @ W<sub>B</sub></td>
+              <td style="padding:8px 12px;text-align:right;" class="mono">2En</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:8px 12px;">计算 C<sub>t</sub></td>
+              <td style="padding:8px 12px;" class="mono">x'<sub>act</sub> @ W<sub>C</sub></td>
+              <td style="padding:8px 12px;text-align:right;" class="mono">2En</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:8px 12px;">计算 &Delta;<sub>t</sub></td>
+              <td style="padding:8px 12px;" class="mono">x'<sub>act</sub> &middot; w<sub>&Delta;</sub> + softplus</td>
+              <td style="padding:8px 12px;text-align:right;" class="mono">2E</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border);background:#fffbeb;">
+              <td style="padding:8px 12px;font-weight:600;">SSM 递推</td>
+              <td style="padding:8px 12px;" class="mono">h = A&#772; &times; h + B&#772; &times; x</td>
+              <td style="padding:8px 12px;text-align:right;font-weight:600;" class="mono" style="color:var(--orange);">4En</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border);background:#fffbeb;">
+              <td style="padding:8px 12px;font-weight:600;">SSM 读出</td>
+              <td style="padding:8px 12px;" class="mono">y = C<sub>t</sub> &middot; h</td>
+              <td style="padding:8px 12px;text-align:right;font-weight:600;" class="mono">2En</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:8px 12px;">门控</td>
+              <td style="padding:8px 12px;" class="mono">y<sub>ssm</sub> &odot; SiLU(z)</td>
+              <td style="padding:8px 12px;text-align:right;" class="mono">~5E</td>
+            </tr>
+            <tr style="border-bottom:2px solid var(--border);">
+              <td style="padding:8px 12px;">线性投影（E &rarr; d）</td>
+              <td style="padding:8px 12px;" class="mono">y<sub>gated</sub> @ W<sub>out</sub></td>
+              <td style="padding:8px 12px;text-align:right;" class="mono">2Ed</td>
+            </tr>
+            <tr style="background:#f0fdf4;">
+              <td style="padding:10px 12px;font-weight:700;" colspan="2">每个 token 总计（主导项）</td>
+              <td style="padding:10px 12px;text-align:right;font-weight:700;" class="mono" style="color:var(--green);">~6Ed + 10En</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">
+        <div style="font-size:13px;font-weight:600;color:var(--text-muted);margin-bottom:8px;">使用真实 Mamba 数值（d=2048, E=4096, n=16, k=4）：</div>
+        <div class="mono" style="font-size:14px;line-height:2;">
+          线性投影：6 &times; 4096 &times; 2048 = <strong>50.3M FLOPs</strong><br>
+          SSM 运算：10 &times; 4096 &times; 16 = <strong>655K FLOPs</strong><br>
+          总计：<strong style="color:var(--green);">&asymp; 每个 token 每层 51M FLOPs</strong>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout orange fade-in">
+      <strong>注意：</strong>SSM 递推本身（即 h = A&#772;&middot;h + B&#772;&middot;x 这一步）只花费 <strong>4En 个 FLOPs</strong>。
+      主导成本是线性投影（6Ed）。状态更新很廉价——占主导的是进出投影。而且关键是：<strong>这些都不依赖于 N</strong>（序列长度）。
+      Token 1 的成本与 token 1,000,000 完全相同。
+    </div>
+
+    <!-- THE BIG COMPARISON -->
+    <div class="fade-in">
+      <h3 style="margin-top:36px;">规模化的完整对比</h3>
+    </div>
+
+    <div class="card fade-in" style="padding:0;overflow:hidden;">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead>
+          <tr style="background:var(--bg-alt);">
+            <th style="text-align:left;padding:12px 16px;font-weight:700;border-bottom:2px solid var(--border);">属性</th>
+            <th style="text-align:center;padding:12px 16px;font-weight:700;border-bottom:2px solid var(--border);color:var(--red);">Transformer（全注意力）</th>
+            <th style="text-align:center;padding:12px 16px;font-weight:700;border-bottom:2px solid var(--border);color:var(--orange);">Transformer（滑动窗口 W=4K）</th>
+            <th style="text-align:center;padding:12px 16px;font-weight:700;border-bottom:2px solid var(--border);color:var(--green);">Mamba</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="border-bottom:1px solid var(--border);">
+            <td style="padding:10px 16px;font-weight:600;">每层状态</td>
+            <td style="padding:10px 16px;text-align:center;" class="mono"><span style="color:var(--red);">2Nd</span>（增长！）</td>
+            <td style="padding:10px 16px;text-align:center;" class="mono">2Wd（固定）</td>
+            <td style="padding:10px 16px;text-align:center;" class="mono"><span style="color:var(--green);">En + E(k&minus;1)</span>（固定）</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border);">
+            <td style="padding:10px 16px;font-weight:600;">解码 FLOPs/token</td>
+            <td style="padding:10px 16px;text-align:center;" class="mono"><span style="color:var(--red);">O(Nd)</span> 增长！</td>
+            <td style="padding:10px 16px;text-align:center;" class="mono">O(Wd) 固定</td>
+            <td style="padding:10px 16px;text-align:center;" class="mono"><span style="color:var(--green);">O(Ed + En)</span> 固定</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border);background:#fef2f2;">
+            <td style="padding:10px 16px;font-weight:600;">N=100K 时的状态</td>
+            <td style="padding:10px 16px;text-align:center;" class="mono" style="font-weight:700;color:var(--red);">781 MB</td>
+            <td style="padding:10px 16px;text-align:center;" class="mono">32 MB</td>
+            <td style="padding:10px 16px;text-align:center;" class="mono" style="font-weight:700;color:var(--green);">156 KB</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border);">
+            <td style="padding:10px 16px;font-weight:600;">N=100K 时的 FLOPs<br><span style="font-size:11px;color:var(--text-muted);">（d=2048）</span></td>
+            <td style="padding:10px 16px;text-align:center;" class="mono">~410M</td>
+            <td style="padding:10px 16px;text-align:center;" class="mono">~16.8M</td>
+            <td style="padding:10px 16px;text-align:center;" class="mono">~34M</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border);">
+            <td style="padding:10px 16px;font-weight:600;">是否依赖 N？</td>
+            <td style="padding:10px 16px;text-align:center;font-weight:700;color:var(--red);">是 —— 线性增长</td>
+            <td style="padding:10px 16px;text-align:center;font-weight:600;color:var(--green);">否（以 W 为上限）</td>
+            <td style="padding:10px 16px;text-align:center;font-weight:600;color:var(--green);">否（始终固定）</td>
+          </tr>
+          <tr>
+            <td style="padding:10px 16px;font-weight:600;">能否处理 N=1M？</td>
+            <td style="padding:10px 16px;text-align:center;color:var(--red);font-weight:700;">内存溢出（OOM）&#128165;</td>
+            <td style="padding:10px 16px;text-align:center;">是（但召回有限）</td>
+            <td style="padding:10px 16px;text-align:center;color:var(--green);font-weight:700;">是 &#10003;</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- WHY NO N² -->
+    <div class="fade-in">
+      <h3 style="margin-top:36px;">为什么任何地方都没有 N&sup2;</h3>
+      <p>
+        你可能预料到某个地方会出现 O(N&sup2;)——毕竟 Transformer 就有。但 Mamba
+        没有<strong>注意力机制</strong>，因此也没有 <strong>N &times; N 的相似度矩阵</strong>。
+        以下是每个模型在解码期间计算的内容：
+      </p>
+    </div>
+
+    <div class="fade-in comparison" style="margin-top:16px;">
+      <div class="card" style="border-top:3px solid var(--red);">
+        <h4 style="color:var(--red);">Transformer 解码</h4>
+        <p style="font-size:13px;">
+          新的查询 q 关注 <strong>所有 N 个已缓存的 key</strong>：<br>
+          <span class="mono">scores = q &middot; K<sup>T</sup></span> &rarr; <span class="mono" style="color:var(--red);">每个 token O(Nd)</span><br>
+          <span class="mono">attn = softmax(scores) &middot; V</span> &rarr; <span class="mono" style="color:var(--red);">O(Nd)</span><br><br>
+          成本随 N 增加而<strong>增长</strong>，因为查询必须「查看」每一个过去的 key。
+        </p>
+      </div>
+      <div class="card" style="border-top:3px solid var(--green);">
+        <h4 style="color:var(--green);">Mamba 解码</h4>
+        <p style="font-size:13px;">
+          新 token <strong>原地</strong>更新状态：<br>
+          <span class="mono">h = A&#772; &times; h + B&#772; &times; x</span> &rarr; <span class="mono" style="color:var(--green);">O(En)</span><br>
+          <span class="mono">y = C &middot; h</span> &rarr; <span class="mono" style="color:var(--green);">O(En)</span><br><br>
+          成本<strong>始终相同</strong>。状态 h 的大小为 E&times;n，与前面有多少 token 无关。
+        </p>
+      </div>
+    </div>
+
+    <div class="callout fade-in">
+      <strong>取舍：</strong>Mamba 的固定状态意味着它是对过去信息进行<em>压缩</em>，而不是原样存储。
+      具有全注意力的 Transformer 可以在 token 100,000 处回忆起 token 1 的任何细节（代价是巨大的 KV cache）。
+      Mamba 的状态是一个有损摘要——旧信息呈指数衰减（由 A&#772; 控制）。
+      这就是为什么混合架构（Mamba + 少量注意力层）正在成为实用的最佳方案。
+    </div>
+
+    <!-- VISUAL SUMMARY: WHAT GETS CACHED -->
+    <div class="fade-in">
+      <h3 style="margin-top:36px;">可视化总结：缓存了什么</h3>
+    </div>
+
+    <div class="card fade-in" style="padding:32px;">
+      <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:20px;align-items:start;">
+        <!-- Transformer side -->
+        <div>
+          <div style="font-size:14px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:12px;">Transformer 缓存</div>
+          <div style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">存储曾经见过的每个 token 的 K、V：</div>
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:4px;padding:4px 10px;font-size:11px;font-weight:600;" class="mono">K<sub>0</sub>, V<sub>0</sub> &mdash; 「The」</div>
+            <div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:4px;padding:4px 10px;font-size:11px;font-weight:600;" class="mono">K<sub>1</sub>, V<sub>1</sub> &mdash; 「capital」</div>
+            <div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:4px;padding:4px 10px;font-size:11px;font-weight:600;" class="mono">K<sub>2</sub>, V<sub>2</sub> &mdash; 「of」</div>
+            <div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:4px;padding:4px 10px;font-size:11px;font-weight:600;" class="mono">K<sub>3</sub>, V<sub>3</sub> &mdash; 「France」</div>
+            <div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:4px;padding:4px 10px;font-size:11px;font-weight:600;" class="mono">K<sub>4</sub>, V<sub>4</sub> &mdash; 「is」</div>
+            <div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:4px;padding:4px 10px;font-size:11px;color:var(--red);" class="mono">K<sub>5</sub>, V<sub>5</sub> &mdash;（下一个 token）</div>
+            <div style="padding:4px 10px;font-size:11px;color:var(--text-muted);font-style:italic;">&hellip; 永远持续增长</div>
+          </div>
+          <div class="mono" style="font-size:12px;color:var(--red);margin-top:8px;font-weight:600;">大小：2 &times; N &times; d —— 随 N 增长</div>
+        </div>
+
+        <!-- VS divider -->
+        <div style="display:flex;align-items:center;font-size:20px;color:var(--text-muted);font-weight:300;padding-top:60px;">对比</div>
+
+        <!-- Mamba side -->
+        <div>
+          <div style="font-size:14px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:12px;">Mamba 状态</div>
+          <div style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">存储压缩后的状态（原地更新）：</div>
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <div style="background:#ecfdf5;border:1px solid #86efac;border-radius:4px;padding:8px 10px;font-size:11px;font-weight:600;" class="mono">
+              h[E &times; n] —— SSM 隐藏状态<br>
+              <span style="color:var(--text-muted);font-weight:400;">概括所有过去的 token</span>
+            </div>
+            <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;padding:8px 10px;font-size:11px;font-weight:600;" class="mono">
+              buf[E &times; (k&minus;1)] —— 卷积缓冲区<br>
+              <span style="color:var(--text-muted);font-weight:400;">最近 k&minus;1 个 token 的投影</span>
+            </div>
+          </div>
+          <div class="mono" style="font-size:12px;color:var(--green);margin-top:8px;font-weight:600;">大小：E&times;n + E&times;(k&minus;1) —— 永远固定</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="key-insight fade-in">
+      <h4>关键洞察</h4>
+      <p style="margin:0;font-size:15px;">
+        Transformer 的 KV cache 是<strong>无损的</strong>——它存储每个过去 token 精确的 K 和 V。
+        Mamba 的状态是<strong>有损的</strong>——它通过递推
+        h<sub>t</sub> = A&#772;<sub>t</sub> &times; h<sub>t-1</sub> + B&#772;<sub>t</sub> &times; x<sub>t</sub>
+        将所有过去 token 压缩成一个固定大小的向量。
+        选择性机制（&Delta;）确保<em>重要的</em> token 被强力记住，而
+        <em>噪声</em> token 迅速衰减。这就是为什么 156 KB 可以取代 781 MB——因为那 781 MB 中的大部分
+        都在存储诸如「the」「of」「is」这样模型根本不需要的 token 信息。
+      </p>
+    </div>
+
+  </div>
+</section>
+
+<!-- FINAL -->
+<section id="final" style="background:var(--bg-alt);">
+  <div class="container">
+    <div class="fade-in">
+      <div class="chapter-label">完整图景</div>
+      <h2 class="gradient-text">关键要点</h2>
+    </div>
+
+    <div class="card fade-in" style="margin-top:24px;padding:36px;">
+      <div class="summary-item">
+        <div class="summary-num">1</div>
+        <div>
+          <strong>Mamba 用一个单一模块取代了 Attention 和 FFN。</strong>
+          <p style="font-size:14px;margin:4px 0 0;">参数减半，表达能力相同。选择性 SSM 处理跨 token 混合（Attention 的职责），而门控处理逐 token 处理（FFN 的职责）。</p>
+        </div>
+      </div>
+
+      <div class="summary-item">
+        <div class="summary-num">2</div>
+        <div>
+          <strong>选择性 SSM 从输入中计算 B、C 和 &Delta;——内容相关的处理。</strong>
+          <p style="font-size:14px;margin:4px 0 0;">与这些参数固定的经典 SSM（S4）不同，Mamba 让它们依赖于输入。每个 token 都有自己的动力学。</p>
+        </div>
+      </div>
+
+      <div class="summary-item">
+        <div class="summary-num">3</div>
+        <div>
+          <strong>&Delta;（delta）控制遗忘/写入的平衡——选择性的核心。</strong>
+          <p style="font-size:14px;margin:4px 0 0;">较大的 &Delta; = 抹除旧状态、强力写入新内容。较小的 &Delta; = 保留状态、几乎不写入。模型学会了何时记住、何时遗忘。</p>
+        </div>
+      </div>
+
+      <div class="summary-item">
+        <div class="summary-num">4</div>
+        <div>
+          <strong>Conv1D 提供局部上下文，SSM 提供长程上下文，门控提供输出控制。</strong>
+          <p style="font-size:14px;margin:4px 0 0;">三种互补的机制在一个单一模块中协同工作。</p>
+        </div>
+      </div>
+
+      <div class="summary-item" style="margin-bottom:0;">
+        <div class="summary-num">5</div>
+        <div>
+          <strong>推理期间：每个 token O(1)，恒定内存。没有 KV cache！</strong>
+          <p style="font-size:14px;margin:4px 0 0;">隐藏状态 h 是一个固定大小的向量（每个通道 N 个元素）。与 Transformer 的 KV cache 随序列长度线性增长不同，Mamba 的内存恒定不变，无论处理了多少 token。</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="fade-in" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:24px;">
+      <div class="card" style="text-align:center;border-top:3px solid var(--red);">
+        <h4 style="color:var(--red);">Transformer 推理</h4>
+        <div class="mono" style="font-size:24px;font-weight:700;margin:8px 0;">O(n)</div>
+        <p style="font-size:13px;margin:0;">KV cache 随每个 token 增长。<br>内存：每层 <strong>O(n &times; d)</strong>。</p>
+      </div>
+      <div class="card" style="text-align:center;border-top:3px solid var(--green);">
+        <h4 style="color:var(--green);">Mamba 推理</h4>
+        <div class="mono" style="font-size:24px;font-weight:700;margin:8px 0;">O(1)</div>
+        <p style="font-size:13px;margin:0;">状态固定，每个 token 恒定。<br>内存：每层 <strong>O(E &times; N)</strong>。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="container">
+    <div class="footer-brand">VIZUARA AI LABS</div>
+    <div>LLM 推理工程工作坊 —— 可视化讲解系列</div>
+  </div>
+</footer>
+
+<script>
+// Fade-in on scroll
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+    }
+  });
+}, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+
+document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+
+// Click sound
+function playClick() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.value = 880;
+    gain.gain.value = 0.08;
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.1);
+  } catch(e) {}
+}
+
+// Trace Token animation
+let tracing = false;
+function traceToken() {
+  if (tracing) return;
+  tracing = true;
+  playClick();
+
+  const btn = document.getElementById('traceBtn');
+  btn.textContent = '追踪中...';
+  btn.style.opacity = '0.7';
+
+  const steps = document.querySelectorAll('.trace-highlight');
+  let maxStep = 0;
+  steps.forEach(s => { const st = parseInt(s.dataset.step); if (st > maxStep) maxStep = st; });
+
+  let currentStep = 0;
+  function highlightStep() {
+    // Remove all active
+    steps.forEach(s => s.classList.remove('active'));
+
+    if (currentStep > maxStep) {
+      btn.textContent = '\u25B6 追踪一个 Token';
+      btn.style.opacity = '1';
+      tracing = false;
+      return;
+    }
+
+    // Highlight current step
+    steps.forEach(s => {
+      if (parseInt(s.dataset.step) === currentStep) {
+        s.classList.add('active');
+      }
+    });
+
+    playClick();
+    currentStep++;
+    setTimeout(highlightStep, 800);
+  }
+
+  highlightStep();
+}
+
+// Add click sounds to all buttons
+document.querySelectorAll('.btn').forEach(btn => {
+  btn.addEventListener('click', playClick);
+});
+
+// Smooth scroll for nav
+document.querySelectorAll('.nav-links a').forEach(a => {
+  a.addEventListener('click', (e) => {
+    e.preventDefault();
+    playClick();
+    const target = document.querySelector(a.getAttribute('href'));
+    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+});
+</script>
+
+</body>
+</html>

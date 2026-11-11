@@ -1,0 +1,793 @@
+<section class="chapter-wrapper" id="ch00-inference-engineers-world">
+<h1>Chapter 0: The Inference Engineer's World</h1>
+<p>I want to begin this book with a confession, because it is what started me writing it.</p>
+<p>For the better part of the last two years I believed that the beauty of large language models lived inside <em>pre-training</em>. That was where the math was, that was where the physics was, that was where the late-night whiteboard sessions happened. Attention, optimizers, scaling laws, tokenization, loss curves that fall for six weeks at a time, those were the objects I thought deserved the love. I wrote a full <strong>Build an LLM from Scratch</strong> series with that conviction. Thousands of students worked through it with me. Every chapter was about training, because I assumed training was where the real art was.</p>
+<p>I was wrong. Not about the math, the math in pre-training really is beautiful, but about where the larger share of the magic lives. The longer I spent running production AI products at Vizuara, the more I realized that the part I had been treating as a footnote, <em>inference</em>, is in fact the whole story of whether a product is usable, affordable, or even possible. Inference is where your one trained model meets the uncompromising physics of a single GPU, and then the uncompromising economics of a thousand users, and then the uncompromising politics of a shipping deadline. It turns out this meeting is not a footnote. It is the main event.</p>
+<p>And it is beautiful. There is as much mathematics in inference as there is in training, it is just a different flavor of math, the kind that cares about bytes transferred, arithmetic intensity, cache hit rates, tail latencies, and the exact shape of a curve called the <em>roofline</em>. There is as much engineering intuition as there is theory, and there is a craft to stacking a dozen tricks on top of each other so that the whole stack behaves like one coherent machine. Opening the hood of a modern inference engine feels less like reading a paper and more like pulling the cowling off an aircraft engine: hundreds of tiny moving parts, each one doing a specific job, all of them timed against each other so the whole thing can move. A great inference system is closer to a beautifully assembled car or aircraft than to a single equation. Many parts, one motion.</p>
+<p>This book is a pleasure for me to write precisely because I finally get to show how those parts align. We will take the reader from a single GPU doing one forward pass (where arithmetic intensity decides whether you are wasting 99 percent of your hardware) to a thousand GPUs across three continents (where routing, autoscaling and KV-cache-aware load balancing decide whether a user in Singapore ever sees a response). At every step I will write the way I talk when I am excited about something, slowly, with the math visible, and with the intuition named out loud.</p>
+<p>Here is the one claim I am going to keep repeating, and that every chapter of this book will justify:</p>
+<blockquote>
+<p><strong>Inference engineering is the most consequential discipline in applied AI in 2026, and almost nobody understands it well.</strong></p>
+</blockquote>
+<p>Read this chapter with one question open: <em>when every open-source model in the world is free to download, why does it still matter how it is served?</em> The rest of the book is the answer.</p>
+<hr>
+<h2>Why This Discipline Exists</h2>
+<h3>0.1: Meet Vizz AI: a live tutor that costs too much</h3>
+<p>At Vizuara we built <strong>Vizz AI</strong> (vizz.vizuara.ai), a personalized AI tutor that talks to students in real time. Not chat. Not typed prompts. A live, spoken conversation where the tutor adapts to the student, remembers the last few minutes of context, and responds with a natural voice.</p>
+<p>Under the hood, Vizz AI runs on Google's <strong>Gemini Live Stream API</strong>. The pipeline is shown in Figure 0.1.</p>
+<p><img alt="Figure 0.1: Vizz AI pipeline" src="figures/ch00-fig1-viz-ai-pipeline/final.png">
+<em>Figure 0.1.</em> Four stages: the student's voice hits Gemini's speech-to-text endpoint, the transcribed text enters our LLM + RAG + memory layer where reasoning happens, the response text is sent to Gemini's text-to-speech endpoint, and the audio streams back to the student. Every conversational turn re-bills the entire accumulated context.</p>
+<p>The figure shows a four-stage horizontal flow. The first and last stages are Gemini APIs priced per token (audio in at $3.00 / 1M tokens, audio out at $12.00 / 1M). The middle stage, the LLM plus retrieval-augmented generation plus memory, is where <strong>inference engineering actually lives</strong>, and is the piece we want to own. Notice the horizontal band above the pipeline: <em>every turn is billed for the full accumulated context</em>, which means cost compounds the longer the conversation gets. A student 20 minutes into a session is paying for the context of minutes 1-through-19 on every new turn.</p>
+<p>The system is genuinely good. Students love it. But a few weeks after launch, my developer walked into my office and said:</p>
+<blockquote>
+<p><em>"Raj, this is not sustainable. The costs are piling up."</em></p>
+</blockquote>
+<p>Let us do the math on a single 30-minute tutoring session. Gemini Live charges per token across four streams, student voice in, tutor voice out, RAG context in, LLM reasoning out, and each conversational turn is billed <strong>against the entire accumulated context so far</strong>, not just the new tokens.</p>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Rate</th>
+<th>Per 30-min session</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Audio input (student's voice)</td>
+<td>$3.00 / 1M tokens</td>
+<td>$0.075</td>
+</tr>
+<tr>
+<td>Audio output (tutor's voice)</td>
+<td>$12.00 / 1M tokens</td>
+<td>$0.270</td>
+</tr>
+<tr>
+<td>Text input (RAG, memory)</td>
+<td>$0.75 / 1M tokens</td>
+<td>$0.150</td>
+</tr>
+<tr>
+<td>Context accumulation overhead</td>
+<td>~2× multiplier</td>
+<td>$0.500</td>
+</tr>
+<tr>
+<td><strong>Total per session</strong></td>
+<td></td>
+<td><strong>~$1.00</strong></td>
+</tr>
+</tbody>
+</table>
+<p>One dollar per session sounds fine. At 10,000 daily active students it becomes <strong>$10,000 per day</strong>, up to $300,000 per month on the closed-source API. That is the <em>potential</em> bill, the upper bound of what a team pays when every request is routed through a closed-source API like Gemini or GPT-5. The crucial point is that this number is not fixed. Moving the same workload onto an open-source model that you host yourself does not shave a few dollars off it, it collapses it by more than an order of magnitude. Figure 0.2 makes the comparison concrete.</p>
+<p><img alt="Figure 0.2: Closed-source vs. open-source self-hosted cost" src="figures/ch00-fig2-viz-ai-cost-explosion/final.png">
+<em>Figure 0.2.</em> Same product, same usage, two ways to serve it. The top row is the potential closed-source bill: $1 per session, $10,000 per day at 10,000 concurrent students, up to $300,000 per month. The bottom row is the same workload served on open-source weights hosted on our own GPUs: roughly $0.05 per session, $500 per day, ~$15,000 per month in GPU rental. The difference is not the model. It is the serving stack.</p>
+<p>The three bars in Figure 0.2 are not a projection or a worst case; they are the simple multiplication of our real pricing by our real user count. The $1-per-session number looked sustainable until the first "x 10,000 students" multiplier landed. The $300,000-per-month number is what makes the problem unignorable. At this scale, self-hosting is not an optimization, it is survival. And Gemini, by policy, sees every sentence of every student's conversation. For an education company that cares about data sovereignty, that is unacceptable on its own.</p>
+<p>The only sustainable move: <strong>download an open-source model, host it ourselves, and serve it from our own GPUs</strong>.</p>
+<p>We do not need to train a model. Meta's Llama-3 is free. Google's Gemma is free. DeepSeek's weights are free. The challenge is not "can we get a model", the challenge is what happens after we download it. That is inference engineering, and the questions it must answer are unforgiving:</p>
+<ul>
+<li><strong>Time to first token (TTFT).</strong> The tutor begins speaking within how many milliseconds of the student finishing? If it is 3 seconds, the conversation feels broken. We need under 300 ms.</li>
+<li><strong>Inter-token latency (ITL).</strong> Once the voice begins, the tokens stream at what rate? Any stutter and the illusion collapses. We need under 30 ms per token.</li>
+<li><strong>Throughput.</strong> 10,000 students online at the same time, each in their own private session. We need to absorb thousands of concurrent inference requests on the hardware we rent.</li>
+</ul>
+<p>I ask my developer, <em>"How do we maximize all three metrics at once?"</em></p>
+<p>He says, <em>"Raj, it is not about the model. It is about how you serve the model. That is a different discipline."</em></p>
+<p>That discipline is the subject of this book. Vizz AI was our own wake-up call, and I expect you have a version of the same story inside whatever product you are trying to ship.</p>
+<p>Before we leave this section, I want to address the one objection every engineer raises at this point: <em>"Sure, but open-source models are worse than closed-source ones, right? So you are only saving money by accepting lower quality?"</em> That objection was true in 2023. It was mostly true in 2024. By the Spring of 2026 it is simply not true any more, and Figure 0.3 is the single clearest picture of why. The quality gap between the best closed-source frontier (GPT-5, Claude Opus 4.5, Gemini 2.5 Pro) and the best open-source models (Llama 4, Qwen 3, DeepSeek V3) has shrunk from roughly twenty benchmark points in 2023 to about three in 2026. For all but the narrowest of frontier reasoning workloads, you can now pick an open-source model that is good enough, and the bottleneck moves to how you serve it.</p>
+<p><img alt="Figure 0.3: The rise of open-source models" src="figures/ch00-fig5-rise-of-open-source/final.png">
+<em>Figure 0.3.</em> Left panel: the closing quality gap between closed-source frontier and best open-source models across 2023–2026. Right panel: the top open-source families of Spring 2026 by downloads on Hugging Face. Three of the top six are now Chinese-origin models (Qwen, DeepSeek, GLM), and Chinese-origin models account for roughly 41% of all Hugging Face downloads according to the <em>State of Open Source on Hugging Face, Spring 2026</em>. The point for an inference engineer is simple: when the model is free, the competitive advantage of a product moves entirely into the serving stack. That is why inference engineering, as a field, has exploded in the last eighteen months.</p>
+<hr>
+<h3>0.2: Meet DynaRoute: why every query should not hit the same model</h3>
+<p>A second Vizuara product: <strong>DynaRoute</strong> (dynaroute.vizuara.ai). DynaRoute asks a provocative question that most companies refuse to ask:</p>
+<blockquote>
+<p><strong>Why should every query go to the same LLM?</strong></p>
+</blockquote>
+<p>A student asking <em>"What is 2 + 2?"</em> does not need GPT-5. A student asking <em>"Derive the Navier-Stokes equations from first principles"</em> does not belong on a 1B-parameter model. Today, almost every enterprise deployment of AI routes every query, easy, medium, hard, to the most powerful model available. The bill is enormous, and most of it is wasted on trivial queries.</p>
+<p>DynaRoute inserts an <strong>intent classifier</strong> in front of the model pool. The architecture is shown in Figure 0.3.</p>
+<p><img alt="Figure 0.3: DynaRoute intent classifier" src="figures/ch00-fig3-dynaroute-intent-classifier/final.png">
+<em>Figure 0.3.</em> Every incoming query first hits a tiny, fast classifier (~20 ms latency) that labels it easy, medium, or hard. The classifier routes to one of three Llama models of increasing size: 1B, 8B, or 70B. Each model has its own per-token price.</p>
+<p>In Figure 0.3, the classifier is deliberately drawn as prominent as the three downstream models. That is because, in practice, the classifier has to hit a much tighter latency target than any of the models it routes to. If the classifier takes 500 ms to decide where a query goes, we have added half a second to every request before inference even starts, and for an "easy" query that the 1B model could have answered in 200 ms, we have undone the whole point. So the classifier is itself a production inference system: small model, aggressive quantization, served on the same stack with the same metrics we are going to learn to optimize.</p>
+<p>If 70% of queries are classifiable as easy, 20% as medium, and 10% as hard, the economics transform. Figure 0.4 shows the per-million-query comparison.</p>
+<p><img alt="Figure 0.4: DynaRoute 86% savings" src="figures/ch00-fig4-dynaroute-86-percent-savings/final.png">
+<em>Figure 0.4.</em> Routing every query to Llama 70B costs $1,500 per 1M queries. Routing by intent (700K easy + 200K medium + 100K hard) costs $215. That is an 86% reduction with no measurable change in user experience on the simple queries.</p>
+<p>The figure makes the decomposition explicit: the easy queries cost only $35, medium $30, hard $150, total $215. The $1,500 "send everything to the 70B" baseline is almost entirely wasted compute on queries the 1B model would have answered correctly. Every enterprise deploying a single-model-fits-all policy in 2026 is leaving roughly 80% of their LLM budget on the table. An inference engineer's first question, on arriving at any new product, is: <em>do all our queries really need the biggest model?</em></p>
+<table>
+<thead>
+<tr>
+<th>Approach</th>
+<th>Cost for 1M queries</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>All queries → Llama 70B</td>
+<td><strong>$1,500</strong></td>
+</tr>
+<tr>
+<td>DynaRoute: 700K easy + 200K medium + 100K hard</td>
+<td><strong>$215</strong></td>
+</tr>
+<tr>
+<td>Savings</td>
+<td><strong>86%</strong></td>
+</tr>
+</tbody>
+</table>
+<p>Notice what has to be true for this to work. <strong>The classifier itself has to be fast</strong>. If the router adds 500 ms of latency before the small model even starts, we have saved money and destroyed the user experience. The classifier must add 20 ms or less. It has to be a tiny model, served with the same discipline as the big models behind it. <strong>That is also inference engineering.</strong></p>
+<p>Notice also what the router cannot afford to do. It cannot make the wrong call often. If it sends "Derive Navier-Stokes" to the 1B model and the answer is embarrassing, the brand is damaged. So the classifier is itself a production inference system with its own TTFT budget, its own quality bar, its own concurrency story. Inference engineering sits on top of inference engineering.</p>
+<p>Between Vizz AI and DynaRoute, Vizuara's engineering work is almost entirely in the <strong>serving layer</strong>, not the training layer. I find this to be true of every serious application company I talk to. The question they are all trying to answer is the same:</p>
+<blockquote>
+<p>How do we take an open-source model and serve it at production quality, fast, cheap, and at scale?</p>
+</blockquote>
+<p>This is the definition of inference engineering, and this book exists to answer that question completely.</p>
+<hr>
+<h3>0.3: The inference spectrum: not one kind of serving, seven</h3>
+<p>Inference does not run in one place. It runs across a spectrum of hardware, each with its own wall-clock performance and its own constraints.</p>
+<p><img alt="Figure 0.1: The Inference Spectrum" src="figures/ch01-fig6-inference-spectrum/final.png">
+<em>Figure 0.1.</em> Inference runs on six hardware tiers: Raspberry Pi, phone, consumer laptop, consumer GPU, data-center GPU, and dedicated inference silicon. Cloud APIs (OpenAI, Anthropic, Gemini) abstract the underlying tier. Specialty silicon (Cerebras, Taalas) sits in its own class above cloud APIs in tokens per second.</p>
+<p>The figure shows six hardware tiers in order from least to most powerful. Far left is an edge microcontroller or Raspberry Pi, running a 1–5 tokens per second inference engine against a 125M-parameter model, useful for low-bandwidth offline applications. Far right is dedicated inference silicon. <strong>Cerebras</strong> reaches 1,000–3,000 tokens per second by fitting the entire model onto a wafer-scale chip (900,000 cores, no off-chip memory, no memory hierarchy to fight). <strong>Taalas</strong> goes further. Taalas literally <em>burns the trained model into the silicon mask</em>: every weight becomes a transistor, every activation is a wire. The resulting ASIC runs only that one model, but runs it at <strong>~17,000 tokens per second</strong>, roughly ten times faster than Cerebras at the same model size.</p>
+<p>Above the hardware spectrum, floating on their own, are the cloud APIs. OpenAI, Anthropic, Google, their endpoints abstract away the underlying tier entirely. When you call GPT-5, you do not know if it is running on H100s, B200s, or a TPU cluster. You pay for tokens and you receive them. The cost is convenience. The hidden cost is that your latency, your data privacy, and your per-token price are all set by the provider's own inference stack, and <strong>if they can improve their inference stack, you benefit. If they cannot, your product stalls.</strong></p>
+<p>An inference engineer's first decision is: <strong>which tier does this workload belong on?</strong> A live voice tutor needs consumer-grade or better; a batch summarization job can run on consumer GPUs overnight; a personalized recommender can live on the user's phone. A single product may use three tiers at once.</p>
+<hr>
+<h3>0.4: The on-device push, led by Apple</h3>
+<p>One tier on the spectrum deserves its own section, because it is the one most likely to change the shape of the industry over the next two years.</p>
+<p>Apple does not train a frontier large language model. It does not want to. What Apple wants, and what its hardware has been pointing at for four years now, is for <strong>every one of its devices to run the inference locally, on the silicon the user already owns, with no cloud round-trip at all</strong>.</p>
+<p><img alt="Figure 0.2: Apple's on-device inference strategy" src="figures/ch01-fig7-apple-on-device/final.png">
+<em>Figure 0.2.</em> Apple's strategy: ship LLM-capable silicon in every device (MacBook, Mac mini, iPad, iPhone), run models locally via the CPU/GPU/Neural Engine sharing unified memory, and future-ship apps with preinstalled LLM-powered features. User data never leaves the device; latency is bounded only by silicon, not by network.</p>
+<p>The figure shows four Apple devices, MacBook Pro, Mac mini, iPad, iPhone, each connected to the same underlying <strong>Apple Silicon</strong> block (CPU + GPU + Neural Engine) wrapped in a unified-memory ring. The crucial property of this silicon is the <em>unified memory architecture</em>: the CPU and GPU share the same physical RAM, so moving a model from CPU to GPU costs no memory copies. An M-series Mac with 128 GB of unified memory can hold a 70B-parameter model at FP8 in entirety, with no partitioning and no streaming from disk.</p>
+<p>Apple's bet is that <strong>every app shipped on macOS and iOS over the next two years will include its own LLM-powered features</strong>, preinstalled, running locally, with zero per-token cost to Apple and zero data leaving the device. Siri becomes a real assistant. Notes summarizes. Mail drafts replies. FaceTime transcribes. The per-device cost to Apple is zero. The privacy story is the strongest in the industry.</p>
+<p>For the inference engineer, this shifts the problem. On-device inference has to fit in 4–12 GB of memory (phones) or 16–128 GB (Macs), runs without a massive thermal budget, and cannot rely on a data center for overflow. The techniques we will study in this book, quantization to FP8 or INT4, compressed attention caches, lightweight speculative decoding, are the techniques that make on-device inference feasible. Apple has not replaced the cloud; Apple has made the on-device tier a first-class engineering target for every company that wants to ship consumer AI.</p>
+<p>What about Alexa, Siri today, and Google Assistant? They all try to do on-device inference and they all fail at the hardest part: latency. When you talk to today's Alexa, the audio goes to the cloud, gets transcribed, the text is routed to an LLM that lives in AWS, the response is sent back, TTS runs somewhere, and the audio streams to your speaker. The round trip is 1.5 to 3 seconds. The reason is inference engineering, no one has yet shipped a consumer voice assistant where the full LLM lives on the device and responds in under 300 ms. That is an open engineering problem. Apple is closest. Whoever solves it first will own the next decade of consumer AI.</p>
+<p>Figure 0.4 captures exactly how that shows up to the user. Take a question like "What is a black hole, and why do they exist near the centre of galaxies?" Ask it to Alexa and you will get a retrieval-first, web-link-shaped answer, because the serving stack behind Alexa has not yet been upgraded to stream a modern LLM in real time. Ask the same question in any modern chat interface and you will get a coherent, paragraph-long, streamed answer. The model that could answer it properly has existed for years. What has not existed, inside Alexa or Siri, is the inference-engineering stack to serve that model in real time on a home-assistant speaker with a 300-millisecond budget. This is one of the cleanest demonstrations I know that the bottleneck in consumer AI today is not model quality. It is serving.</p>
+<p><img alt="Figure 0.4: The voice-assistant inference gap" src="figures/ch00-fig6-alexa-siri-gap/final.png">
+<em>Figure 0.4.</em> Left: legacy voice assistants (Alexa, Siri, Google Assistant) returning incoherent, retrieval-first answers to a normal user question. Right: a modern LLM returning a coherent, streamed, paragraph-long answer to the same question. The models that sit behind the right-hand column exist. The gap between the two columns is the inference-engineering stack required to serve them inside a real-time voice product, streaming TTFT under 300 ms, disciplined KV cache, careful scheduling. Until that stack ships inside a consumer assistant, the LLM boom, as far as the living-room speaker is concerned, has not actually happened.</p>
+<hr>
+<h3>0.5: What an inference engineer actually does</h3>
+<p>The job is a loop. Figure 0.5 sketches it.</p>
+<p><img alt="Figure 0.5: What an inference engineer does" src="figures/ch00-fig5-what-an-inference-engineer-does/final.png">
+<em>Figure 0.5.</em> Six stations arranged as a loop: download the model, measure the product's SLOs, choose runtime optimizations, choose infrastructure layout, deploy via a serving engine, benchmark and iterate. The loop restarts every six weeks, because that is how often the frontier open-source model is refreshed.</p>
+<p>The figure shows why the job is a <em>discipline</em> rather than a one-time project. Station 1, download the model, is the easiest step; anyone can do it. Stations 2 through 6 are where the entire technical content of this book lives. Station 2 asks what the product actually needs: a voice tutor needs TTFT under 300 ms, a batch summarizer does not. Station 3 is the <strong>runtime layer</strong>, attention variants, quantization, KV cache tricks, the inner ring we will spend most of this book on. Station 4 is the <strong>infrastructure layer</strong>, how to replicate, parallelize, and disaggregate across many GPUs. Station 5 is the <strong>tooling layer</strong>, which serving engine (vLLM, SGLang, TensorRT-LLM, Ray Serve) makes stations 3 and 4 deployable. Station 6 is benchmarking, which is non-negotiable: you do not know whether you improved a system unless you measured it before and after.</p>
+<p>That last loop-back is important. A new frontier open-source model drops roughly every six weeks. Each new model has different architecture choices, different number of heads, different quantization tolerance, different context length, and a stack that was optimal for Llama-3 may be merely good for Llama-4 and bad for DeepSeek-V4. The inference engineer does not ship once; the inference engineer ships continuously, re-running the loop.</p>
+<p>That is the job. It is part computer architecture, part systems engineering, part numerical analysis, and part economics. It is also, as of 2026, the single highest-leverage role in applied AI: Anthropic, NVIDIA, OpenAI, Microsoft, AWS, Apple, Red Hat, and every serious product company is staffing up inference-engineering teams as fast as they can hire. Compensation reflects it.</p>
+<p>This book's job is to make you the engineer at the center of Figure 0.5.</p>
+<hr>
+<h2>Three Layers You Must Learn in This Order</h2>
+<p>Every decision, tool, and technique in inference engineering lives in <strong>one of three layers</strong>. Think of them as concentric rings, where the inner ring must be mastered before the outer rings matter. Figure 0.6 is the single picture I want you to carry in your head for the rest of this book.</p>
+<p><img alt="Figure 0.6: The three layers of inference engineering" src="figures/ch00-fig7-three-layers-circular/final.png">
+<em>Figure 0.6.</em> Three concentric rings. The innermost ring is the <strong>runtime layer</strong>, the question of how fast a single GPU can be pushed. The middle ring is the <strong>infrastructure layer</strong>, the question of how to serve a million users by coordinating many GPUs. The outermost ring is the <strong>tooling layer</strong>, the question of which serving engine and orchestration stack lets you actually ship. The ordering is strict, the inner ring must be mastered before the outer rings matter, and the full-stack inference engineer is the one who can sit in the centre and reason across all three at once. Chapter 1 explodes each of these three rings into its constituent techniques; here, hold the map.</p>
+<h3>0.6: Runtime layer: "how fast can one GPU go?"</h3>
+<p>The innermost ring. Before you think about how to scale, before you pick a serving framework, before you price out cloud GPUs, you must understand how to run a single model on a single GPU as fast as it will go.</p>
+<p>This is where attention variants live (<strong>MHA, MQA, GQA, MLA, sliding-window attention, linear attention, state-space models, Mamba</strong>). It is where kernel optimizations live (<strong>FlashAttention, PagedAttention, prefix caching</strong>). It is where the number representation lives (<strong>FP16, FP8, INT4 quantization, GPTQ, GGUF, QAT</strong>). It is where the decode loop itself is rearranged (<strong>continuous batching, chunked prefill, speculative decoding</strong>).</p>
+<p>Every optimization in this layer is, at its core, about one question:
+<strong>how do I push more useful work through this single GPU per second?</strong></p>
+<h3>0.7: Infrastructure layer: "how do we serve a million users?"</h3>
+<p>The middle ring. Once you know how fast one GPU goes, the question becomes: how do we replicate, coordinate, and deploy that speed across dozens, hundreds, or thousands of GPUs.</p>
+<p>Infrastructure-layer techniques are about <strong>parallelism</strong>: tensor parallelism splits a single matmul across GPUs inside a node; pipeline parallelism splits the layers across nodes; expert parallelism distributes the experts of a mixture-of-experts model; sequence and context parallelism split long sequences across devices so that a single 128K-token prompt fits. And <strong>disaggregated prefill/decode</strong>: putting prefill on one pool of GPUs and decode on another, so that a long prompt from one user cannot stall another user's streaming response.</p>
+<p>Infrastructure is about orchestration, topology, networking (NVLink vs InfiniBand), and replication. It is about the moment of truth when the one GPU is no longer enough.</p>
+<h3>0.8: Tooling layer: "what lets me ship?"</h3>
+<p>The outer ring. Nobody writes a FlashAttention kernel from scratch for every new product. We stand on the shoulders of serving engines: <strong>vLLM</strong>, <strong>SGLang</strong>, <strong>TensorRT-LLM</strong>, <strong>Hugging Face TGI</strong>, <strong>Ray Serve</strong>, <strong>Modal</strong>. Each is a package of the runtime and infrastructure techniques from the inner rings, plus a surface area that lets an engineer deploy in hours instead of months.</p>
+<p>The tooling layer is where the inference engineer's productivity comes from. The innermost two rings are the reason the engineer can choose and tune the tool.</p>
+<blockquote>
+<p><strong>A working inference engineer sits at the intersection of all three rings.</strong> Not knowing the runtime layer means your tooling choice is arbitrary. Not knowing the infrastructure layer means your runtime optimizations cannot scale. Not knowing the tooling layer means you cannot ship. This book covers all three, in order.</p>
+</blockquote>
+<hr>
+<h2>How This Book Is Organized</h2>
+<p>You are reading Chapter 0. Over the next twenty-six chapters, this book will take you from the motivation you have just read through every technique I have named, in the order an inference engineer encounters them. The full journey is laid out in Figure 0.6.</p>
+<p><img alt="Figure 0.6: The book's journey map" src="figures/ch00-fig6-book-journey-map/final.png">
+<em>Figure 0.6.</em> Twenty-six chapters across eight parts. The widest block, Part III, the Runtime Layer, is the largest because it is the heart of the book: nine chapters on KV cache, attention variants, quantization, and batching. You are in Part 0 right now. Every four chapters a breadcrumb page marks where you are on the map.</p>
+<p>Part 0 (where you are) is motivation and the five metrics. Part I takes a single token's journey from the embedding table through prefill and decode, and introduces the <strong>GPU roofline</strong>, a single diagram we will come back to in almost every subsequent chapter. Part II is one chapter on the GPU hardware itself, only the parts that touch an inference decision. Part III, the widest block in Figure 0.6, is the heart of the book: nine chapters on runtime-layer techniques. Part IV is infrastructure; Part V is tooling; Part VI is fine-tuning; Part VII is frontiers (multimodal and embodied inference); Part VIII is three capstone projects you will build end-to-end.</p>
+<p><strong>Part I, A Token's Journey.</strong> What actually happens when a token enters a transformer, and why inference differs from pre-training. Chapters 1 through 5.</p>
+<p><strong>Part II, The GPU, Through the Lens of Inference.</strong> A single chapter on the hardware. Not a complete GPU architecture textbook, only the parts that touch an inference decision. Chapter 6.</p>
+<p><strong>Part III, The Runtime Layer.</strong> The heart of the book. Attention variants, the KV cache, FlashAttention, PagedAttention, quantization, continuous batching, speculative decoding. Chapters 7 through 15.</p>
+<p><strong>Part IV, The Infrastructure Layer.</strong> Parallelism and disaggregation, replication and routing. Chapters 16 through 18.</p>
+<p><strong>Part V, The Tooling Layer.</strong> vLLM in detail, plus the engine landscape in 2026. Chapters 19 through 21.</p>
+<p><strong>Part VI, Fine-Tuning Meets Inference.</strong> LoRA, distillation, the subliminal-learning experiment. Chapter 22.</p>
+<p><strong>Part VII, Frontiers of Inference.</strong> Multimodal inference (voice, audio, video) and embodied inference (world models, robotic pipelines), consolidated into a single orientation chapter. Chapter 23.</p>
+<p><strong>Part VIII, Capstones.</strong> Three hands-on projects: a speed-optimized inference server, scaling that server to a million users on Modal, and OpenClaw-RL, a self-improving WhatsApp assistant that turns every conversation into training data. Chapters 24 through 26.</p>
+<p>Each chapter follows the same three-part rhythm: first the motivation and the gap, then the mechanism, then the numerical payoff and where it lands on the GPU roofline. Almost every chapter ends by locating its technique on one shared diagram, the <strong>GPU roofline</strong>, that you will meet for the first time in Chapter 3 and then encounter in every runtime chapter that follows.</p>
+<p>Every four chapters, we pause for a <strong>breadcrumb</strong>, a short page reflecting on what you have covered and pointing at what is next. You have signed up for a twenty-six-chapter journey; it helps to mark where you are on the map.</p>
+<hr>
+<h2>0.9: The reader I am writing for, and why this book exists</h2>
+<p>Let me tell you honestly why this book exists. There is no shortage of material on training large language models: papers, courses, Andrej Karpathy's lectures, a whole shelf of textbooks, and, as I mentioned at the start of this chapter, my own <em>Build an LLM from Scratch</em> series. But when I finally set out to teach inference the way I had learned to teach training, from first principles, with all the matrix multiplications visible on the page, with worked examples where you can feel each byte being loaded from HBM, I could not find the equivalent book. The material existed, scattered across vLLM source code, NVIDIA blog posts, Dao's FlashAttention papers, SGLang's design docs, DeepSeek's tech reports, and a hundred podcast appearances. But there was no single place where a serious engineer could sit down and learn the entire field, from a single arithmetic-intensity calculation on one GPU all the way up to a multi-region serving cluster, with the math visible and the intuition named out loud.</p>
+<p>So I decided to write it. The goal of this book, very simply, is to fill that gap. To take you all the way down to the matmul level, and then all the way back up to the production stack, in one coherent story. I have tied every idea to a visual (the journey map you will see in Figure 0.6, the roofline you will meet in Chapter 3, the three concentric rings of Chapter 1) and to a concrete practical (runnable code, actual benchmark numbers, three capstone projects in Chapters 24 through 26 that you can build on your own hardware).</p>
+<p>I am writing for the engineer who has used an OpenAI or Anthropic API, who knows what a matrix multiply is, who has seen a transformer in PyTorch, and who would now like to understand what is really happening when that transformer is <em>served</em>. You do not need to know what arithmetic intensity is, or what MLA does, or what a KV cache looks like inside HBM, or why FlashAttention was even invented. Every one of those ideas is built from the ground up in the chapters ahead. I will not ask you to take anything on faith.</p>
+<p>My hope, as you finish the last page of Chapter 26, is that you see the beauty of this field the way I have come to see it, as a deeply mathematical, deeply practical, deeply human craft. And, concretely, that you can walk into any serious engineering interview in 2026 and answer the one question almost every infrastructure team now asks:</p>
+<blockquote>
+<p><strong>"Design a low-latency, high-throughput LLM inference system handling millions of requests. Walk me through the engineering trade-offs."</strong></p>
+</blockquote>
+<p>By the time you finish this book, that question should feel less like an interview riddle and more like a conversation you have already had with yourself, many times, while reading these pages.</p>
+<hr>
+<h2>0.10: Where we go next</h2>
+<p>The next chapter, <strong>Chapter 1: The Three Layers</strong>, takes the runtime/infrastructure/tooling map you just saw and unpacks each ring in full detail. By the end of Chapter 1 you will be able to name every technique in this book and place it in the correct ring.</p>
+</section>
+
+<section class="chapter-wrapper" id="ch01-three-layers">
+<h1>Chapter 1: The Three Layers</h1>
+<p>In Chapter 0 we named them: <strong>runtime</strong>, <strong>infrastructure</strong>, <strong>tooling</strong>. That was a label. This chapter makes the label precise. By the end of Chapter 1 you will be able to point at any technique in this book, FlashAttention, tensor parallelism, vLLM, chunked prefill, speculative decoding, NVLink, MLA, and say which of the three layers it belongs to, what question it answers, and why it exists.</p>
+<p>That matters because every chapter that follows implicitly asks one question: <em>which layer does this belong to, and what does it change?</em> If you do not know the map, the techniques feel arbitrary. If you know the map, every chapter snaps into place.</p>
+<p>Let us start with the question most engineers skip.</p>
+<hr>
+<h2>What Breaks When You Skip a Layer?</h2>
+<h3>1.1: The most common failure mode in applied AI, 2026</h3>
+<p>A startup hires a solid ML engineer. They have a product idea. The engineer does the obvious thing: pick a model (Llama-3-8B, let's say), pick a serving engine (vLLM, because everyone uses it), push it to a cloud GPU, and ship.</p>
+<p>For the first thousand users it works. Then traffic spikes. Time to first token jumps from 300 ms to 2.4 seconds. The engineer adds a second GPU, then a third. Costs triple. The product feels slower than before, not faster. Customers complain. Investors ask questions. The engineer stares at the vLLM config and does not know which of the 40 flags to turn.</p>
+<p>The problem is not that the engineer is bad. The problem is that the engineer <strong>picked one layer, the tooling, and skipped the other two</strong>. vLLM is extraordinary software. It is also not a magic box. If you do not understand the runtime layer underneath it, you cannot tune its flags. If you do not understand the infrastructure layer around it, you cannot deploy more than one replica without the throughput collapsing into latency spikes.</p>
+<p>This is why the three layers are introduced in the order they are. <strong>Runtime first</strong>, because it is the ground truth of how fast any single GPU can go. <strong>Infrastructure second</strong>, because scaling only makes sense once you know what you are scaling. <strong>Tooling third</strong>, because tools are a package of the first two, and picking a tool without understanding what is inside it is how startups burn $100K per month on cloud bills and still miss their SLOs.</p>
+<p>The rest of this chapter explains each layer in full, in that order, so that when this book turns to specific techniques (Chapter 7 onward) you know exactly where each one lives.</p>
+<hr>
+<h2>The Three Layers, Precisely</h2>
+<h3>1.2: The stack, seen as three concentric rings</h3>
+<p>Figure 1.1 is the map that the rest of this book fills in.</p>
+<p><img alt="Figure 1.1: The Three Layers of Inference Engineering" src="figures/ch01-fig1-three-layers/final.png">
+<em>Figure 1.1.</em> A vertical stack. Bottom: the <strong>runtime layer</strong>, how fast one GPU can go. Middle: the <strong>infrastructure layer</strong>, how to serve a million users. Top: the <strong>tooling layer</strong>, the libraries that package the first two. Under the stack, a horizontal axis from "one GPU" to "shippable product."</p>
+<p>Three observations about Figure 1.1:</p>
+<p>First, the layers are <strong>stacked, not parallel</strong>. You cannot reason about the infrastructure layer without understanding the runtime layer, because every parallelism strategy in the infrastructure layer changes the per-GPU arithmetic intensity in a way you can only evaluate if you know what arithmetic intensity <em>is</em>, and that is a runtime-layer concept.</p>
+<p>Second, the layers <strong>get thinner as you go up</strong>. The runtime layer has dozens of techniques, each one a non-trivial research contribution. The infrastructure layer has a handful, parallelism, disaggregation, replication, routing, and the hard part is the networking physics underneath. The tooling layer has four or five production-grade engines and a decision matrix between them. By the time you reach the top, you are choosing among known quantities; by the time you are at the bottom, you are inventing.</p>
+<p>Third, the horizontal axis under Figure 1.1 matters. Moving from left to right is moving from <strong>one GPU</strong> to <strong>many GPUs</strong> to <strong>a deployed product</strong>. This is not just a matter of scale; each step changes which techniques are available. A one-GPU problem and a thousand-GPU problem are not the same problem with a larger batch size, they are qualitatively different problems, and the book's structure reflects that.</p>
+<p>Let us now walk each layer in detail.</p>
+<hr>
+<h3>1.3: The Runtime Layer: "how fast can ONE GPU go?"</h3>
+<p>The runtime layer answers exactly one question: given a model already loaded onto a single GPU, <strong>how do I make it produce the most useful tokens per second?</strong> That is the whole scope. Not "how many GPUs do I need", that is the next layer. Not "which library should I use", that is the layer above. Just: this GPU, this model, how fast.</p>
+<p>Figure 1.2 unpacks the runtime layer into its five major technique families.</p>
+<p><img alt="Figure 1.2: Inside the Runtime Layer" src="figures/ch01-fig2-runtime-inside/final.png">
+<em>Figure 1.2.</em> Five clusters of techniques orbit one central question, "one GPU, faster." Each cluster is a separate escape from one fundamental constraint of the GPU, and the rest of this book spends multiple chapters on each.</p>
+<p>Figure 1.2 shows five clusters. Let me describe each one briefly; the full treatment of each begins in Chapter 7 and continues through Chapter 15.</p>
+<p><strong>Cluster 1, Attention variants.</strong> The attention mechanism, as originally defined in the 2017 Transformer paper, uses a large number of independent "heads," each of which maintains its own keys and values. This is called <strong>Multi-Head Attention (MHA)</strong>. It is expensive at inference time because every head's keys and values must be cached separately for every past token, so the cache grows linearly with the number of heads. Inference engineers have invented several ways to shrink it: <strong>Multi-Query Attention (MQA)</strong> where all heads share one K and one V; <strong>Grouped-Query Attention (GQA)</strong> where heads are grouped so that each group shares a K/V pair; and <strong>Multi-head Latent Attention (MLA)</strong> where K and V are compressed through a lower-dimensional latent space. Every modern frontier open-source model (Llama, Qwen, DeepSeek, Mistral) uses one of these three.</p>
+<p><strong>Cluster 2, Compressing the attention across tokens.</strong> Even after you have compressed across heads, a much more stubborn problem remains. The attention cache, by definition, grows with the length of the conversation. If two users are sitting on the same GPU, and one is on turn three of a ten-token chat and the other is on turn three hundred of a long research session with retrieved documents injected into every message, the second user is costing roughly a hundred and twenty-eight times more KV-cache memory than the first. This linear growth with context length is the reason a GPU that comfortably serves a hundred short-conversation users can collapse to five users as soon as those users start pasting in long documents. A whole family of architectural ideas attacks this specific problem, and each of them trades off something different. <strong>Sliding-window attention</strong> says "let us simply forget anything older than the last <em>W</em> tokens," which caps the cache at a fixed size but weakens long-range reasoning. <strong>Linear attention</strong> removes the softmax so that past keys and values can be collapsed into a single constant-size running state, which is mathematically elegant but tends to reduce retrieval quality on tasks that depend on sharp lookups. <strong>State-space models</strong> reformulate attention as a linear recurrence that can still be parallelized via convolution. <strong>Mamba</strong> takes the same state-space idea and makes the transition matrices input-dependent, recovering some of the selectivity that pure linear recurrences gave up. None of these are free lunches. Modern production architectures very rarely go all-in on any one of them; instead they mix attention layers with Mamba or SSM layers in the same network, keeping the cache savings from one and the exact retrieval from the other. The lesson is that "compressing across tokens" is not a solved problem with a single right answer. It is a menu of trade-offs that an inference engineer has to understand before choosing a hybrid.</p>
+<p><strong>Cluster 3, Memory-traffic rearrangement.</strong> The most surprising thing I tell engineers when they start learning inference is that a modern GPU, for a single-user decode step, spends roughly ninety-nine percent of its wall-clock time <em>moving bytes</em>, not computing on them. The GPU's memory hierarchy has three tiers that matter: the on-chip SRAM (tens of kilobytes per streaming multiprocessor, absurdly fast), the L2 cache (tens of megabytes, still fast), and the HBM (tens of gigabytes, the slow tier everyone talks about). Standard attention, implemented naively, reads and writes the full attention-score matrix from HBM many times per layer, which is like driving to the warehouse and back again for every single nut and bolt. The whole cluster of techniques in this group is about rearranging that memory traffic. <strong>FlashAttention</strong> tiles the computation so that the score matrix never actually lives in HBM at all; it is built, used, and discarded entirely inside on-chip SRAM. <strong>PagedAttention</strong> borrows virtual-memory ideas from operating systems, instead of over-allocating a worst-case KV buffer per user, it fragments the cache into small fixed-size blocks and packs them wherever there is room, so the GPU can hold many more concurrent users. <strong>Prefix caching</strong> notices that the first few thousand tokens of every user's request are often identical (your system prompt, your retrieval template, the common chat history of a power user) and refuses to recompute the keys and values for those tokens a second time. <strong>Chunked prefill</strong> cuts long prompts into smaller pieces so that one user's three-thousand-token prompt does not freeze out everybody else who is mid-decode. Each of these techniques was a research paper in its own right, and each one is now a line item in the vLLM configuration file. Chapters 10 through 12 walk through them one by one.</p>
+<p><strong>Cluster 4, Quantization.</strong> The weights of a 70B-parameter model, stored in FP16, take 140 GB. On an H100 that has 80 GB of HBM, that model does not fit. <strong>Quantization</strong> is the art of compressing the weights into a lower-precision format, FP8, INT8, INT4, or even 1.58 bits, while preserving enough quality that the model still works. This is both a per-token byte saving (less HBM traffic) and, with the right hardware, a per-operation FLOP saving (tensor cores can run faster on low-precision data). GPTQ and AWQ are post-training quantization algorithms; QAT is quantization-aware fine-tuning; BitNet pushes the limits toward ternary weights.</p>
+<p><strong>Cluster 5, Scheduling tricks.</strong> Even with all the above, the decode loop emits one token per forward pass per user, which leaves most of the GPU idle. <strong>Continuous batching</strong> packs decode requests from many users into the same forward pass so the weights get loaded once and serve many tokens. <strong>Speculative decoding</strong> uses a cheap model to guess several tokens ahead, which the expensive model then verifies in a single forward pass, a free 2–4× speedup when the guesses are good.</p>
+<p>The common thread across all five clusters is a single sentence:</p>
+<blockquote>
+<p><strong>Every runtime-layer technique is an attempt to get the maximum useful work out of the same GPU per second.</strong></p>
+</blockquote>
+<p>The word <em>useful</em> matters here. It is tempting to read the runtime layer as a pure throughput game: squeeze out the most tokens per second, full stop. That is almost right, but not quite. Tokens only count if they keep the model's answers as good as they would have been without the optimization. Sliding-window attention, for instance, is wonderful for cache size but can quietly degrade long-range reasoning. That is why modern architectures mix state-space or Mamba layers with standard attention rather than replacing attention wholesale: we want the cache savings <em>and</em> the quality. Every technique in this book is judged on both axes at once, tokens per second, and the usefulness of those tokens. A method that doubles throughput while silently halving answer quality is not an optimization. It is a regression.</p>
+<p>Maximum useful work per second shows up as higher throughput, lower latency, or both, without a quality regression. Every cluster attacks a different bottleneck, the attention cache, the memory hierarchy, the weight-byte budget, or the scheduling granularity, but they all resolve to the same metric. Chapter 3 will introduce the <strong>GPU roofline</strong> diagram, which is the book's way of placing every technique on a single common chart. We will come back to that chart in almost every chapter from 6 through 17.</p>
+<hr>
+<h3>1.4: The Infrastructure Layer: "how do we serve a million users?"</h3>
+<p>Once a single GPU is running at its limit, every attention optimization applied, the best quantization scheme in place, continuous batching on, speculative decoding working, the question changes. The product has more users than one GPU can absorb. What now?</p>
+<p>The infrastructure layer is the set of techniques that coordinate multiple GPUs, multiple nodes, and multiple regions to meet a multi-user service-level objective. It is the middle ring.</p>
+<p>Figure 1.3 unpacks it.</p>
+<p><img alt="Figure 1.3: Inside the Infrastructure Layer" src="figures/ch01-fig3-infrastructure-inside/final.png">
+<em>Figure 1.3.</em> Five techniques orbit one central question, "many GPUs, at scale." Parallelism splits a single model across GPUs; disaggregation puts opposite workloads on specialized GPUs; replication clones the engine; routing directs traffic; multi-region places inference close to users.</p>
+<p>Five techniques, each solving a specific coordination problem.</p>
+<p><strong>Parallelism.</strong> A 70B model at FP16 is 140 GB, which does not fit on one 80 GB GPU. So the model must be split across GPUs. There are five orthogonal ways to do this, and the first skill of an infrastructure-layer engineer is knowing which one matches the workload:</p>
+<ul>
+<li><strong>Tensor parallelism</strong> splits each matmul column-wise. Each GPU holds a strip of the weight matrix, and the partial outputs are combined via an AllReduce. Because the AllReduce runs on every layer, tensor parallelism is bandwidth-hungry, it wants the ~900 GB/s NVLink fabric you only get between GPUs sitting inside a single server node.</li>
+<li><strong>Pipeline parallelism</strong> splits the model across layer groups. GPU 0 holds layers 1 through 20, GPU 1 holds layers 21 through 40, and activations flow between them. The per-layer cross-GPU traffic is much smaller than tensor parallelism, which makes pipeline parallelism the right choice when you have to cross nodes, over InfiniBand at ~50 GB/s.</li>
+<li><strong>Expert parallelism</strong> is the trick behind modern mixture-of-experts models. Each expert (a feed-forward sub-network) lives on a different GPU, and a lightweight router decides which experts to wake up for any given token. It turns a 600B-parameter MoE model into something that costs roughly as much per token as a 30B dense model.</li>
+<li><strong>Sequence parallelism</strong> splits the non-attention operations (LayerNorm, dropout, residual adds) along the token axis. It is a smaller optimization but it plays well with tensor parallelism and reduces activation memory.</li>
+<li><strong>Context parallelism</strong> splits a single very long context, think one million tokens, across GPUs so that the KV cache for that one sequence fits at all. It is the technique that makes million-token chat possible without a single GPU holding a hundred gigabytes of cache for a single user.</li>
+</ul>
+<p>Parallelism is the first and largest technique family in the infrastructure layer. Every deployment above a few billion parameters uses at least one of these, and production stacks routinely compose three or four of them at once.</p>
+<p><strong>Disaggregated prefill/decode.</strong> Prefill is compute-bound; decode is memory-bound. Running them on the same GPU causes a problem: when a new user arrives with a 16,000-token prompt, the prefill saturates the GPU and every other user's decode stalls for the duration. P99 latency spikes from 50 ms to 900 ms. The solution is to put prefill on one pool of GPUs and decode on another. The KV cache is transferred between them after prefill completes. This is the architecture NVIDIA's NIM runs, and the architecture DeepSeek runs, and the architecture vLLM v1 is moving toward. It is the single most important production-serving technique of 2026.</p>
+<p><strong>Replication.</strong> Horizontally scaling the same engine. Two vLLM replicas serve twice as many users as one. The hard part is not running two replicas, it is provisioning them fast enough that when traffic spikes, a new replica boots before the in-flight users see their latency collapse. Cold starts (loading 140 GB of weights into HBM) take several minutes, so production systems keep a buffer of warm replicas.</p>
+<p><strong>Routing.</strong> Once you have many replicas, something has to decide which request goes where. A dumb round-robin router is fine for uniform workloads, but real workloads are not uniform: some users have long system prompts, some have short; some need fast responses, some are running batch jobs. Smart routing uses per-replica load signals, prefix-cache awareness, and SLO tagging to match each request to the replica most likely to serve it fastest. This is the control plane of a serving fleet.</p>
+<p><strong>Multi-region deployment.</strong> Data travels at roughly two-thirds the speed of light through fiber. A user in Singapore talking to a GPU in Virginia pays ~200 ms of round-trip latency before inference even begins. For interactive workloads (voice tutors, voice assistants), that is a product-killing budget. Production systems deploy the same engine into multiple cloud regions and route users to their nearest one.</p>
+<p>The common thread across the infrastructure layer is another one-sentence summary:</p>
+<blockquote>
+<p><strong>Every infrastructure-layer technique is an attempt to coordinate many GPUs as if they were one.</strong></p>
+</blockquote>
+<p>This layer is where topology and networking physics dominate. The NVLink-to-InfiniBand bandwidth ratio (roughly 18:1) determines which parallelism strategies work inside a node versus across nodes. This is not a choice you make after the fact; it is a hard constraint that shapes the architecture. We will spend Chapters 16-18 on this layer.</p>
+<hr>
+<h3>1.5: The Tooling Layer: "what lets me ship?"</h3>
+<p>Nobody writes a FlashAttention kernel from scratch for every new product. Nobody implements tensor parallelism from first principles for every new model. The tooling layer is the set of <strong>serving engines</strong>, software packages that bundle the runtime and infrastructure techniques from the two lower layers and expose them through a production API.</p>
+<p>Figure 1.4 shows the four engines that matter in 2026.</p>
+<p><img alt="Figure 1.4: Inside the Tooling Layer" src="figures/ch01-fig4-tooling-inside/final.png">
+<em>Figure 1.4.</em> Four production serving engines: vLLM (the default), SGLang (structured generation and RadixAttention), TensorRT-LLM (NVIDIA's compiled kernels), and Ray Serve (distributed orchestration). Each packages a different subset of the runtime and infrastructure layers.</p>
+<p><strong>vLLM</strong> is the default choice for almost every new deployment in 2026. It was the first production-grade engine to ship PagedAttention (2023), and has continued to lead on features: continuous batching, chunked prefill, prefix caching, speculative decoding, multi-LoRA serving, guided decoding. Its scheduler is open-source and well-understood. The community is large; the release cadence is fast. If you have no strong reason to use something else, use vLLM.</p>
+<p><strong>SGLang</strong> is the right choice when you need structured generation, JSON schema, regex, or finite-state-machine-constrained output. Its <strong>RadixAttention</strong> indexes the prefix cache as a radix tree, which means it finds maximal shared prefixes across unrelated queries (not just within a conversation). For tree-of-thought prompting, agentic loops, and structured-output workflows, SGLang outperforms vLLM.</p>
+<p><strong>TensorRT-LLM</strong> is NVIDIA's compiled serving engine. It is the highest-performance option on NVIDIA hardware, at the cost of a slow compile step and NVIDIA-only portability. It integrates tightly with Hopper's asynchronous memory accelerators and FP8 tensor cores. If your model is frozen, your hardware is NVIDIA, and your workload is high-volume production traffic, TensorRT-LLM will give you the best per-GPU throughput.</p>
+<p><strong>Ray Serve</strong> is not a single-engine replacement, it is an orchestration layer <em>over</em> vLLM (or any of the others). It handles autoscaling, multi-replica routing, multi-model ensembles, and distribution across a GPU cluster. The production reference architecture of 2026 is <strong>Ray Serve + vLLM</strong>: one instance of vLLM per replica, Ray Serve coordinating replicas across the cluster.</p>
+<p>There are other engines (TGI from Hugging Face, LMDeploy, Together, Modal's serverless offering), and there are specialty runtimes (llama.cpp for CPU/Apple Silicon, MLC for on-device). The full landscape is the subject of Chapter 20. For now, the one-sentence summary:</p>
+<blockquote>
+<p><strong>Every tooling-layer choice is an attempt to make the runtime and infrastructure layers deployable in hours instead of months.</strong></p>
+</blockquote>
+<p>The tooling layer is the fastest-moving of the three. Engines rewrite themselves every year to incorporate the latest runtime tricks. vLLM's internal architecture was substantially rewritten in 2025 (the "v1" rewrite) to handle disaggregated prefill/decode. Expect that to continue: in 2028 the default engine may not be vLLM. The underlying runtime and infrastructure techniques, however, will still be the same ones described in Chapters 7 through 18. The techniques last longer than the packaging.</p>
+<hr>
+<h2>The Inference Engineer Lives in the Intersection</h2>
+<h3>1.6: Why all three layers matter at once</h3>
+<p>We return now to the startup from §1.1, the one whose engineer picked vLLM and hoped for the best. The mistake was not vLLM. vLLM is excellent. The mistake was treating the tooling layer as if it were the whole stack.</p>
+<p>Figure 1.5 draws this geometrically.</p>
+<p><img alt="Figure 1.5: Where the Inference Engineer Sits" src="figures/ch01-fig5-engineer-intersection/final.png">
+<em>Figure 1.5.</em> Three overlapping circles, runtime, infrastructure, tooling. A working inference engineer lives in the deeper-lavender triple-intersection in the center. Knowing any one or two layers is incomplete. The combinations explain the common failure modes.</p>
+<p>The figure shows three overlapping circles. Each pairwise overlap, and the triple overlap in the center, corresponds to a real role in the industry. It is worth being explicit about each.</p>
+<p><strong>Runtime only.</strong> Academic ML researchers who understand attention variants and quantization algorithms in depth, but have never deployed a model. They can write a FlashAttention kernel but cannot tell you what ITL their deployment achieved last week. Useful for inventing new techniques; not useful for shipping products.</p>
+<p><strong>Infrastructure only.</strong> Cloud-ops and SRE engineers who understand how to scale a service, load-balance replicas, and autoscale by CPU utilization. They can run 100 replicas of any binary. They will happily run 100 replicas of an <em>unoptimized</em> binary and wonder why the bill is $100K per month. Useful for running a serving fleet; not useful for making the individual engines fast.</p>
+<p><strong>Tooling only.</strong> The startup engineer from §1.1. Knows how to call vLLM's API. Cannot tune it when the defaults break. Will often over-provision hardware as a substitute for tuning. This is the most common mistake in applied AI today.</p>
+<p><strong>Runtime + Infrastructure, no Tooling.</strong> Rare. Usually academic research groups that are building their own in-house serving stack. They can get remarkable per-GPU performance, but their systems are not maintainable by anyone else, so nothing ever ships to production.</p>
+<p><strong>Runtime + Tooling, no Infrastructure.</strong> Common among early-stage teams. They know how to pick a good engine (vLLM) and tune its flags, but when traffic crosses one GPU, they do not know how to design the replica topology. They hit a scaling wall at around 100-500 concurrent users.</p>
+<p><strong>Infrastructure + Tooling, no Runtime.</strong> The classic ops-first team. They can scale out; they cannot make individual replicas efficient. Their unit economics never converge; every additional user costs the same as the last one because they cannot compress the per-user cost.</p>
+<p><strong>The center, all three.</strong> This is the position the book is training you for. A working inference engineer understands what is happening inside vLLM, why PagedAttention changes the scheduler's calculus, how tensor parallelism changes the arithmetic intensity per GPU, when to add a replica versus when to tune the existing one, and which metric to push against on which day. The job is to see the entire stack, top to bottom, and tune where the leverage is.</p>
+<hr>
+<h3>1.7: The map, ready to be filled in</h3>
+<p>Now you have the map. For the rest of this book, the map is going to sit just behind every page like a piece of graph paper under tracing paper. Every new technique you meet is a dot somewhere on Figure 1.1, and by the end of the book you will be able to look at a paper or a release note and place it there without thinking, <em>this is a runtime trick, it lives in the attention cluster; that is an infrastructure trick, it lives in the disaggregation cluster; that one over there is tooling, it belongs in the vLLM box.</em> This is not a party game. This is the mental habit that separates engineers who can reason about inference from engineers who memorize it.</p>
+<p>There is one more thing worth saying now, because I want you to be prepared for it. <strong>The boundaries between the layers are never as clean as a book chapter will pretend.</strong> PagedAttention is catalogued in the runtime ring because it is a change to how attention is computed on one GPU, but its real value only shows up in production because of what it unlocks in the infrastructure ring: continuous batching across many users would quietly collapse under KV-cache fragmentation without it, and the very reason it was invented was to solve that infrastructure problem. Speculative decoding is a runtime-layer trick, strictly speaking, and yet it is really a two-model trick, and the moment you have a draft model plus a target model, you have an infrastructure question on your hands about where the draft model lives. These crossovers are not rough edges in the pedagogy. They are, in my experience, exactly where the most interesting production problems sit. That is why, in Figure 1.5, the three-way intersection is labeled <em>full-stack inference engineer</em>: the engineer who can work across the layers is the one companies actually need.</p>
+<p>A final note on the order in which we will walk through the remaining parts of the book. The book proceeds roughly bottom-up, and the order is deliberate. Part I shows you how a token actually moves through a transformer, so that when we later talk about optimizing <em>something</em>, you know exactly what that something is. Part II spends one chapter on the GPU itself, because you cannot reason about a bottleneck without knowing what the bottleneck is made of, how SRAM talks to HBM, how a tensor core actually schedules a matmul, what a warp is. Part III is the long heart of the book, the runtime layer, where nearly every chapter derives one technique that pushes a single GPU closer to its roofline. Part IV moves up to the infrastructure layer, where we talk about how to coordinate many of those GPUs. Part V introduces the tooling layer, the engines and orchestrators that turn all of this into something you can deploy on a Tuesday morning. The ordering is not aesthetic. It is, almost literally, the ordering an inference engineer runs through in their own head when they look at a new system for the first time: <em>what is it supposed to do; what is the hardware under it; what is the single-GPU bottleneck; how do I scale it; how do I ship it?</em> This is the order. This is the map. The rest of the book is filling it in.</p>
+<hr>
+<h3>1.8: Where we go next</h3>
+<p>The three layers told us <em>what</em> we will learn and <em>in what order</em>. They did not tell us <em>what we are trying to optimize</em>. That is the subject of Chapter 2: five numbers, time to first token, inter-token latency, tokens per second, latency percentiles, and dollars per million tokens, that every inference decision in this book ultimately moves.</p>
+</section>
+
+<section class="chapter-wrapper" id="ch02-five-numbers">
+<h1>Chapter 2: Five Numbers You Will Live By</h1>
+<p>Chapter 1 gave us the map, three layers, and the question each one answers. That map told us <em>what</em> we were going to study and <em>in what order</em>. It did not tell us what we were going to <em>measure</em>.</p>
+<p>That matters, because every technique in this book succeeds or fails against a number. FlashAttention is a 2.3× speedup against one number and a 0% improvement against another. Quantization is often a 40% cost reduction against one number and a 6% quality regression against another. Disaggregated prefill is a 7× improvement against one number and a 12% increase against another. You cannot reason about any of these trade-offs without first naming the numbers themselves.</p>
+<p>In production, an inference engineer tracks five. Not three. Not ten. Five. Every dashboard in every serious inference deployment, OpenAI, Anthropic, NVIDIA's NIM, AWS Bedrock, DeepSeek's internal stack, shows you these five numbers and some flavor of their derivatives. Pick any one of them up and pull, and you touch every other concept in this book.</p>
+<p>This chapter is where you learn what they mean, how they are measured, what each one hides from you, and which stakeholder in an organization cares about which. It is shorter than Chapter 1 because the content is cumulative: once you understand these five, every subsequent chapter is a discussion of how to move one of them without ruining the others.</p>
+<hr>
+<h2>Why Metrics Come Before Techniques</h2>
+<h3>2.1: The metrics dashboard, at a glance</h3>
+<p>Figure 2.1 is the mental dashboard. When I meet an inference engineer at a conference and ask them, "How is your deployment doing?", I expect answers in these five numbers. Not "fine" and not "working" and not "fast." These five, with real values.</p>
+<p><img alt="Figure 2.1: The Five Numbers of Inference" src="figures/ch02-fig1-five-metrics-dashboard/final.png">
+<em>Figure 2.1.</em> Five cards, each naming one metric, its one-line definition, its unit, and a typical "good" target. TTFT, ITL, TPS, P99 latency, and dollars per million tokens.</p>
+<p>Read Figure 2.1 twice. The first time, notice the definitions: <strong>TTFT</strong> is how long before the user sees anything; <strong>ITL</strong> is how fast the stream flows once it starts; <strong>TPS</strong> is the reciprocal of ITL and the metric users implicitly feel; <strong>P99 latency</strong> is the slowest one percent, the dangerous tail; and <strong>$/M tokens</strong> is the economic unit that determines whether a product is viable. The second time, notice the <em>units</em>. Four of the five are measured in milliseconds or tokens-per-second. The fifth is measured in dollars. An inference engineer sits at the boundary where those two kinds of units meet.</p>
+<p>The rest of this chapter takes each metric, one at a time, and answers three questions for each: what is it, how is it measured, and what do you get wrong if you optimize it alone? At the end, in §2.7, we return to Figure 2.1 and ask which stakeholder in your organization cares about which metric. That matters because your CFO and your product manager and your on-call SRE will each tell you a different number is "the" number, and they will all be correct about their own concern, and wrong about the system.</p>
+<p>A note before we start: I have seen engineers succeed against <em>any</em> of these metrics individually. I have never seen a team succeed in production without understanding the relationship between them. That relationship is the real subject of this chapter.</p>
+<hr>
+<h2>The Five Numbers, One at a Time</h2>
+<h3>2.2: TTFT: Time to First Token</h3>
+<p><strong>TTFT</strong> is the wall-clock time from the moment the user's request hits your server to the moment they see the first output token appear on their screen. It is measured in milliseconds.</p>
+<p><img alt="Figure 2.2: Time to First Token" src="figures/ch02-fig2-ttft-timeline/final.png">
+<em>Figure 2.2.</em> A horizontal timeline starting at t=0 (user sends prompt). A shaded block, the <strong>prefill phase</strong>, spans from t=0 to t=T. At t=T, the first token appears and decode streaming begins. TTFT = T milliseconds.</p>
+<p>In Figure 2.2, the shaded region labeled "prefill phase" is the key to understanding TTFT. When a user sends a prompt, your model does <strong>not</strong> start generating output immediately. It first has to process the prompt itself, running it through the full transformer forward pass, computing K and V vectors for every input token, populating the KV cache. Only after this phase completes can decoding, the generation of new tokens, begin.</p>
+<p>The length of the prefill phase is roughly proportional to the prompt length. A 100-token prompt prefills in ~15 ms on a modern GPU. A 10,000-token prompt prefills in ~1,500 ms. If your users are sending long conversations or long documents (chat with retrieved context, code with large files pasted in, legal documents), TTFT can dominate the entire user experience. On the 10,000-token prompt, the user sees a blank screen for one and a half seconds before anything appears. That is often an eternity in product terms.</p>
+<p>TTFT is compute-bound. It scales with the <em>square</em> of prompt length (roughly), because the attention mechanism during prefill computes <code>N × N</code> attention scores across all pairs of prompt tokens. Doubling the prompt length roughly quadruples the prefill time, though FlashAttention and related techniques soften the constant factors considerably.</p>
+<h4>2.2.1: Why TTFT matters more than you think</h4>
+<p>A user's perception of a streaming response is dominated by two moments: (a) the instant they press enter and (b) the instant the first word appears. The gap between these two moments is the time during which the interface is "dead." In a live voice tutor, a TTFT of 3 seconds produces an awkward silence that feels like a system failure. In a chat UI, it produces a flashing cursor that anxious users will interpret as a bug. Users do not reason about prefill; they do not know that a long prompt takes longer to process. They only know that nothing is happening.</p>
+<p>For interactive workloads, the industry-standard TTFT target is <strong>under 500 ms at P99</strong> and <strong>under 300 ms at P50</strong> (median). If your P50 TTFT is 800 ms, users will report that the product is slow, even if your ITL is excellent. Chat UX research from OpenAI, Anthropic, and Google all converges on this same budget, because it matches the human threshold at which a system stops feeling responsive.</p>
+<p>For batch workloads, a summarization pipeline that processes 10,000 documents overnight, TTFT is almost meaningless. No one is watching. Only throughput and cost matter.</p>
+<h4>2.2.2: Where TTFT regresses</h4>
+<p>Three things make TTFT worse, and we will see all three in later chapters:</p>
+<ul>
+<li><strong>Long prompts.</strong> Doubling prompt length roughly quadruples prefill compute. Retrieval-augmented generation (RAG), which injects document chunks into the prompt, is a frequent TTFT killer. We attack this in Chapter 12 with <strong>prefix caching</strong> (skip recomputing shared prefixes) and <strong>chunked prefill</strong> (do prefill in smaller chunks interleaved with ongoing decodes).</li>
+<li><strong>Contention.</strong> If your GPU is currently serving other users' decodes, a new user's prefill cannot start immediately. The waiting time is added to TTFT. We attack this in Chapter 17 with <strong>disaggregated prefill/decode</strong>.</li>
+<li><strong>Cold starts.</strong> If your serving replica has to boot (load model weights from disk, allocate the KV cache, capture CUDA graphs), TTFT on the first request can be minutes, not milliseconds. We attack this in Chapter 18 with warm pools.</li>
+</ul>
+<p>The standard way to measure TTFT in production is to record the server-side timestamp when the HTTP request body is received, and the timestamp when the first SSE event (or WebSocket frame) containing output content is emitted. The difference is TTFT. Client-side TTFT is longer (it includes network round-trip), and should be reported separately.</p>
+<hr>
+<h3>2.3: ITL and TPS: The Streaming Rate</h3>
+<p><strong>ITL</strong> (inter-token latency) is the average wall-clock time between two consecutive output tokens during the decode phase. It is measured in milliseconds per token. <strong>TPS</strong> (tokens per second) is its reciprocal, the rate at which output flows out, measured in tokens per second.</p>
+<p>These two metrics measure the same thing from opposite angles:</p>
+<pre><code>TPS_per_user = 1000 / ITL_ms
+</code></pre>
+<p>An ITL of 50 ms/token means 20 tokens/sec. An ITL of 25 ms/token means 40 tokens/sec. Most published benchmarks quote one or the other, quote whichever your audience finds more intuitive. End users think in TPS ("this thing is slow"); engineers think in ITL ("decode steps are taking 80 ms").</p>
+<p><img alt="Figure 2.3: Inter-Token Latency and Tokens Per Second" src="figures/ch02-fig3-itl-and-tps/final.png">
+<em>Figure 2.3.</em> A stream of output tokens flowing along a timeline, each separated by a gap labeled ITL. The equation <code>TPS = 1000 / ITL_ms</code> makes the relationship concrete: ITL = 50 ms gives TPS = 20 tokens per second.</p>
+<p>Figure 2.3 shows a stream of tokens <code>w_1, w_2, ..., w_6</code> with equal ITL gaps between them. In reality, the gaps are not perfectly equal, a small variance exists from GPU kernel timing jitter, but the <em>average</em> is what ITL measures. The equation in the figure is the one piece of arithmetic you will use more often than any other in this book. Internalize it: <strong>TPS and ITL are inverses</strong>. If someone tells you their deployment hits 30 tokens/sec, you can say, "your ITL is 33 milliseconds" without looking anything up. This is useful in conversation.</p>
+<h4>2.3.1: Why ITL is memory-bound</h4>
+<p>The decode loop produces <strong>one token per forward pass</strong>. Each forward pass must load the full weights of the model from HBM, every single layer, every single parameter, to compute the next token. A 7B-parameter model at FP16 is 14 GB of weights. Loading 14 GB at H100's 3.35 TB/s bandwidth takes <code>14 / 3350 = 4.18 ms</code> of pure memory traffic. You cannot go faster than that on H100 for this model, no matter what algorithm you use, because even if compute took zero time, the data still has to travel from HBM to the compute units.</p>
+<p>This is <strong>why decode is memory-bound</strong> and why ITL is dominated by HBM bandwidth rather than arithmetic throughput. Every ITL improvement in this book is, at its core, a way to reduce the number of bytes that must flow through the HBM per generated token. Quantization (smaller bytes per parameter), flash attention (fewer reads from HBM), MLA (smaller KV cache to read), speculative decoding (more tokens per weight-load), they all reduce memory traffic per token.</p>
+<p>Chapter 3 makes this mechanism precise by introducing the GPU roofline. For now, remember one fact: <strong>ITL is limited by memory bandwidth, not by FLOPs</strong>, for any transformer model of any realistic size during decode.</p>
+<h4>2.3.2: Target ITL budgets</h4>
+<p>For interactive workloads, the ITL target is <strong>under 50 ms</strong> (equivalently, TPS &gt; 20). This is slightly faster than human reading speed, so the output flows visibly but not frustratingly. An ITL over 100 ms (TPS &lt; 10) feels laggy even to slow readers.</p>
+<p>For voice workloads, the target is tighter, <strong>under 30 ms</strong> (TPS &gt; 33). Voice requires tokens to arrive fast enough that the text-to-speech engine can buffer smoothly; stutter in voice output is immediately noticeable.</p>
+<p>For batch workloads, the ITL of any single request does not matter; only aggregate system throughput does (see §2.4).</p>
+<h4>2.3.3: Per-user TPS versus system TPS</h4>
+<p>This is the subtle point where a surprising number of engineers get confused in their first year.</p>
+<p>There are <strong>two different TPS numbers</strong>, and they measure different things.</p>
+<ul>
+<li><strong>Per-user TPS</strong> is how fast one user's stream flows, the reciprocal of that user's ITL.</li>
+<li><strong>System TPS</strong> (also called "throughput") is the total output rate across all concurrent users.</li>
+</ul>
+<p>If your engine serves 32 users concurrently, each at 20 tokens/sec per-user, the system TPS is 32 × 20 = 640 tokens/sec. The per-user TPS is 20. These are very different numbers and a product manager will often want to know both.</p>
+<p>The trade-off between them is central to everything that follows. Increasing the batch size (serving more users per forward pass) tends to <em>increase</em> system TPS and <em>decrease</em> per-user TPS, because each user's forward pass is now sharing compute with more neighbors. Figure 2.4 draws this explicitly.</p>
+<hr>
+<h3>2.4: Throughput vs Per-User Latency: The Fundamental Trade-off</h3>
+<p><img alt="Figure 2.4: Throughput vs per-user latency" src="figures/ch02-fig4-throughput-vs-latency/final.png">
+<em>Figure 2.4.</em> Two curves sharing an x-axis (batch size, log-like 1 to 64). One curve rises: <strong>system throughput</strong> (tokens/sec) grows with batch size. The other also rises: <strong>per-user ITL</strong> (ms) grows with batch size. A shaded "sweet spot" around batch 16-32 marks where throughput is high but ITL has not yet collapsed user experience.</p>
+<p>Figure 2.4 is the most important plot in inference production after the roofline itself. Look at the two curves carefully.</p>
+<p>The deep-lavender curve (system throughput) rises steeply at small batch sizes and plateaus at large batch sizes. This shape is characteristic of <strong>amortization</strong>: loading the model's weights from HBM is a fixed cost paid once per forward pass, and the more tokens that ride along on that single weight-load, the more total tokens the system produces per second. Doubling the batch from 1 to 2 nearly doubles throughput. Doubling from 16 to 32 may increase throughput by only 50%, because the system is approaching the compute ceiling.</p>
+<p>The dusty-rose curve (per-user ITL) stays nearly flat at small batch sizes, then rises sharply at large batch sizes. The flat region corresponds to the <strong>memory-bound regime</strong>: as long as the batch fits comfortably in HBM and the forward pass is dominated by weight-loading rather than attention computation, adding more users has almost no effect on per-user latency. Beyond a critical batch size, the system becomes compute-bound and ITL starts to climb.</p>
+<p>The shaded "sweet spot" in Figure 2.4, roughly batch size 16 to 32 for most production models on H100, is where both metrics are acceptable. System TPS is high, per-user TPS is still within interactive budgets. Below this range, the GPU is underutilized (and cost-per-token is poor). Above this range, per-user experience degrades.</p>
+<p>This is why <strong>picking the right batch size is not a one-time decision</strong>. It depends on your workload (are users patient, or interactive?), your cost constraints (can you afford low utilization?), and your hardware (the ridge point moves with GPU generation). A production inference engineer tunes this parameter continuously, usually via a feedback loop on measured P99 ITL.</p>
+<p>A caution: the "batch size" in Figure 2.4 is not a single knob. In a modern serving engine like vLLM, there are <strong>two</strong>: <code>max_num_seqs</code> (concurrent sequences) and <code>max_num_batched_tokens</code> (total tokens per forward pass). Chapter 19 walks through how those two parameters interact and how to set them. For now, think of "batch size" as the effective concurrency, and remember that throughput and latency are in tension.</p>
+<hr>
+<h3>2.5: Percentiles: The Tail You Cannot Afford to Ignore</h3>
+<p><strong>P50 latency</strong> is the median, half of all requests are faster than P50, half are slower. <strong>P90</strong> is the 90th percentile, 90% of requests are faster than P90, and the worst 10% are slower. <strong>P99</strong> is the 99th percentile, 99% of requests are faster, and the worst 1% are slower.</p>
+<p>In production, <strong>P99 is the number that matters</strong>. Not P50. Not average. P99.</p>
+<p><img alt="Figure 2.5: TTFT Distribution Across 1000 Requests" src="figures/ch02-fig5-percentile-distribution/final.png">
+<em>Figure 2.5.</em> A histogram of TTFT across 1,000 requests, right-skewed. P50 at 250 ms ("what you brag about"), P90 at 700 ms ("what most users see"), P99 at 2,200 ms ("what wakes the on-call engineer"). The tail is long, P99 is almost 9× the median.</p>
+<p>Look at Figure 2.5 carefully. This is a real-looking distribution of TTFTs, a heavy peak near the median, with a long right tail. The peak is the "normal case": most requests land in that fat middle. The tail is the dangerous part: slow requests caused by contention, GC pauses, cold-start effects, long prompts, or simply bad luck.</p>
+<p>The three vertical lines show the percentiles. Notice how far apart they are. The P50 (250 ms) is fast, genuinely impressive. The P90 (700 ms) is the number most users actually experience in a typical session, because over ten interactions a user will typically hit one P90-or-worse case. The P99 (2,200 ms) is what a power user who makes a hundred calls per hour will hit multiple times per day. At a P99 of 2.2 seconds, your product feels broken on a regular basis, not to everyone, but to the most engaged users.</p>
+<h4>2.5.1: Why averaging is wrong</h4>
+<p>A common mistake is to quote <strong>average latency</strong>. Do not do this. Latency distributions are right-skewed, the tail drags the mean upward, and averages conceal the bimodal structure. A system with a P50 of 200 ms and P99 of 2,000 ms has the same average as a system with P50 of 500 ms and P99 of 800 ms, but the two systems feel entirely different to users.</p>
+<p>The rule is simple: in production, <strong>report percentiles, not averages</strong>. Every serving engine's Prometheus / Grafana dashboard exposes P50, P90, P99, and P99.9 for both TTFT and ITL. Look at all of them. If you only look at P50, you are optimizing for the average user who has an above-average experience, which is a meaningful fraction of users, but not the ones who complain.</p>
+<h4>2.5.2: SLOs are written against P99</h4>
+<p>Service-level objectives in modern production contracts are written against P99. A typical SLO looks like:</p>
+<blockquote>
+<p>P99 TTFT &lt; 500 ms, measured over 5-minute windows, 99.9% of the time.</p>
+</blockquote>
+<p>Two percentiles stacked. If your 5-minute P99 is 500 ms, you have met the SLO for that window. If your 5-minute P99 goes above 500 ms, that window breaks SLO. If more than 0.1% of windows break SLO, the contract is violated.</p>
+<p>This cascading structure, percentile-of-percentile, is deliberately paranoid. It means that a single slow minute can violate your SLO even if average behavior is fine. It is also why P99 tuning is almost always harder than median tuning: getting the median down is a matter of tuning the common case; getting P99 down is a matter of eliminating <em>every</em> source of tail latency.</p>
+<h4>2.5.3: What causes tail latency in inference</h4>
+<p>The tail of Figure 2.5 is caused by specific, identifiable phenomena. Each one of them has a chapter in this book:</p>
+<ul>
+<li><strong>Long-prompt prefill blocking decodes.</strong> A new user's 10K-token prompt lands and the GPU processes it, stalling other users' decodes. Seen directly on every production voice-assistant dashboard I have looked at. Fixed by <strong>chunked prefill</strong> (Chapter 12) and <strong>disaggregated P/D</strong> (Chapter 17).</li>
+<li><strong>Cache misses for the first token of a session.</strong> A brand-new session has no prefix cache hit, so it pays full prefill. Solved partially by <strong>prefix caching</strong> (Chapter 12).</li>
+<li><strong>Replica over-commitment.</strong> When <code>max_num_seqs</code> is set too high, the forward-pass time grows, and every active user's ITL grows with it. Tuned via the production-serving Chapter 19.</li>
+<li><strong>Cold starts.</strong> A new replica boots during a traffic spike and its first few requests are slow. Solved with warm-pool maintenance (Chapter 18).</li>
+<li><strong>Cross-tenant interference.</strong> In multi-tenant serving, one user's long response takes a slot that could have served another user. Solved via SLO-aware routing (Chapter 18).</li>
+</ul>
+<p>Every one of these is a P99 problem, not a median problem, and every one of them has its own technique.</p>
+<hr>
+<h3>2.6: Dollars per Million Tokens: The Unit That Decides Viability</h3>
+<p>The fifth metric is economic. <strong>$/M tokens</strong> is the blended cost of producing 1 million output tokens, accounting for hardware rental, electricity, amortized development time, and whatever idle-capacity overhead you run to meet SLOs.</p>
+<p>This is the number your CFO will ask about. It is the number that determines whether your product's unit economics converge. It is also the number that varies most widely across deployment strategies, more than three orders of magnitude, as Figure 2.6 shows.</p>
+<p><img alt="Figure 2.6: $ per Million Output Tokens" src="figures/ch02-fig6-price-per-million-tokens/final.png">
+<em>Figure 2.6.</em> Seven bars, log-scale X-axis. GPT-5 API at ~$30/M, Claude Sonnet at ~$15/M, Gemini Pro at ~$10/M, Llama-3-70B self-hosted at ~$2/M, Llama-3-8B self-hosted at ~$0.40/M, Llama-3-8B on consumer RTX 4090 at ~$0.10/M, local on M3 Max at essentially $0 (electricity only).</p>
+<p>Figure 2.6 tells the story of the single most under-appreciated fact in applied AI. The cheapest serving path (running on hardware you already own) is roughly <strong>three hundred times cheaper</strong> than the most expensive path (a frontier API). Three orders of magnitude. Your choice of deployment strategy can move your per-token cost from $30 to $0.10, with every intermediate point a real trade-off between convenience, quality, and control.</p>
+<p>Notice that <strong>the model choice is only one of the variables</strong>. Llama-3-70B self-hosted costs ~$2/M, not because Llama is inherently cheap, but because the serving efficiency (continuous batching, PagedAttention, quantization) is excellent. The same model served naively, with one request per forward pass and no batching, would cost 10× more.</p>
+<h4>2.6.1: What is in the blended cost</h4>
+<p>Do not confuse the GPU hourly rate with the per-token cost. An H100 at $2.50/hour can serve anywhere from 5 tokens/sec to 5,000 tokens/sec depending on how it is tuned. The per-token cost is the hourly rate divided by the achieved throughput.</p>
+<pre><code>$/M tokens  =  (GPU $/hour)  /  (throughput in tokens/sec)  ×  1,000,000 / 3600
+            ≈  (GPU $/hour)  /  (tokens/sec)  ×  278
+</code></pre>
+<p>At $2.50/hour and 100 tokens/sec (poor utilization), the cost is $2.50 × 278 / 100 = $6.95 / M tokens. At $2.50/hour and 3,000 tokens/sec (well-tuned), the cost is $2.50 × 278 / 3000 = $0.23 / M tokens. <strong>Same hardware, thirty times different cost.</strong> This is why the runtime layer matters economically.</p>
+<p>Beyond pure GPU rental, the blended cost should include:</p>
+<ul>
+<li><strong>Idle-capacity overhead.</strong> To meet SLOs, you run at ~70% average utilization, not 100%. The 30% idle capacity is a real cost, add it to the per-token price. If your replicas run at 70% utilization, multiply the naive cost by 1/0.7 = 1.43.</li>
+<li><strong>Cold-start and autoscale overhead.</strong> Replicas that boot during traffic spikes serve fewer tokens per hour. This is a 5-15% overhead on most production systems.</li>
+<li><strong>Observability, logging, and orchestration.</strong> Prometheus, Grafana, the router, the load balancer, the API gateway, small, but real, and usually 2-5% of GPU cost.</li>
+<li><strong>Amortized development time.</strong> If your inference engineer spent three months tuning the stack and the product serves 100M tokens per day, their time amortizes to roughly $0.01 per million tokens. Tiny compared to GPU cost, but worth naming.</li>
+</ul>
+<h4>2.6.2: Why APIs cost more</h4>
+<p>The API providers (OpenAI, Anthropic, Google) charge what Figure 2.6 shows partly because their models are larger and better, but also because their pricing includes margin, SRE overhead, customer support, infrastructure amortization, and the optionality of not paying for idle GPUs. The convenience is real. But the self-hosted path is always cheaper per token for teams that can absorb the engineering overhead, which is the entire premise of this book.</p>
+<h4>2.6.3: When API cost is acceptable</h4>
+<p>An API is the right choice when any of the following hold:</p>
+<ul>
+<li><strong>Your volume is low.</strong> Under 1M tokens/day, even the $30/M API is under $30/day, well below an H100's rental cost.</li>
+<li><strong>Your quality bar requires a specific frontier model.</strong> No open-source model is indistinguishable from Claude Opus on certain tasks as of 2026, and if your product hinges on that last 5% of capability, pay the premium.</li>
+<li><strong>Your team has no inference engineer.</strong> Hiring a good inference engineer costs more than many small products' total API budget.</li>
+<li><strong>You value the vendor's safety tuning.</strong> OpenAI's and Anthropic's RLHF pipelines handle content policy and abuse filtering in ways that take open-source models many months to match.</li>
+</ul>
+<p>All other cases, and this is most production cases at any meaningful scale, should self-host. The rest of this book is the skill set that makes self-hosting viable.</p>
+<hr>
+<h2>The Metrics Belong to Stakeholders</h2>
+<h3>2.7: Who cares about which number</h3>
+<p>The five metrics are not equally important to everyone in your organization. Figure 2.7 maps metrics to stakeholders.</p>
+<p><img alt="Figure 2.7: Who Cares About Which Metric" src="figures/ch02-fig7-metrics-stakeholder-matrix/final.png">
+<em>Figure 2.7.</em> A 5 × 5 matrix. Rows are stakeholders (end user, product manager, CFO, DevOps / SRE, researcher). Columns are the five metrics. Filled dots mark primary concerns; lighter dots mark secondary concerns.</p>
+<p>Figure 2.7 is the source of most inference-engineering politics. Each row of the matrix represents a human who will enter your one-on-one and tell you that <em>their</em> number is the real one. Each of them is correct about their own concern.</p>
+<p><strong>The end user</strong> cares first about TTFT (is anything happening?) and TPS (is it readable?). They do not know what "P99" means; they experience P99 as "this tool is flaky." They do not care about $/M tokens because they are not paying per token, they are paying a subscription. Their experience is a function of TTFT and TPS on their specific sessions, which are drawn randomly from the distribution whose shape is defined by P99.</p>
+<p><strong>The product manager</strong> cares about everything the end user cares about, plus P99 (because user complaints scale with P99), plus $/M tokens (because unit economics determines the company's runway). They will rank TTFT first because they hear user complaints weekly; rank $/M second because they hear board complaints monthly; rank P99 third because that is where the two prior complaints reconcile.</p>
+<p><strong>The CFO</strong> cares almost exclusively about $/M tokens. They will ask you to prove that $/M is trending down, even when traffic is growing. They do not care about ITL unless it is so bad that users churn (which affects revenue, which affects $/M indirectly). A good inference engineer produces a monthly cost trend chart and can explain each inflection point.</p>
+<p><strong>The DevOps / SRE engineer</strong> cares about P99 above all else. P99 is what pages the on-call at 3 AM. P99 is what determines whether your SLO is met and your production bonus is earned. P99 is what the CEO will ask about during an incident post-mortem. The DevOps engineer will fight you on any deployment change that might raise P99 by even a few percent, regardless of how much it improves other metrics.</p>
+<p><strong>The researcher</strong>, whether in-house or external, cares about per-user TPS because that is what papers report in benchmarks. They care about $/M tokens to some degree (funding bodies want cost-efficient research). They do not care about P99 because research code doesn't have SLOs. Be wary of research benchmarks that report only TPS: they are optimized on the assumption that TTFT and P99 do not matter, which is true for offline evaluation and false for production.</p>
+<p>Your job as an inference engineer is to see all five numbers as a single coupled system and to refuse to optimize any one of them in isolation. When someone says "just make TTFT faster," the answer is "at what cost to TPS, P99, and $/M?", and then you open Figure 2.4 and make the trade-off concrete.</p>
+<hr>
+<h3>2.8: The five numbers in one sentence</h3>
+<p>Before we close the chapter, let me tell you the one sentence that summarizes the relationship between the five metrics. It is not in Figure 2.7; it is not in any of the earlier sections. It is the mental model I use when I look at any production deployment.</p>
+<blockquote>
+<p><strong>TTFT and ITL are coupled through the prefill/decode boundary. TPS is 1/ITL. P99 is the shape of the distribution. $/M is the amortization across all of it.</strong></p>
+</blockquote>
+<p>Every time you make a change to an inference system, ask what it does to each of the five numbers, and reject changes that help one at disproportionate cost to another. That is the discipline. The rest of this book is the toolkit.</p>
+<hr>
+<h3>2.9: Where we go next</h3>
+<p>We have the map (Chapter 1), and we have the scoreboard (this chapter). What we do not yet have is a physical model of the machine we are optimizing on. Why is decode memory-bound? Why is prefill compute-bound? Why does batching help throughput but hurt ITL? Why does quantization help both?</p>
+<p>These are not separate questions. They all collapse onto a single diagram, the <strong>GPU roofline</strong>, which is the subject of Chapter 3. The roofline is the north star of this entire book, and you will return to it in every runtime-layer chapter afterwards. Chapter 3 is where we derive it from first principles, place prefill and decode on it, and see exactly why every technique in this book moves one specific direction on that one chart.</p>
+</section>
+
+<section class="chapter-wrapper" id="ch03-the-roofline">
+<h1>Chapter 3: The Roofline Is Our North Star</h1>
+<p>In Chapter 2 we met the five numbers that every inference decision moves. In Chapter 1 we met the three layers that any technique sits on. Both chapters made one implicit promise: there is a single mental model that connects them all. A single diagram that says, for any technique, whether it helps TTFT or ITL, whether it helps compute or bandwidth, whether it improves per-user TPS or system throughput.</p>
+<p>That diagram is the <strong>GPU roofline</strong>. It is the most important figure in this book. You will see it again in Chapter 6 (where we derive the GPU hardware numbers that populate it), in Chapter 7 (where the KV cache moves us left on it), in Chapter 10 (where FlashAttention moves us right), in Chapter 13 (where quantization moves the ceiling up), in Chapter 14 (where continuous batching climbs the slope), in Chapter 17 (where disaggregation places prefill and decode on different roofline dots), and in every subsequent runtime-layer chapter. The roofline is how we speak about performance in a way that is grounded in hardware physics rather than hand-waving.</p>
+<p>This chapter is where we build it from scratch.</p>
+<p>It is a long chapter because it is worth doing carefully. Every minute you spend here will return dividends in every subsequent chapter. If you internalize the roofline now, you will read the rest of this book with a coordinate system in your head, every technique a point, every optimization an arrow, every trade-off a movement on this single plot.</p>
+<hr>
+<h2>Why We Need a Single Diagram</h2>
+<h3>3.1: The question the roofline answers</h3>
+<p>Take a concrete question. Suppose you are running Llama-3-8B on an H100, and you are considering two optimizations: (a) quantize the weights from FP16 to FP8, or (b) enable FlashAttention. Both are well-known. Both will improve something. Which one improves what?</p>
+<p>An engineer who only knows metrics (Chapter 2) might say: both reduce ITL, therefore both improve TPS. Correct, but uninformative. An engineer with a good library (Chapter 1's tooling layer) might say: turn both on, measure. Also correct, but you cannot predict what will happen before the experiment, so you cannot decide whether it is worth running.</p>
+<p>The roofline gives you a prediction. It lets you say, in advance:</p>
+<ul>
+<li>Quantization from FP16 to FP8 halves the number of bytes transferred from HBM per token. If you are memory-bound (and for Llama-3-8B decode on H100 you are), this nearly doubles your achievable throughput. It also moves you to a different FLOP ceiling, the FP8 tensor core ceiling is roughly twice the FP16 one, which means you have more compute headroom before you become compute-bound.</li>
+<li>FlashAttention reduces HBM traffic for the attention kernel specifically. For short sequences it changes little because attention is not the dominant memory cost. For long sequences it matters more, because the N×N attention matrix becomes a larger fraction of total bytes.</li>
+</ul>
+<p>Both predictions fall out of the roofline automatically. Once you can place your operating point on the roofline and identify the dominant bottleneck, every optimization is an arrow with a known direction.</p>
+<p>That is why this chapter is the north star.</p>
+<hr>
+<h2>Deriving the Roofline from First Principles</h2>
+<h3>3.2: Two hard limits on every GPU</h3>
+<p>Every GPU has exactly two kinds of resources that bound its performance:</p>
+<ol>
+<li><strong>Compute throughput</strong>, how many floating-point operations it can execute per second, measured in FLOPs/sec (or tera-FLOPs/sec, TFLOPs).</li>
+<li><strong>Memory bandwidth</strong>, how many bytes of data it can transfer from HBM (the big slow pool of memory) to its compute units per second, measured in bytes/sec (or terabytes/sec, TB/s).</li>
+</ol>
+<p>For an NVIDIA H100, the rated numbers are:</p>
+<table>
+<thead>
+<tr>
+<th>Resource</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FP32 compute (CUDA cores)</td>
+<td>67 TFLOPs/sec</td>
+</tr>
+<tr>
+<td>FP16 compute (Tensor cores)</td>
+<td>989 TFLOPs/sec</td>
+</tr>
+<tr>
+<td>FP8 compute (Tensor cores)</td>
+<td>1,979 TFLOPs/sec</td>
+</tr>
+<tr>
+<td>INT4 compute (Tensor cores)</td>
+<td>3,958 TFLOPs/sec</td>
+</tr>
+<tr>
+<td>HBM bandwidth</td>
+<td>3.35 TB/sec</td>
+</tr>
+</tbody>
+</table>
+<p>Two observations. First, there is not <em>one</em> compute ceiling, there are several, depending on precision. If your kernel runs in FP16, you get up to 989 TFLOPs. If it runs in FP8, you get up to 1,979 TFLOPs. This is the first hint of why quantization (Chapter 13) is so powerful: it does not just save bytes, it moves you to a higher compute ceiling.</p>
+<p>Second, both resources are <em>fixed</em> per-GPU. You cannot magically get more bandwidth out of an H100, it is wired into the silicon. This is important. It means that the GPU's theoretical peak performance for any workload is <strong>whichever of these two limits you hit first</strong>.</p>
+<p>Which one you hit first is determined by a single ratio: how many FLOPs does your workload perform <em>per byte of data it reads from memory</em>? That ratio has a name.</p>
+<h3>3.3: Arithmetic intensity: the one number that explains everything</h3>
+<p><strong>Arithmetic intensity</strong> (denoted AI) is:</p>
+<pre><code>AI  =  FLOPs performed by the kernel  /  Bytes transferred from HBM
+</code></pre>
+<p>AI is measured in FLOPs per byte. It is a property of the <em>kernel</em>, not the hardware. Every matmul, every attention computation, every softmax has its own arithmetic intensity. An AI of 1 means one floating-point operation per byte of data. An AI of 1,000 means a thousand floating-point operations per byte.</p>
+<p>Why does this number matter? Because it tells you which of the two hardware limits you will hit first.</p>
+<p>Consider a kernel with AI = 1. Every byte it reads triggers one FLOP. If the GPU has a bandwidth of 3.35 TB/sec, the kernel can read 3.35 trillion bytes per second, which means it can do 3.35 trillion FLOPs per second, i.e., 3.35 TFLOPs. Even though the H100 <em>can</em> do 989 TFLOPs in FP16, this kernel will never get above 3.35 TFLOPs because there are not enough bytes per second flowing in to feed more compute. This kernel is <strong>memory-bound</strong>. The bottleneck is not the compute units (which sit idle most of the time) but the memory pipe.</p>
+<p>Now consider a kernel with AI = 1,000. Every byte triggers a thousand FLOPs. The 3.35 TB/sec of bandwidth now supports 3.35 × 1,000 = 3,350 TFLOPs, well above the H100's FP16 ceiling of 989 TFLOPs. The hardware cannot actually do 3,350 TFLOPs; it is capped at 989. So this kernel is <strong>compute-bound</strong>. The bottleneck is the compute units; the memory pipe is never saturated.</p>
+<p>The transition point, where the kernel's AI is just high enough to saturate the compute ceiling, is called the <strong>ridge point</strong>. For H100 in FP16:</p>
+<pre><code>ridge AI  =  989 TFLOPs/sec  /  3.35 TB/sec  =  295 FLOPs per byte
+</code></pre>
+<p>Any kernel with AI below 295 is memory-bound on H100. Any kernel with AI above 295 is compute-bound.</p>
+<p>Every technique in this book, at its deepest level, is an attempt to either (a) push an operating point across the ridge toward compute-bound territory, or (b) raise the ceiling that we bump our head against once we get there.</p>
+<hr>
+<h3>3.4: The plot itself</h3>
+<p>Now we can draw it.</p>
+<p><img alt="Figure 3.1: The GPU Roofline" src="figures/ch03-fig1-roofline-anchor/final.png">
+<em>Figure 3.1.</em> The anchor diagram. X-axis: arithmetic intensity (log scale, FLOPs per byte). Y-axis: achieved FLOPs per second (log scale). A diagonal line rising at slope 1 on the log-log plot, the <strong>memory bandwidth ceiling</strong>. A horizontal flat line, the <strong>compute ceiling</strong>. The two meet at the <strong>ridge point</strong>. The shaded region to the left of the ridge is memory-bound; to the right, compute-bound.</p>
+<p>Figure 3.1 is the diagram you will see in this book more often than any other. Look at it carefully, because every subsequent figure in every runtime chapter is some variation of it.</p>
+<p>The diagonal line on the left is the bandwidth ceiling. Its slope on a log-log plot is exactly 1, because <code>achieved_FLOPs = AI × bandwidth</code>, which is linear in AI. Double your arithmetic intensity, and your achievable FLOP rate doubles, as long as you stay below the ridge.</p>
+<p>The horizontal flat line on top is the compute ceiling. Its value is whatever the hardware's peak FLOP throughput is in the precision you are using. For H100 FP16, that is 989 TFLOPs. Above the ridge, your achievable throughput is capped at this value no matter how much AI you have.</p>
+<p>The ridge point is where the two meet. Kernels at the ridge are using <em>both</em> resources fully, every byte of bandwidth is feeding enough FLOPs to saturate compute, and every FLOP is finding a byte of data ready to work on. This is the sweet spot.</p>
+<p>Now, a critical question: <strong>where do real LLM inference kernels sit on this plot?</strong></p>
+<hr>
+<h3>3.5: Where prefill and decode actually sit</h3>
+<p>Prefill and decode are not on the same part of the roofline. They are in completely different regimes, and understanding <em>why</em> is the single most important insight in all of inference engineering.</p>
+<p><img alt="Figure 3.2: Prefill vs Decode on the Roofline" src="figures/ch03-fig2-prefill-vs-decode-on-roofline/final.png">
+<em>Figure 3.2.</em> Two labeled operating points. <strong>Prefill</strong> sits in the compute-bound region near the flat ceiling, at AI ≈ 100. <strong>Decode (batch=1)</strong> sits deep in the memory-bound region, at AI ≈ 1. An arc arrow connects them with the caption "they are fundamentally different workloads."</p>
+<p>The two dots in Figure 3.2 are not graphical decoration. They are computed from first principles, and we will now compute them together.</p>
+<h4>3.5.1: Prefill's arithmetic intensity</h4>
+<p>During prefill, the model processes <em>all N input tokens at once</em> through a single forward pass. The dominant operation is the matrix-matrix multiplication <code>X · W_Q</code> (and the analogous K and V projections), where X is <code>(N, d)</code> and W_Q is <code>(d, d)</code>.</p>
+<p>For one such projection:</p>
+<pre><code>FLOPs = 2 × N × d × d = 2Nd²         (two FLOPs per multiply-add)
+Bytes = 2 × (N × d) + 2 × (d × d) + 2 × (N × d)    (X in, W_Q in, output out, FP16)
+      = 4Nd + 2d²
+</code></pre>
+<p>Arithmetic intensity:</p>
+<pre><code>AI_prefill  =  2Nd² / (4Nd + 2d²)
+             =  Nd / (2N + d)
+             ≈  d / 2                (when N is large, the Nd term dominates)
+</code></pre>
+<p>For Llama-3-8B with <code>d = 4096</code> and a typical prompt length <code>N = 2048</code>:</p>
+<pre><code>AI_prefill ≈ 4096 × 2048 / (2 × 2048 + 4096) = 8,388,608 / 8,192 ≈ 1,024
+</code></pre>
+<p><strong>1,024 FLOPs per byte.</strong> Well above the ridge point of 295. Prefill is deeply compute-bound.</p>
+<p>This is why the prefill dot in Figure 3.2 sits near the top of the roofline, against the compute ceiling. When you increase prompt length, <code>AI_prefill</code> stays large, prefill does not become memory-bound for any realistic prompt. The constraint is FLOP throughput.</p>
+<h4>3.5.2: Decode's arithmetic intensity</h4>
+<p>During decode, the model produces exactly <strong>one new token per forward pass</strong>. The input is a single token's embedding vector of shape <code>(1, d)</code>, and the same weight matrix <code>W_Q</code> of shape <code>(d, d)</code> is loaded from HBM.</p>
+<pre><code>FLOPs = 2 × 1 × d × d = 2d²
+Bytes = 2 × (1 × d) + 2 × (d × d) + 2 × (1 × d)
+      = 4d + 2d²
+      ≈ 2d²                           (the d² term dominates)
+</code></pre>
+<p>Arithmetic intensity:</p>
+<pre><code>AI_decode  ≈  2d² / 2d² = 1
+</code></pre>
+<p><strong>Arithmetic intensity of approximately 1.</strong> This is the root cause of every inference engineering problem in this book. At AI ≈ 1, the decode operating point is deep in the memory-bound region of the roofline, far below the ridge, far below the compute ceiling.</p>
+<p>For H100 at bandwidth 3.35 TB/sec:</p>
+<pre><code>achieved_decode_FLOPs  =  AI × bandwidth  =  1 × 3.35 TB/sec  ≈  3.35 TFLOPs/sec
+</code></pre>
+<p>But the H100 <em>could</em> do 989 TFLOPs in FP16. We are using <strong>0.34% of the GPU's compute capacity</strong>. The other 99.66% of the compute units are sitting idle, waiting for data to arrive from HBM.</p>
+<p>Now you understand the dark secret of LLM inference in 2026: <strong>every decode step on an unoptimized single-sequence stack uses less than 1% of the GPU it runs on.</strong> The entire runtime layer of this book exists to close that gap.</p>
+<h4>3.5.3: Why the two dots are so far apart</h4>
+<p>Prefill processes N tokens per forward pass. It loads the weights once and does N times more FLOPs per byte. Decode processes 1 token per forward pass. It loads the same weights and does only a handful of FLOPs per byte.</p>
+<p>The asymmetry is fundamental. It is not a bug we can fix; it is a property of autoregressive generation. Every token depends on the previous one, so we cannot parallelize across output tokens the way we can across input tokens.</p>
+<p>What we <em>can</em> do is move the decode dot to the right, increase its AI, by various tricks that all boil down to "get more useful work out of each weight-load." And we can lift the compute ceiling upward by quantization.</p>
+<p>Figure 3.3 shows, at a glance, what each runtime-layer technique does.</p>
+<hr>
+<h3>3.6: Where each optimization moves you</h3>
+<p><img alt="Figure 3.3: Where each optimization moves you on the roofline" src="figures/ch03-fig3-optimizations-on-roofline/final.png">
+<em>Figure 3.3.</em> A baseline decode dot, with three color-coded arrows indicating directions of movement, and a legend card on the side. <strong>Right:</strong> FlashAttention, MLA, MQA, GQA, Prefix Caching, reduce bytes transferred, raise AI. <strong>Up:</strong> Quantization (FP8, INT4), new higher ceiling on quantized tensor cores. <strong>Up-right:</strong> Continuous batching, more tokens per HBM load.</p>
+<p>This is the map. Every runtime-layer technique in this book moves you in one of three directions.</p>
+<p><strong>Right, raise AI by reducing bytes per token.</strong> This is the largest category. FlashAttention eliminates the N×N attention score matrix from HBM entirely, so the bytes-per-token drop. MLA/MQA/GQA shrink the KV cache, so fewer bytes must be read from HBM during decode. Prefix caching avoids reading K and V for prompt tokens that were already processed by another user. Every one of these techniques does not change <em>what</em> the model computes, it changes <em>how many bytes</em> must travel through the HBM pipe to compute it. The result is a higher AI per decode step, which moves the operating point right on the roofline, closer to the ridge.</p>
+<p><strong>Up, raise the ceiling by using lower-precision compute.</strong> Quantization to FP8 moves you from the 989 TFLOPs ceiling to the 1,979 TFLOPs ceiling. Quantization to INT4 moves you to the 3,958 TFLOPs ceiling. If you are compute-bound (prefill, or well-batched decode), this directly doubles or quadruples your throughput. If you are memory-bound (decode at batch 1), this <em>also</em> reduces bytes per weight, because a weight stored in FP8 takes half the bytes of the same weight stored in FP16, so quantization combines a byte reduction and a ceiling lift. It moves you both right <em>and</em> up.</p>
+<p><strong>Up-right, amortize weight-loads across more users.</strong> Continuous batching packs decode steps from many users into the same forward pass. The weights are loaded from HBM once, and every batched user "rides along" on that one load. If you go from batch 1 to batch 32, you have amortized the weight-load 32-fold. AI effectively multiplies by 32. The operating point climbs the slope toward the ridge. This is what Figure 3.4 shows explicitly.</p>
+<p>Every subsequent runtime chapter in this book can be read as a detailed treatment of one of these three arrows. Read Figure 3.3 now; you will keep it in your head for the rest of the book.</p>
+<hr>
+<h3>3.7: The two separate ceilings</h3>
+<p>We mentioned in §3.2 that there is more than one compute ceiling. The H100 has at least four, depending on precision. Figure 3.4 shows them stacked.</p>
+<p><img alt="Figure 3.4: Two Separate Ceilings (FP32, FP16, FP8, INT4)" src="figures/ch03-fig4-two-separate-ceilings/final.png">
+<em>Figure 3.4.</em> A stepped ceiling, each step higher than the last. FP32 CUDA core ceiling at 67 TFLOPs. FP16 Tensor core ceiling at 989 TFLOPs (14× higher). FP8 ceiling at 1,979 TFLOPs (29× higher). INT4 ceiling at 3,958 TFLOPs (59× higher). Quantization moves you to a higher shelf.</p>
+<p>Figure 3.4 makes the quantization story concrete. When someone says "FP8 is twice as fast as FP16," they mean: the ceiling lifts by 2×, and if you are compute-bound, your achievable throughput doubles. If you are memory-bound, you get a further 2× from the halved bytes-per-weight. Quantization is the one optimization that wins in <em>both</em> regimes.</p>
+<p>Crucially, these ceilings are <strong>not software-achievable on any kernel</strong>. They are only reached by Tensor-core kernels written specifically for each precision. A naive PyTorch <code>@ W</code> in FP16 does not reach 989 TFLOPs; it reaches 40% of that. Reaching the ceiling requires FlashAttention-style hand-tuned CUDA, or TensorRT-LLM's compiled kernels, or specialized libraries like cuBLAS-Lt. This is why the tooling layer matters for realizing the ceiling gain, you cannot just "use FP8" and expect the full 2× speedup unless your serving engine supports FP8 tensor core kernels. vLLM, SGLang, and TensorRT-LLM all do as of 2026; older stacks may not.</p>
+<hr>
+<h3>3.8: Batched decode climbs the roofline</h3>
+<p>If you remember one thing from this chapter, one mechanical fact, let it be this: <strong>batching is what moves decode from memory-bound toward compute-bound.</strong></p>
+<p><img alt="Figure 3.5: Batched Decode Climbs the Roofline" src="figures/ch03-fig5-batched-decode-climbs/final.png">
+<em>Figure 3.5.</em> Four operating points connected by a rising arrow. Batch 1: AI ≈ 1. Batch 4: AI ≈ 4. Batch 16: AI ≈ 16. Batch 64: AI ≈ 64, hitting the ridge. The arrow labeled "more tokens per HBM load, AI grows linearly with batch size."</p>
+<p>At batch size 1, decode loads the full model's weights from HBM to produce one token. AI ≈ 1.</p>
+<p>At batch size 32, decode loads the full model's weights from HBM to produce 32 tokens (one per active user, all in the same forward pass). AI ≈ 32.</p>
+<p>Arithmetic intensity is multiplied directly by the batch size. This is because the weights are the dominant byte cost, and they are loaded once per forward pass regardless of how many users the batch contains. The operating point in Figure 3.5 climbs the memory-bandwidth slope at a 1:1 rate with log(batch size) on the log-log plot.</p>
+<p>Somewhere between batch 16 and batch 64, for Llama-3-8B on H100, the operating point hits the ridge. At that point, decode is compute-bound: the GPU is saturated. Beyond that, adding more users does <em>not</em> increase per-GPU throughput further, it just forces them to wait their turn for compute slots, which increases per-user ITL.</p>
+<p>This is the mechanism behind Figure 2.4 (throughput vs per-user latency). Below the ridge, increasing batch size increases throughput with negligible effect on ITL (you are still memory-bound; adding users does not make the weight-load any slower). Above the ridge, increasing batch size increases throughput at the cost of linearly increasing ITL. <strong>The ridge is the sweet spot.</strong></p>
+<p>Real production systems live just below the ridge. You set <code>max_num_seqs</code> to whatever value keeps your median operating point at batch ~16-32, because that is where the roofline is most efficient. Chapter 14 (continuous batching) and Chapter 19 (vLLM internals) are where this tuning happens in practice.</p>
+<hr>
+<h3>3.9: Deriving arithmetic intensity for attention, explicitly</h3>
+<p>We have been handwaving a bit. Let us derive AI for the attention kernel explicitly, so you can do this calculation yourself for any new technique.</p>
+<p><img alt="Figure 3.6: Deriving Arithmetic Intensity for Attention" src="figures/ch03-fig6-arithmetic-intensity-derivation/final.png">
+<em>Figure 3.6.</em> Left column: a five-step math derivation. Right column: a labeled schematic of the Q, K, V, softmax, output matrices. The final formula: <code>AI = N × d / (H × D)</code> for an attention forward pass with <code>N</code> tokens, <code>d</code> model dimension, <code>H</code> heads, <code>D</code> head dimension.</p>
+<p>The derivation in Figure 3.6 follows the standard pattern for any kernel:</p>
+<p><strong>Step 1.</strong> Identify the operation. Attention forward is <code>softmax(Q · Kᵀ / √d) · V</code>. We care about the dominant matrix multiplications: <code>Q · Kᵀ</code> (scores) and <code>weights · V</code> (context).</p>
+<p><strong>Step 2.</strong> Count FLOPs. The scores matrix has shape <code>(N, N)</code> and each cell is a dot product of dimension <code>d</code>, so <code>FLOPs_scores = 2 × N × N × d = 2N²d</code>. The context matrix has shape <code>(N, d)</code> and each cell is a dot product of dimension <code>N</code>, so <code>FLOPs_context = 2 × N × d × N = 2N²d</code>. Total: <code>FLOPs = 4N²d</code>.</p>
+<p><strong>Step 3.</strong> Count bytes. During decode, the dominant byte cost is reading the K and V caches from HBM. Each cache has shape <code>(N, H, D)</code> where <code>H</code> is the number of heads and <code>D = d/H</code> is the head dimension. Total K and V together: <code>2 × N × H × D × 2 bytes (FP16) = 4NHD</code>.</p>
+<p><strong>Step 4.</strong> Compute AI:</p>
+<pre><code>AI_attention  =  4N²d  /  4NHD  =  Nd / HD
+</code></pre>
+<p>Since <code>d = H × D</code>, this simplifies to <code>AI_attention = N × H × D / (H × D) = N</code>.</p>
+<p><strong>Step 5.</strong> Evaluate for Llama-3-8B at <code>N = 4096</code>, <code>d = 4096</code>, <code>H = 32</code>, <code>D = 128</code>:</p>
+<pre><code>AI_attention  =  4096 × 4096 / (32 × 128)  =  16,777,216 / 4,096  =  4,096
+</code></pre>
+<p>Attention decode has AI ≈ 4096. That is far above the ridge, attention itself is compute-bound during decode!</p>
+<p>This is surprising. It means the attention operation is <strong>not</strong> the memory-bound bottleneck. The bottleneck is the projection matmuls (Q/K/V projections and output projection) and the FFN, which have AI ≈ 1 during decode. The reason is that the K/V cache is small per-token, but the weights of the projections are large and must be reloaded every forward pass.</p>
+<p>This is exactly why MLA (Chapter 8) helps so much. MLA shrinks the KV cache but the attention operation was never the bottleneck anyway. The real win of MLA comes from an auxiliary effect: with a smaller cache, you can fit more concurrent sequences in HBM, which lets you raise the batch size, which moves you up the roofline slope.</p>
+<p>Every technique in this book has a similar layered analysis. The roofline is what lets you do it without confusion.</p>
+<hr>
+<h3>3.10: The chef and the delivery truck: the analogy that sticks</h3>
+<p>If everything above was math-heavy, this section is the human metaphor that makes the roofline stick.</p>
+<p><img alt="Figure 3.7: The Chef and the Delivery Truck" src="figures/ch03-fig7-chef-truck-analogy/final.png">
+<em>Figure 3.7.</em> Two panels. On the left, a chef at a stove labeled "COMPUTE, infinite capacity to cook, if ingredients arrive." On the right, a small truck labeled "MEMORY BANDWIDTH, limited supply road, only so many ingredients per second." Arrows between them show ingredients flowing along the road. Caption at the bottom: "Decode = a fast chef waiting on a slow truck. Prefill = a crowd of chefs working on a big delivery that just arrived."</p>
+<p>The metaphor is this. The GPU has two resources: lots of chefs (compute units), and one narrow delivery road (HBM bandwidth). Every dish the chefs cook requires ingredients. The ingredients must travel the road.</p>
+<p>A <strong>memory-bound kernel</strong> is when the chefs are faster than the road. They stand idle most of the time, waiting for ingredients to arrive. It does not matter how many chefs you hire, if the road is narrow, you cook at the road's speed, not the kitchen's.</p>
+<p>A <strong>compute-bound kernel</strong> is when the chefs are slower than the road. Ingredients pile up at the door faster than anyone can cook them. Now the bottleneck is the chefs, and you could benefit from hiring more.</p>
+<p>The ridge is exactly the sweet spot where the road delivers ingredients at the same rate the chefs consume them. Neither the road nor the kitchen is idle. The whole operation is balanced.</p>
+<p>The runtime-layer techniques in this book are ways to make the kitchen busier without hiring more chefs:</p>
+<ul>
+<li><strong>FlashAttention</strong> keeps more of the cooking local, it lets chefs reuse ingredients they already have on the counter, without sending them back to the warehouse and re-ordering them.</li>
+<li><strong>MLA / MQA / GQA</strong> makes the ingredients smaller, less volume of product flowing down the road per dish.</li>
+<li><strong>Quantization</strong> upgrades the chefs, the same kitchen can now cook twice as fast per dish (lower-precision tensor cores), and every ingredient also weighs half as much (half the bytes per weight).</li>
+<li><strong>Continuous batching</strong> batches orders so one truckload serves many diners instead of one, the road still delivers at the same rate, but each delivery now produces more meals.</li>
+</ul>
+<p>Keep this metaphor when you are tired. The math is above; the intuition is here.</p>
+<hr>
+<h2>How to Use the Roofline in Practice</h2>
+<h3>3.11: The workflow: measure, place, predict</h3>
+<p>The roofline is not a proof; it is a <em>tool</em>. In practice, here is how an inference engineer uses it to diagnose a system.</p>
+<p><strong>Step 1. Measure AI on your actual workload.</strong> Most profilers (NVIDIA Nsight, PyTorch profiler, or just custom instrumentation) can tell you FLOPs performed and bytes transferred per forward pass. Divide. You get the AI of your decode kernel, which on most unoptimized stacks will land near 1.</p>
+<p><strong>Step 2. Plot your operating point.</strong> Put a dot on Figure 3.1 at your measured AI. If it is to the left of the ridge, you are memory-bound. If it is to the right, you are compute-bound.</p>
+<p><strong>Step 3. Predict the effect of any proposed change.</strong> For each candidate optimization:</p>
+<ul>
+<li>Does it move right (raise AI)? By how much? Multiply current AI by the expected ratio; the new dot sits there.</li>
+<li>Does it move up (raise ceiling)? By how much? This only helps if you are already compute-bound, or if the move-right gets you to the ridge.</li>
+<li>Does it do both (quantization)? Combine both movements.</li>
+</ul>
+<p><strong>Step 4. Rank optimizations by expected movement.</strong> An optimization that doubles AI from 1 to 2 (while you are memory-bound) doubles your throughput. An optimization that raises the ceiling when you are memory-bound does nothing. Do not ship anything without a roofline prediction.</p>
+<p><strong>Step 5. Measure after the change.</strong> Compare predicted dot to actual dot. Discrepancies are where you learn what your model of the system was missing, usually some second-order effect like cache contention, kernel launch overhead, or synchronization cost.</p>
+<p>In the rest of this book, every runtime chapter ends with a "where this lands on the roofline" paragraph. That is the discipline of always answering Step 3 in writing. When you read Chapter 7 (KV cache) or Chapter 10 (FlashAttention) or Chapter 13 (quantization), you will find each technique accompanied by a specific prediction of how the operating point moves. Test yourself: before reading the prediction, try to make it yourself from first principles. If you can do this consistently, you are thinking like an inference engineer.</p>
+<hr>
+<h3>3.12: What the roofline does not tell you</h3>
+<p>No mental model is complete. The roofline is powerful because it captures the first-order behavior of GPU kernels. It is also imperfect. Here are the things it does not model.</p>
+<p><strong>Kernel launch overhead.</strong> Every forward pass has a fixed cost of a few hundred microseconds for scheduling the kernels, synchronizing streams, and copying small tensors. At very small batches this overhead dominates, and the roofline underpredicts how much time you actually spend. This is why CUDA graphs (pre-captured kernel sequences) help so much at batch 1, they amortize the launch overhead to nearly zero.</p>
+<p><strong>Cache effects (L1, L2).</strong> The roofline treats memory as "HBM or not HBM." Real GPUs have an L2 cache (50 MB on H100) and per-SM SRAM (228 KB on H100) that sit between HBM and compute. A well-written kernel can hit the L2 for a meaningful fraction of its reads, which effectively increases bandwidth for that kernel. FlashAttention exploits exactly this: it tiles the computation so the N×N attention matrix lives in SRAM, never touching HBM. The roofline treats this as an AI change, which is approximately correct but loses the hierarchy detail.</p>
+<p><strong>Kernel-specific ceilings below the published peak.</strong> Real kernels rarely hit the published FLOP ceiling. A hand-tuned cuBLAS matmul will reach ~85-92% of peak. A naive PyTorch kernel will reach ~30-50% of peak. The "ceiling" we draw in Figure 3.1 should really be adjusted downward to the kernel's realistic peak, say, 800 TFLOPs for a well-tuned FP16 kernel on H100, not 989.</p>
+<p><strong>Asynchronous memory copies.</strong> H100's TMA (Tensor Memory Accelerator) allows weight-loading to overlap with compute. If you are using it well, the "bandwidth" ceiling is effectively higher than the rated 3.35 TB/sec, because you are pipelining. FlashAttention-3 was specifically designed to exploit this.</p>
+<p><strong>Multi-GPU communication.</strong> Once you have more than one GPU, AllReduce overhead enters the picture. The roofline of a single GPU does not model inter-GPU communication. Chapter 16 builds a separate model for that layer.</p>
+<p>All of these caveats are second-order. For first-order reasoning, "will this optimization help or hurt?", the simple roofline is all you need.</p>
+<hr>
+<h3>3.13: The north star of every subsequent chapter</h3>
+<p>You now have the north star. Every runtime-layer chapter from Chapter 7 onward will end with a "place on the roofline" statement. The statement will name the direction (right / up / up-right), the expected magnitude (factor of 2, factor of 10), and the dependency (which other conditions must be true for the movement to materialize).</p>
+<p>Chapter 7, KV Cache, places decode deep in the memory-bound region after the cache is enabled, and derives why. The cache reduces FLOPs per token but leaves bytes unchanged, so AI drops. The dot moves <em>left</em>, further into memory-bound territory. This is the "dark side of the KV cache" we foreshadow in Chapter 7 and spend the next six chapters fixing.</p>
+<p>Chapter 10, FlashAttention, moves the decode dot to the <em>right</em>, raising AI by eliminating HBM traffic for the N×N attention matrix. The exact magnitude depends on sequence length; longer sequences see bigger gains.</p>
+<p>Chapter 13, Quantization, moves the ceiling <em>up</em> (bigger TFLOPs ceiling in FP8/INT4) <em>and</em> raises AI (half/quarter the bytes per weight). The decode dot moves up-and-right.</p>
+<p>Chapter 14, Continuous batching, climbs the <em>slope</em>. Throughput rises until you hit the ridge.</p>
+<p>Chapter 17, Disaggregated P/D, separates the two dots from Figure 3.2 onto <em>different hardware</em>. The prefill dot now sits on a compute-optimized GPU; the decode dot sits on a memory-bandwidth-optimized one. The roofline splits in two.</p>
+<p>Every one of these chapters builds on Figure 3.1. That is why this chapter comes third in the book. Once you have it, everything that follows fits into it.</p>
+<hr>
+<h3>3.14: Where we go next</h3>
+<p>We have been talking about inference as if training were a solved problem that never happened. But inference is half of a pipeline, and the other half, pre-training, shapes everything we do. Before we dive into the specific techniques, we need one more foundation: a clear picture of what pre-training actually does, how it differs from inference, and why that difference is the reason this book exists.</p>
+<p>Chapter 4 is a one-page recap of pre-training, just enough that the "naive inference" chapter that follows can make sense. If you have a PhD in ML, you can skim it. If you do not, read it carefully; it is the ground on which Chapter 5's redundancy argument stands.</p>
+</section>
+
+<section class="chapter-wrapper" id="ch04-pretraining-in-one-page">
+<h1>Chapter 4: Pre-Training in One Page</h1>
+<p>Chapter 3 gave us the coordinate system, the GPU roofline, on which every inference technique in the book will be placed. Before we can talk about the techniques themselves, we need to talk about <em>what the model is doing</em> when it runs. That means talking about how the model was trained.</p>
+<p>This chapter is a deliberate detour. It is the shortest chapter in the book, and it is not a complete treatment of pre-training, other books have hundreds of pages on this topic. The job here is narrower: to establish the specific facts about pre-training that make "inference" a meaningful and distinct subject.</p>
+<p>If you have a PhD in ML, skim this chapter, the material is elementary. If you have used an LLM API but never trained one yourself, read it carefully. Every claim we make about inference in Chapter 5 is going to rest on these facts.</p>
+<hr>
+<h2>Why We Need This Detour</h2>
+<h3>4.1: The key claim this chapter establishes</h3>
+<p>An inference engineer is not a training engineer. The two disciplines share the same model architecture (transformer decoder), the same weights, and the same math primitive (matrix multiplication). Everything else is different. The batching is different. The loss is different. The hardware configuration is different. The optimization objectives are different. The bottlenecks are different.</p>
+<p>More precisely: <strong>training and inference are the same transformer forward pass, but with opposite input shapes and opposite cost structures.</strong> Training uses big batches of long sequences with a loss function at the end; inference uses small batches of single tokens with a sampling function at the end. Training is compute-bound and runs for months at a time; inference is memory-bound and must respond in milliseconds.</p>
+<p>This chapter's job is to make that claim precise. Once we understand exactly what training does, Chapter 5 can cleanly show what "naive inference" is (just training's forward pass, but one token at a time), and why it is wasteful, and what has to change.</p>
+<hr>
+<h2>The Pre-Training Loop, Step by Step</h2>
+<h3>4.2: The loop, in one picture</h3>
+<p>Figure 4.1 is the whole thing.</p>
+<p><img alt="Figure 4.1: The Pre-Training Loop" src="figures/ch04-fig1-pretraining-loop/final.png">
+<em>Figure 4.1.</em> A flow diagram with eight stages: training corpus (tokens), tokenizer, batch (B sequences of length N), transformer forward pass (L layers), logits (B × N × V), cross-entropy loss vs. shifted targets, backward pass (autograd), AdamW optimizer step. A loop returns from optimizer step back to forward pass. The label on the loop: "repeat for trillions of tokens."</p>
+<p>The loop in Figure 4.1 runs continuously for the duration of pre-training. In 2026, pre-training a 70B-parameter frontier model takes roughly 2 million GPU-hours across a cluster of 4,000 to 16,000 H100-class GPUs for roughly 2-3 months of wall-clock time. The loop iterates billions of times. Every iteration consumes one <em>batch</em>, typically 2 million to 16 million tokens in aggregate, and adjusts the weights a tiny amount based on how well the model predicts the next token at every position.</p>
+<p>Notice what is in Figure 4.1 and what is not. The <em>forward pass</em> is in there (stage 4), and it is the same forward pass that inference will use. The <em>backward pass</em> and the <em>optimizer step</em> are in there (stages 7 and 8), and those are what distinguishes training from inference, they compute gradients and update weights. The <em>data pipeline</em> is in there (stages 1-3), and it is what feeds the GPU. At no point in the loop is there any notion of "serving a user" or "streaming a response." Training is a closed loop. No one is listening.</p>
+<p>Inference is what happens after training stops: the weights are frozen, the loop is gone, and a <em>different</em> system takes over whose job is to use those frozen weights to respond to users in real time. <strong>No more gradients. No more updates. Just one frozen forward pass, called over and over.</strong></p>
+<p>That difference, gradients and updates on one side, frozen weights on the other, is the whole reason inference engineering is a separate discipline.</p>
+<hr>
+<h3>4.3: What the model is actually predicting: shift-by-one</h3>
+<p>Before we talk about the forward pass itself, we need to be precise about what the model is being trained to <em>do</em>. There is one and only one objective: <strong>predict the next token</strong>. Given any prefix of a sentence, predict what word comes next.</p>
+<p>Figure 4.2 shows how this is implemented.</p>
+<p><img alt="Figure 4.2: Next-Token Prediction = Shift by One" src="figures/ch04-fig2-next-token-shift/final.png">
+<em>Figure 4.2.</em> Two horizontal strips of tokens. Input X: [The, cat, sat, on, the]. Target Y (input shifted left by one): [cat, sat, on, the, mat]. A light arrow from each input token down to the corresponding target. Right side: for position i=2 (input "sat"), the model sees [The, cat, sat] and must predict "on."</p>
+<p>The trick in Figure 4.2 is simple. If your training corpus is the sentence "The cat sat on the mat," you construct two token sequences: the input X = [The, cat, sat, on, the] and the target Y = [cat, sat, on, the, mat]. The target is X shifted left by one position.</p>
+<p>The model then processes X in parallel (all 5 positions at once, which is the point of the transformer architecture) and produces 5 predictions, one per position. At position 0, it sees [The] and is asked to predict "cat". At position 1, it sees [The, cat] and is asked to predict "sat". At position 2, it sees [The, cat, sat] and is asked to predict "on". At position 3, [The, cat, sat, on] → "the". At position 4, [The, cat, sat, on, the] → "mat".</p>
+<p>This is called <strong>teacher forcing</strong>. Every position's prediction is conditioned on the true input up to that point, not on the model's own previous prediction. Teacher forcing is what lets us parallelize training across positions: all 5 predictions happen in one forward pass, because each one depends only on the true input tokens (which we already have).</p>
+<p>At inference time, we lose this property. At inference, the model has to condition on its own previous output, because we do not have the "true" next token, that is what the model is supposed to produce. This is the root cause of autoregressive decoding's sequential nature. Chapter 5 will walk through this in detail.</p>
+<hr>
+<h3>4.4: Batching during training vs inference</h3>
+<p>Training runs at very large batch sizes. Inference runs at very small batch sizes. Figure 4.3 shows why this asymmetry exists.</p>
+<p><img alt="Figure 4.3: Batching During Training vs Decode" src="figures/ch04-fig3-batching-training/final.png">
+<em>Figure 4.3.</em> Left half: eight sequences (batch = 8) fed into one transformer forward pass, all sequences processed in parallel. Label: "TRAINING, big batches amortize forward/backward cost." Right half: a single token (batch = 1 typical) fed into a forward pass that produces one output token. Label: "INFERENCE DECODE, tiny batches, memory-bound."</p>
+<p>The left half of Figure 4.3 shows what a training forward pass looks like. A batch of, say, 8 sequences, each of length 2048 tokens, is assembled into a single tensor of shape <code>(8, 2048, d)</code>. The tensor is pushed through the transformer. Every position of every sequence produces a prediction. The loss is averaged across all <code>8 × 2048 = 16,384</code> positions. One gradient update is computed per batch.</p>
+<p>The right half of Figure 4.3 shows what decode looks like. One token at a time, <code>(1, 1, d)</code>, is pushed through the transformer, which produces one next-token prediction. If we are serving many users in parallel, we might batch <code>k</code> of them together for a given forward pass, producing <code>k</code> predictions per step. But <code>k</code> is usually 1 to 32, not 8,192, because the sequences are independent and typically active on different physical requests.</p>
+<p>The asymmetry has two consequences we care about:</p>
+<p><strong>First, training is compute-bound, inference (decode) is memory-bound.</strong> This is the exact distinction we derived in Chapter 3 using the roofline. Training's batch size is large enough to push arithmetic intensity well above the ridge; decode's batch size is small enough to leave it well below. Same model, same hardware, opposite regimes.</p>
+<p><strong>Second, training's constant-factor throughput is far higher than decode's.</strong> A training cluster on H100s might push 2-3 million tokens per second per GPU (via FlashAttention-3 and optimal batch sizes). A decode stack on the same H100s pushes ~3,000 to 6,000 tokens per second per GPU. The 400× gap is entirely because training processes many tokens per weight-load, while decode processes one. The GPU hardware is identical; the workload is not.</p>
+<p>This also explains why <strong>the same company that trains a model cares deeply about inference costs</strong>. Training was a capital expense paid once. Inference is an operational expense paid forever. Over a model's lifetime, inference compute usually exceeds training compute by a factor of 10× to 100×. Getting inference right is, economically, the bigger problem.</p>
+<hr>
+<h3>4.5: The loss function, once</h3>
+<p>What connects the forward pass to a gradient update is the loss function. Figure 4.4 walks through it.</p>
+<p><img alt="Figure 4.4: Cross-Entropy Loss on the Vocabulary" src="figures/ch04-fig4-cross-entropy-loss/final.png">
+<em>Figure 4.4.</em> Four-stage diagram. Stage 1: raw logits (real-valued scores over vocab V=8, e.g., 1.2, -0.4, 3.1, 0.8, ...). Stage 2: softmax probabilities (summing to 1; the cell for "mat" highlighted at 0.58). Stage 3: one-hot target vector (1 only at the "mat" position). Stage 4: loss = −log(0.58) = 0.54.</p>
+<p>Cross-entropy loss has four conceptual steps:</p>
+<p><strong>Logits.</strong> The forward pass produces a real-valued vector of length V (the vocabulary size, typically 32,000 to 200,000 for modern LLMs). Each entry is the unnormalized score the model assigns to that vocab token being the next one. Logits are unconstrained, they can be any real number, positive or negative.</p>
+<p><strong>Softmax.</strong> Exponentiate each logit and normalize so the vector sums to 1. This converts the logits into a probability distribution over the vocabulary. The token with the highest logit gets the highest probability.</p>
+<p><strong>Target.</strong> The true next token (from the shifted target Y in Figure 4.2) is represented as a one-hot vector: 1 at its position in the vocab, 0 everywhere else.</p>
+<p><strong>Loss.</strong> Cross-entropy loss against a one-hot target simplifies to <code>−log(p_target)</code>, where <code>p_target</code> is the probability the model assigned to the true token. If the model assigned probability 1.0 to the true token (perfect prediction), the loss is 0. If it assigned 0.58 (the example in Figure 4.4), the loss is 0.54. If it assigned near-zero, the loss blows up to infinity.</p>
+<p>Gradients then flow backward from this loss through the transformer's layers (the backward pass in Figure 4.1, stage 7) and AdamW updates every weight in the model by a tiny step in the direction that would have reduced the loss (stage 8). Then a new batch arrives, and the loop repeats.</p>
+<p><strong>At inference time, none of this happens.</strong> No loss, no gradients, no updates. We run the forward pass up to the point where logits are produced. Then, instead of comparing them to a target, we <em>sample</em> from them, pick a token according to the probability distribution, and emit it to the user. Chapter 5 will walk through what exactly the forward pass looks like during inference.</p>
+<hr>
+<h3>4.6: Training FLOPs vs inference FLOPs: the 3× rule</h3>
+<p>Here is a fact that every inference engineer should carry in their head.</p>
+<p><img alt="Figure 4.5: A Training FLOP Is ~3× an Inference FLOP" src="figures/ch04-fig5-training-vs-inference-flops/final.png">
+<em>Figure 4.5.</em> Two grouped bars. Left group (training step): forward = 1 unit, backward = 2 units, total = 3 units. Right group (inference decode): forward only = 1 unit. Equation box: training FLOPs ≈ 6 × parameters × training tokens. Inference FLOPs ≈ 2 × parameters × tokens generated.</p>
+<p>A training step executes three "forward-equivalent" passes:</p>
+<ol>
+<li><strong>Forward pass.</strong> Cost: 1 unit (2 FLOPs per parameter per token).</li>
+<li><strong>Backward pass.</strong> Cost: 2 units (computes gradient of loss w.r.t. each weight, roughly twice the forward-pass work).</li>
+<li><strong>Optimizer step.</strong> Cost: small, usually negligible.</li>
+</ol>
+<p>Total training cost per token per parameter: <strong>6 FLOPs</strong>. This is the famous "6× rule" in LLM compute budgets. The aggregate cost to pre-train a model is:</p>
+<pre><code>Training FLOPs  ≈  6 × parameters × training tokens
+</code></pre>
+<p>For GPT-3 (175B parameters, trained on ~500B tokens): <code>6 × 175e9 × 500e9 = 5.25 × 10²³ FLOPs</code>. At the time (2020), this was roughly 355 V100-years. Today, on H100s, it would be about 26 GPU-years, which is the kind of compute a frontier lab provisions for a single model.</p>
+<p>By contrast, an inference step is <strong>forward only</strong>:</p>
+<pre><code>Inference FLOPs  ≈  2 × parameters × tokens generated
+</code></pre>
+<p>For Llama-3-8B generating 100 tokens: <code>2 × 8e9 × 100 = 1.6 × 10¹² FLOPs</code>. At H100's 989 FP16 TFLOPs, that is 1.6 milliseconds of pure compute, completely trivial. Of course, the <em>actual</em> decode time is dominated by memory bandwidth (Chapter 3), not compute, so the number above is misleading in practice. It does, however, correctly answer: "how much theoretical work does the model do at inference?"</p>
+<p>The 3:1 ratio is the reason why a well-optimized inference stack can, per H100, serve orders of magnitude more tokens-per-second than a training cluster can produce. The training cluster is doing 3× the FLOPs and running near the compute ceiling. The inference stack is doing 1× the FLOPs and, with good engineering, climbing the bandwidth slope. Different regimes, different math, different bottlenecks.</p>
+<hr>
+<h2>What This All Means for Inference</h2>
+<h3>4.7: The three facts we carry forward</h3>
+<p>Boil this chapter down and three facts remain, each of which the next chapter will exploit.</p>
+<p><strong>Fact 1: Inference uses the same transformer forward pass as training.</strong> Same architecture, same weights. Whatever you understand about "how a transformer block works" during training applies exactly to inference. No structural difference in the computation graph.</p>
+<p><strong>Fact 2: Training processes many tokens per forward pass; inference decode processes one.</strong> This is the reason inference is memory-bound while training is compute-bound, and it is the reason every inference technique in this book can be read as "how do we get more useful work out of each forward pass?"</p>
+<p><strong>Fact 3: Inference has no gradients, no loss, no updates.</strong> The weights are frozen. This may seem like a simplification, but it is actually a constraint. At training time, we could adjust the model to make it faster; at inference time, we can only adjust <em>how we use</em> the model. Every technique in this book is a "how we use" technique, not a "how we change" technique. The exceptions, fine-tuning, distillation, LoRA adapters (Chapter 22), are not inference per se; they are training tricks that produce inference-time benefits.</p>
+<hr>
+<h3>4.8: Where the asymmetry goes</h3>
+<p>If the training forward pass and the inference forward pass are the same computation, why does inference need its own book? Why can't we just read a training paper and know everything?</p>
+<p>Because <strong>the cost structure changes completely when the input shape changes</strong>. A training forward pass operates on a tensor of shape <code>(B, N, d)</code> with <code>B = 8+</code>, <code>N = 2048+</code>. An inference decode forward pass operates on a tensor of shape <code>(1, 1, d)</code>. Same weights, same operations, but one is a matrix-matrix multiplication (compute-dense, high AI) and the other is a matrix-vector multiplication (memory-bound, low AI).</p>
+<p>The <em>math</em> is the same. The <em>physics</em> is different. A matrix-vector multiplication on an H100 uses less than 1% of the GPU's compute capacity. The GPU cannot help you run the weights through faster than the memory bus can deliver them. No algorithmic cleverness changes this.</p>
+<p>What algorithmic cleverness <em>can</em> do is reduce the number of bytes that need to flow through the memory bus per generated token. That is what the KV cache does (Chapter 7), what MLA does (Chapter 8), what FlashAttention does (Chapter 10), what quantization does (Chapter 13), what continuous batching does (Chapter 14). Every one of those techniques is an attempt to reduce per-token memory traffic so that more compute can happen per byte moved.</p>
+<p>The asymmetry between training and inference is the <em>reason</em> this book exists. Training happens once, at enormous cost, and you can live with that cost because it is capital. Inference happens forever, at per-user cost, and you cannot live with the naive cost structure because it compounds linearly with traffic. An inference engineer's job is to take the frozen weights of a trained model and make them serve tokens at one or two orders of magnitude lower per-token cost than the naive implementation would.</p>
+<hr>
+<h3>4.9: Where we go next</h3>
+<p>Chapter 5 takes the pre-training forward pass we have just described and shows what happens when you try to use it naively for inference. You will see, step by step, exactly what is redundant and what can be cached. The technique that falls out of this, the KV cache, is the foundation of every subsequent optimization in the book.</p>
+<p>Then Chapter 6 introduces the GPU hardware we have been talking about without ever looking at. And from Chapter 7 onward, every runtime-layer technique is a response to a specific inefficiency of that cached inference loop.</p>
+</section>

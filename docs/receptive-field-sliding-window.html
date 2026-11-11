@@ -1,0 +1,906 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>滑动窗口注意力：通过层堆叠实现感受野</title>
+  <style>
+    :root {
+      --ink: #171615;
+      --muted: #66615b;
+      --paper: #fbfaf7;
+      --line: #ded8cf;
+      --soft: #f0ebe3;
+      --blue: #315d8d;
+      --green: #2f765f;
+      --red: #9a4a3c;
+      --gold: #92742f;
+      --purple: #745097;
+      --shadow: 0 18px 45px rgba(30, 28, 25, 0.09);
+      --font: "Victory", "Avenir Next", "Helvetica Neue", "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+      --mono: "Victory", "Victor Mono", "SFMono-Regular", Consolas, "PingFang SC", "Microsoft YaHei", monospace;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        linear-gradient(90deg, rgba(22, 22, 22, 0.035) 1px, transparent 1px),
+        linear-gradient(180deg, rgba(22, 22, 22, 0.03) 1px, transparent 1px),
+        var(--paper);
+      background-size: 28px 28px;
+      font-family: var(--font);
+      letter-spacing: 0;
+    }
+
+    .shell {
+      width: min(1180px, calc(100vw - 32px));
+      margin: 0 auto;
+      padding: 26px 0 72px;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 12px 0;
+      background: rgba(251, 250, 247, 0.9);
+      backdrop-filter: blur(14px);
+      border-bottom: 1px solid rgba(222, 216, 207, 0.72);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+      font-weight: 780;
+    }
+
+    .mark {
+      width: 34px;
+      height: 34px;
+      border: 1px solid var(--ink);
+      display: grid;
+      place-items: center;
+      background: var(--paper);
+      box-shadow: 4px 4px 0 var(--ink);
+      flex: 0 0 auto;
+    }
+
+    .nav {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .nav a {
+      color: var(--muted);
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.56);
+      padding: 8px 10px;
+      text-decoration: none;
+      font-size: 13px;
+    }
+
+    .nav a:hover {
+      color: var(--ink);
+      border-color: var(--ink);
+    }
+
+    .hero {
+      min-height: min(680px, calc(100vh - 96px));
+      padding: 60px 0 36px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(340px, 0.74fr);
+      gap: 26px;
+      align-items: end;
+    }
+
+    .section-label {
+      color: var(--gold);
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 760;
+      text-transform: uppercase;
+      letter-spacing: 0;
+      margin-bottom: 10px;
+    }
+
+    h1 {
+      margin: 0;
+      max-width: 820px;
+      font-size: clamp(44px, 6vw, 82px);
+      line-height: 0.95;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      margin: 0 0 18px;
+      font-size: clamp(30px, 3.2vw, 46px);
+      line-height: 1.02;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin: 0 0 10px;
+      font-size: 18px;
+      line-height: 1.18;
+    }
+
+    p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.62;
+    }
+
+    .lead {
+      max-width: 780px;
+      margin-top: 22px;
+      font-size: 20px;
+      color: #3d3a36;
+    }
+
+    .truth {
+      border: 1px solid var(--ink);
+      background: #fff;
+      box-shadow: var(--shadow);
+      padding: 20px;
+    }
+
+    .equation {
+      font-family: var(--mono);
+      background: #fff;
+      border: 1px solid var(--line);
+      padding: 14px 16px;
+      overflow-x: auto;
+      white-space: nowrap;
+      line-height: 1.5;
+      color: #24211e;
+    }
+
+    .equation.big {
+      border-color: var(--ink);
+      box-shadow: 5px 5px 0 var(--ink);
+      font-size: 18px;
+    }
+
+    .section {
+      margin-top: 52px;
+      padding-top: 14px;
+      border-top: 1px solid var(--line);
+      scroll-margin-top: 112px;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: minmax(0, 0.9fr) minmax(340px, 1.1fr);
+      gap: 24px;
+      align-items: start;
+    }
+
+    .band {
+      background: rgba(255, 255, 255, 0.64);
+      border: 1px solid var(--line);
+      padding: 22px;
+    }
+
+    .note {
+      color: var(--ink);
+      font-size: 15px;
+      background: #e7f0ed;
+      border-left: 4px solid var(--green);
+      padding: 14px 16px;
+      margin-top: 16px;
+    }
+
+    .sentence {
+      display: grid;
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+      gap: 7px;
+      margin-top: 16px;
+    }
+
+    .token {
+      min-height: 72px;
+      border: 1px solid var(--line);
+      background: #fff;
+      padding: 8px 6px;
+      display: grid;
+      align-content: center;
+      gap: 5px;
+      text-align: center;
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+
+    .token strong {
+      display: block;
+      color: var(--ink);
+      font-size: 14px;
+      overflow-wrap: anywhere;
+    }
+
+    .token.target {
+      border-color: var(--ink);
+      box-shadow: 3px 3px 0 var(--ink);
+      background: #fff8e6;
+    }
+
+    .window-demo {
+      display: grid;
+      gap: 10px;
+      margin-top: 16px;
+      font-family: var(--mono);
+    }
+
+    .window-row {
+      display: grid;
+      grid-template-columns: 130px minmax(0, 1fr);
+      gap: 10px;
+      align-items: center;
+    }
+
+    .window-label {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .mini-tokens {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .mini-token {
+      border: 1px solid var(--line);
+      background: #fff;
+      padding: 8px 9px;
+      font-size: 13px;
+    }
+
+    .mini-token.hot {
+      border-color: var(--purple);
+      background: rgba(116, 80, 151, 0.13);
+      color: #39224f;
+      font-weight: 760;
+    }
+
+    .lab {
+      background: #fff;
+      border: 1px solid var(--ink);
+      box-shadow: var(--shadow);
+      padding: 18px;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      margin: 16px 0 18px;
+    }
+
+    button {
+      appearance: none;
+      border: 1px solid var(--ink);
+      background: var(--paper);
+      color: var(--ink);
+      font-family: var(--mono);
+      font-size: 13px;
+      padding: 9px 11px;
+      cursor: pointer;
+    }
+
+    button:hover,
+    button.active {
+      background: var(--ink);
+      color: #fff;
+    }
+
+    .explain-card {
+      border: 1px solid var(--line);
+      background: #e7f0ed;
+      padding: 14px 16px;
+      margin-bottom: 16px;
+      font-family: var(--mono);
+      font-size: 14px;
+      line-height: 1.55;
+    }
+
+    .stack-wrap {
+      position: relative;
+      overflow-x: auto;
+      padding: 10px 6px 6px;
+      background: var(--paper);
+      border: 1px solid var(--line);
+    }
+
+    .stack {
+      position: relative;
+      min-width: 920px;
+      display: grid;
+      grid-template-columns: 112px repeat(12, 1fr);
+      gap: 12px 8px;
+      align-items: center;
+      padding: 12px;
+    }
+
+    .edge-layer {
+      position: absolute;
+      inset: 12px;
+      width: calc(100% - 24px);
+      height: calc(100% - 24px);
+      pointer-events: none;
+      overflow: visible;
+    }
+
+    .layer-name {
+      font-family: var(--mono);
+      color: var(--muted);
+      font-size: 13px;
+      text-align: right;
+      padding-right: 8px;
+    }
+
+    .node {
+      width: 44px;
+      height: 44px;
+      border-radius: 999px;
+      border: 1px solid #8d8881;
+      background: #fff;
+      display: grid;
+      place-items: center;
+      justify-self: center;
+      font-family: var(--mono);
+      font-size: 13px;
+      color: var(--muted);
+      position: relative;
+      z-index: 2;
+    }
+
+    .node.input {
+      border-radius: 8px;
+      width: 66px;
+      height: 52px;
+      align-content: center;
+      gap: 2px;
+      padding: 4px;
+      font-size: 11px;
+      line-height: 1.1;
+    }
+
+    .node.input strong {
+      color: var(--ink);
+      font-size: 11px;
+    }
+
+    .node.active {
+      border-color: var(--purple);
+      background: rgba(116, 80, 151, 0.18);
+      color: #38204f;
+      box-shadow: 0 0 0 3px rgba(116, 80, 151, 0.12);
+      font-weight: 760;
+    }
+
+    .node.target {
+      border-color: var(--ink);
+      background: #fff3cc;
+      color: var(--ink);
+      box-shadow: 3px 3px 0 var(--ink);
+    }
+
+    .node.relay {
+      border-color: var(--green);
+      background: rgba(47, 118, 95, 0.16);
+      color: #244d40;
+      font-weight: 760;
+    }
+
+    .edge {
+      stroke: rgba(116, 80, 151, 0.42);
+      stroke-width: 1.4;
+      fill: none;
+    }
+
+    .edge.hot {
+      stroke: var(--purple);
+      stroke-width: 2.8;
+    }
+
+    .edge.relay {
+      stroke: var(--green);
+      stroke-width: 3.2;
+    }
+
+    .reach-summary {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .reach-card {
+      border: 1px solid var(--line);
+      background: #fff;
+      padding: 14px;
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .reach-card strong {
+      display: block;
+      font-size: 17px;
+      margin-bottom: 5px;
+      color: var(--ink);
+    }
+
+    .reach-card.hot {
+      border-color: var(--ink);
+      box-shadow: 3px 3px 0 var(--ink);
+    }
+
+    .path {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 16px;
+      font-family: var(--mono);
+    }
+
+    .path-step {
+      border: 1px solid var(--line);
+      background: #fff;
+      padding: 13px;
+      min-height: 122px;
+      display: grid;
+      align-content: start;
+      gap: 7px;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .path-step.hot {
+      border-color: var(--green);
+      background: rgba(47, 118, 95, 0.08);
+      box-shadow: 3px 3px 0 rgba(47, 118, 95, 0.65);
+    }
+
+    .path-step strong {
+      font-size: 15px;
+      color: var(--ink);
+    }
+
+    .memory-grid {
+      display: grid;
+      grid-template-columns: repeat(8, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    .slot {
+      min-height: 88px;
+      border: 1px solid var(--line);
+      background: #fff;
+      padding: 10px;
+      display: grid;
+      align-content: center;
+      gap: 6px;
+      text-align: center;
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+
+    .slot.hot {
+      border-color: var(--red);
+      background: rgba(154, 74, 60, 0.1);
+      box-shadow: 3px 3px 0 rgba(154, 74, 60, 0.6);
+    }
+
+    .slot strong {
+      font-size: 17px;
+      color: var(--ink);
+    }
+
+    @media (max-width: 900px) {
+      .hero,
+      .grid-2 {
+        grid-template-columns: 1fr;
+      }
+
+      .controls,
+      .reach-summary,
+      .path {
+        grid-template-columns: 1fr;
+      }
+
+      .sentence {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
+      .memory-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
+      .topbar {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .nav {
+        justify-content: flex-start;
+      }
+    }
+
+    @media (max-width: 560px) {
+      .sentence,
+      .memory-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .window-row {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="mark" aria-hidden="true">SW</div>
+        <span>滑动窗口感受野</span>
+      </div>
+      <nav class="nav" aria-label="页面章节">
+        <a href="#sentence">句子</a>
+        <a href="#window">窗口</a>
+        <a href="#stack">堆叠</a>
+        <a href="#relay">接力</a>
+        <a href="#buffer">缓冲</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div>
+          <div class="section-label">感受野追踪</div>
+          <h1>一个小的滑动窗口如何在三层 transformer 之后看得更远。</h1>
+          <p class="lead">
+            滑动窗口注意力听起来像是模型被困在了一个狭小的局部邻域里。
+            但堆叠的 transformer 层会创建接力路径：token 12 可以通过较低层的中间 token，
+            从更远的 token 那里接收信息。
+          </p>
+        </div>
+        <aside class="truth">
+          <div class="section-label">一个句子锚点</div>
+          <p>
+            我们将跟随最后一个 token <strong>“chapel”</strong>。在一层时它只读取附近的词。
+            到了第三层，像 <strong>“violinist”</strong> 这样更早的词就能间接地影响它。
+          </p>
+          <div class="equation" style="margin-top:14px;">窗口 W = 4 · 层数 L = 3</div>
+          <p class="note">
+            精确的数量取决于约定。这里 W = 4 表示「当前 token 加上之前的 3 个」，
+            所以精确的可达跨度是 4 → 7 → 10。许多图把这一思想概括为约 W × L。
+          </p>
+        </aside>
+      </section>
+
+      <section id="sentence" class="section">
+        <div class="section-label">1. 句子</div>
+        <h2>我们追踪什么能影响最后一个词。</h2>
+        <p>
+          这里是 12 个 token。目标是 token 12，<strong>chapel</strong>。在一个普通的因果 transformer 中，
+          token 12 可以直接关注到每一个更早的 token。而在滑动窗口注意力中，它只能直接关注到局部窗口。
+        </p>
+        <div class="sentence" id="sentenceTokens" aria-label="句子 token"></div>
+      </section>
+
+      <section id="window" class="section">
+        <div class="section-label">2. 单层</div>
+        <h2>滑动窗口是一种局部读取规则。</h2>
+        <div class="grid-2">
+          <div class="band">
+            <p>
+              在任意层，每个 token 只读取它附近的一小群。当 W = 4 时，token 12 读取：
+              token 9、token 10、token 11 和 token 12。
+            </p>
+            <p class="note">
+              这还不是循环缓冲。这是注意力规则：「不要回看超过最后 W 个 token 的范围」。
+              循环缓冲是推理引擎只存储这些最近 KV 槽位的一种高效方式。
+            </p>
+          </div>
+          <div class="lab">
+            <h3>token 12 在第 1 层的直接视图</h3>
+            <div class="window-demo" id="windowDemo"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="stack" class="section">
+        <div class="section-label">3. 层堆叠</div>
+        <h2>第 3 层并不直接读取旧的 token。它读取的是已经包含旧 token 的摘要。</h2>
+        <div class="lab">
+          <div class="controls" id="layerControls" aria-label="层级控制"></div>
+          <div class="explain-card" id="layerExplanation"></div>
+          <div class="stack-wrap">
+            <div class="stack" id="stackDiagram" aria-label="Transformer 感受野堆叠"></div>
+          </div>
+          <div class="reach-summary" id="reachSummary"></div>
+        </div>
+      </section>
+
+      <section id="relay" class="section">
+        <div class="section-label">4. 接力路径</div>
+        <h2>远方的信息通过附近的 token 传递。</h2>
+        <div class="grid-2">
+          <div class="band">
+            <p>
+              第 3 层的 token 12 并不会直接画一条注意力边到 token 3。相反，它可以在第 2 层读取 token 9。
+              第 2 层的 token 9 可以在第 1 层读取 token 6。第 1 层的 token 6 可以从输入中读取 token 3。
+            </p>
+            <p class="note">
+              这条链条就是感受野的增长。每一层增加一次局部跳跃。模型获得了更远的上下文，
+              而无需每个单独的层都使用全注意力。
+            </p>
+          </div>
+          <div class="lab">
+            <h3>从 “violinist” 到 “chapel” 的一条可能路径</h3>
+            <div class="path" id="relayPath"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="buffer" class="section">
+        <div class="section-label">5. 注意力规则 vs 实现</div>
+        <h2>循环缓冲是 KV 缓存的存储技巧，而不是整个数学思想。</h2>
+        <div class="grid-2">
+          <div class="band">
+            <p>
+              滑动窗口注意力是模型规则：每个 token 只关注一个最近的窗口。
+              在推理期间，服务引擎可以利用这一规则，把 K 和 V 向量存储在一个固定大小的循环缓冲中。
+            </p>
+            <div class="equation big" style="margin-top:16px;">slot = token_position mod W</div>
+            <p class="note">
+              槽位号只是存储用途。真正的 token 位置仍然需要用于因果掩码和 RoPE 等位置编码。
+            </p>
+          </div>
+          <div class="lab">
+            <h3>示例：W = 8 个缓存槽位</h3>
+            <div class="memory-grid" id="memoryGrid"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const words = ["The", "patient", "violinist", "played", "a", "haunting", "melody", "inside", "the", "old", "stone", "chapel"];
+    const W = 4;
+    const target = 12;
+    let activeLayer = 3;
+
+    function receptiveStart(layer) {
+      return Math.max(1, target - (W - 1) * layer);
+    }
+
+    function visibleRangeForLayer(layer) {
+      const start = receptiveStart(layer);
+      return Array.from({ length: target - start + 1 }, (_, index) => start + index);
+    }
+
+    function directWindow(token) {
+      const start = Math.max(1, token - W + 1);
+      return Array.from({ length: token - start + 1 }, (_, index) => start + index);
+    }
+
+    function renderSentence() {
+      document.getElementById("sentenceTokens").innerHTML = words.map((word, index) => {
+        const n = index + 1;
+        return `
+          <div class="token ${n === target ? "target" : ""}">
+            <span>${n}</span>
+            <strong>${word}</strong>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function renderWindowDemo() {
+      const windowTokens = directWindow(target);
+      document.getElementById("windowDemo").innerHTML = `
+        <div class="window-row">
+          <div class="window-label">目标</div>
+          <div class="mini-tokens"><span class="mini-token hot">12 · chapel</span></div>
+        </div>
+        <div class="window-row">
+          <div class="window-label">可以读取</div>
+          <div class="mini-tokens">
+            ${windowTokens.map((n) => `<span class="mini-token hot">${n} · ${words[n - 1]}</span>`).join("")}
+          </div>
+        </div>
+        <div class="window-row">
+          <div class="window-label">无法直接读取</div>
+          <div class="mini-tokens">
+            ${Array.from({ length: 8 }, (_, i) => i + 1).map((n) => `<span class="mini-token">${n} · ${words[n - 1]}</span>`).join("")}
+          </div>
+        </div>
+      `;
+    }
+
+    function nodeClass(layer, n) {
+      const visible = visibleRangeForLayer(activeLayer);
+      const active = layer === 0 ? visible.includes(n) : layer <= activeLayer && visible.includes(n);
+      const isTarget = layer === activeLayer && n === target;
+      const isRelay = (layer === 0 && n === 3) || (layer === 1 && n === 6) || (layer === 2 && n === 9) || (layer === 3 && n === 12);
+      return [
+        "node",
+        layer === 0 ? "input" : "",
+        active ? "active" : "",
+        isTarget ? "target" : "",
+        activeLayer === 3 && isRelay ? "relay" : ""
+      ].filter(Boolean).join(" ");
+    }
+
+    function renderStack() {
+      const rows = [
+        { layer: 3, label: "第 3 层输出" },
+        { layer: 2, label: "第 2 层" },
+        { layer: 1, label: "第 1 层" },
+        { layer: 0, label: "输入 token" }
+      ];
+
+      const html = [
+        `<svg class="edge-layer" viewBox="0 0 1032 360" preserveAspectRatio="none" aria-hidden="true">${edgeMarkup()}</svg>`,
+        ...rows.flatMap((row) => [
+          `<div class="layer-name">${row.label}</div>`,
+          ...words.map((word, index) => {
+            const n = index + 1;
+            const label = row.layer === 0 ? `<strong>${n}</strong>${word}` : n;
+            return `<div class="${nodeClass(row.layer, n)}" data-layer="${row.layer}" data-token="${n}">${label}</div>`;
+          })
+        ])
+      ].join("");
+
+      document.getElementById("stackDiagram").innerHTML = html;
+    }
+
+    function edgePoint(layer, token) {
+      const colW = 920 / 12;
+      const x = 112 + (token - 0.5) * colW;
+      const layerToRow = { 3: 0, 2: 1, 1: 2, 0: 3 };
+      const y = 34 + layerToRow[layer] * 88;
+      return { x, y };
+    }
+
+    function edgeLine(fromLayer, fromToken, toLayer, toToken, cls = "") {
+      const a = edgePoint(fromLayer, fromToken);
+      const b = edgePoint(toLayer, toToken);
+      return `<line class="edge ${cls}" x1="${a.x.toFixed(2)}" y1="${a.y.toFixed(2)}" x2="${b.x.toFixed(2)}" y2="${b.y.toFixed(2)}"></line>`;
+    }
+
+    function edgeMarkup() {
+      const lines = [];
+      for (let layer = 1; layer <= activeLayer; layer += 1) {
+        const upperTokens = layer === activeLayer ? [target] : visibleRangeForLayer(activeLayer).filter((n) => n >= receptiveStart(activeLayer - layer + 1));
+        upperTokens.forEach((n) => {
+          directWindow(n).forEach((m) => {
+            if (m <= target && visibleRangeForLayer(activeLayer).includes(m)) {
+              lines.push(edgeLine(layer, n, layer - 1, m, layer === activeLayer && n === target ? "hot" : ""));
+            }
+          });
+        });
+      }
+      if (activeLayer === 3) {
+        lines.push(edgeLine(3, 12, 2, 9, "relay"));
+        lines.push(edgeLine(2, 9, 1, 6, "relay"));
+        lines.push(edgeLine(1, 6, 0, 3, "relay"));
+      }
+      return lines.join("");
+    }
+
+    function renderControls() {
+      const modes = [
+        { layer: 1, label: "第 1 层" },
+        { layer: 2, label: "第 2 层" },
+        { layer: 3, label: "第 3 层" },
+        { layer: 0, label: "直接全注意力" }
+      ];
+      document.getElementById("layerControls").innerHTML = modes.map((mode) => `
+        <button type="button" class="${mode.layer === activeLayer ? "active" : ""}" data-layer="${mode.layer}" onclick="setActiveLayer(${mode.layer})">
+          ${mode.label}
+        </button>
+      `).join("");
+    }
+
+    function setActiveLayer(layer) {
+      activeLayer = Number(layer);
+      renderInteractive();
+    }
+
+    function renderExplanation() {
+      const text = {
+        0: "全注意力基线：token 12 可以直接关注到所有之前的 token。滑动窗口注意力移除了这条直接的长距离边。",
+        1: "第 1 层：token 12 只能直接读取 token 9-12。它的感受野是局部的。",
+        2: "第 2 层：token 12 读取来自 token 9-12 的第 1 层摘要。那些摘要已经包含了 token 6-12，所以有效感受野增长了。",
+        3: "第 3 层：token 12 读取来自 token 9-12 的第 2 层摘要。那些摘要能够携带来自 token 3-12 的信息。"
+      }[activeLayer];
+      document.getElementById("layerExplanation").textContent = text;
+    }
+
+    function renderReachSummary() {
+      const layer = activeLayer || 1;
+      const exact = activeLayer === 0 ? 12 : visibleRangeForLayer(activeLayer).length;
+      const range = activeLayer === 0 ? "1-12" : `${receptiveStart(activeLayer)}-12`;
+      const approx = activeLayer === 0 ? "全部" : `约 W × L = ${W * activeLayer}`;
+      document.getElementById("reachSummary").innerHTML = `
+        <div class="reach-card hot">
+          <strong>可达的输入</strong>
+          token ${range}
+        </div>
+        <div class="reach-card">
+          <strong>这里的精确数量</strong>
+          ${activeLayer === 0 ? "12 个 token" : `${exact} 个 token，因为 W 包含当前 token`}
+        </div>
+        <div class="reach-card">
+          <strong>图示速记</strong>
+          ${approx}
+        </div>
+      `;
+    }
+
+    function renderInteractive() {
+      renderControls();
+      renderExplanation();
+      renderStack();
+      renderReachSummary();
+    }
+
+    function renderRelayPath() {
+      const steps = [
+        ["输入 token 3", "violinist", "一个远处的词开始于 token 12 的直接窗口之外。"],
+        ["第 1 层 token 6", "haunting", "token 6 可以读取 token 3，因为 token 3 位于 token 6 的局部窗口内。"],
+        ["第 2 层 token 9", "the", "token 9 可以读取 token 6 的第 1 层摘要。"],
+        ["第 3 层 token 12", "chapel", "token 12 可以读取 token 9 的第 2 层摘要。"]
+      ];
+      document.getElementById("relayPath").innerHTML = steps.map((step, index) => `
+        <div class="path-step ${index === 3 ? "hot" : ""}">
+          <strong>${step[0]}</strong>
+          <span>${step[1]}</span>
+          <span>${step[2]}</span>
+        </div>
+      `).join("");
+    }
+
+    function renderMemoryGrid() {
+      const slots = Array.from({ length: 8 }, (_, slot) => {
+        const token = slot + 9;
+        const overwritten = slot < 4 ? `token ${slot + 1} 已被覆盖` : `token ${slot + 1} 更早前已被覆盖`;
+        return `
+          <div class="slot ${slot === 4 ? "hot" : ""}">
+            <span>槽位 ${slot}</span>
+            <strong>token ${token}</strong>
+            <span>${overwritten}</span>
+          </div>
+        `;
+      });
+      document.getElementById("memoryGrid").innerHTML = slots.join("");
+    }
+
+    renderSentence();
+    renderWindowDemo();
+    renderInteractive();
+    renderRelayPath();
+    renderMemoryGrid();
+  </script>
+</body>
+</html>

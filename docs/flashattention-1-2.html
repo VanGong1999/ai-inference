@@ -1,0 +1,1388 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FlashAttention-1 到 FlashAttention-2：图解教程</title>
+  <style>
+    :root {
+      --ink: #181714;
+      --muted: #67615a;
+      --paper: #fbfaf6;
+      --line: #ddd5ca;
+      --soft: #f1ebe2;
+      --cream: #fffdf8;
+      --blue: #2f5f91;
+      --green: #30745d;
+      --red: #9b4b3d;
+      --gold: #9a742c;
+      --teal: #2f7376;
+      --violet: #64518f;
+      --shadow: 0 18px 48px rgba(32, 29, 24, 0.09);
+      --font: "Avenir Next", "Inter", "Helvetica Neue", "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+      --mono: "Victor Mono", "SFMono-Regular", Consolas, monospace;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        linear-gradient(90deg, rgba(24, 23, 20, 0.035) 1px, transparent 1px),
+        linear-gradient(180deg, rgba(24, 23, 20, 0.03) 1px, transparent 1px),
+        var(--paper);
+      background-size: 28px 28px;
+      font-family: var(--font);
+      letter-spacing: 0;
+      overflow-x: hidden;
+    }
+
+    button, input { font: inherit; }
+
+    .shell {
+      width: min(1180px, calc(100vw - 32px));
+      margin: 0 auto;
+      padding: 28px 0 72px;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 12px 0;
+      background: rgba(251, 250, 246, 0.88);
+      border-bottom: 1px solid rgba(221, 213, 202, 0.72);
+      backdrop-filter: blur(14px);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      min-width: 0;
+      font-weight: 800;
+    }
+
+    .mark {
+      width: 35px;
+      height: 35px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--ink);
+      background: var(--cream);
+      box-shadow: 4px 4px 0 var(--ink);
+      flex: 0 0 auto;
+    }
+
+    .mark svg { width: 22px; height: 22px; }
+
+    .nav {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .nav a {
+      color: var(--muted);
+      text-decoration: none;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.56);
+      font-size: 13px;
+    }
+
+    .nav a:hover {
+      color: var(--ink);
+      border-color: var(--ink);
+    }
+
+    .hero {
+      min-height: min(720px, calc(100vh - 94px));
+      margin-top: 18px;
+      padding: clamp(24px, 5vw, 56px);
+      display: grid;
+      grid-template-columns: minmax(0, 0.94fr) minmax(360px, 1.06fr);
+      gap: 30px;
+      align-items: end;
+      border: 1px solid var(--ink);
+      background:
+        linear-gradient(135deg, rgba(251, 250, 246, 0.98), rgba(243, 236, 224, 0.84)),
+        radial-gradient(circle at 82% 18%, rgba(48, 116, 93, 0.20), transparent 34%),
+        radial-gradient(circle at 62% 88%, rgba(47, 95, 145, 0.18), transparent 34%);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      position: relative;
+    }
+
+    .hero:after {
+      content: "";
+      position: absolute;
+      inset: auto 0 0;
+      height: 20%;
+      background: linear-gradient(180deg, transparent, rgba(251, 250, 246, 0.78));
+      pointer-events: none;
+    }
+
+    .hero-copy, .hero-visual {
+      position: relative;
+      z-index: 1;
+      min-width: 0;
+    }
+
+    .label {
+      color: var(--gold);
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      margin-bottom: 11px;
+    }
+
+    h1 {
+      margin: 0;
+      max-width: 780px;
+      font-size: clamp(42px, 6vw, 82px);
+      line-height: 0.95;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      margin: 0 0 16px;
+      font-size: clamp(28px, 3vw, 42px);
+      line-height: 1.03;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin: 0 0 9px;
+      font-size: 18px;
+      line-height: 1.18;
+      letter-spacing: 0;
+    }
+
+    p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.62;
+      overflow-wrap: break-word;
+    }
+
+    .lead {
+      max-width: 780px;
+      margin-top: 22px;
+      font-size: 19px;
+      color: #3e3933;
+    }
+
+    .hero-strip {
+      margin-top: 24px;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      font-family: var(--mono);
+    }
+
+    .hero-strip div {
+      border: 1px solid rgba(24, 23, 20, 0.22);
+      background: rgba(255, 255, 255, 0.66);
+      padding: 12px;
+      min-height: 86px;
+      min-width: 0;
+      overflow-wrap: break-word;
+    }
+
+    .hero-strip strong {
+      display: block;
+      color: var(--ink);
+      margin-bottom: 5px;
+    }
+
+    .section {
+      margin-top: 54px;
+      padding-top: 16px;
+      border-top: 1px solid var(--line);
+      scroll-margin-top: 112px;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: minmax(0, 0.92fr) minmax(360px, 1.08fr);
+      gap: 24px;
+      align-items: start;
+    }
+
+    .band {
+      background: rgba(255, 255, 255, 0.62);
+      border: 1px solid var(--line);
+      padding: 22px;
+    }
+
+    .truth {
+      background: #fff;
+      border: 1px solid var(--ink);
+      box-shadow: var(--shadow);
+      padding: 20px;
+    }
+
+    .note {
+      margin-top: 16px;
+      padding: 14px 16px;
+      color: var(--ink);
+      background: #e7f0ed;
+      border-left: 4px solid var(--green);
+      font-size: 15px;
+      line-height: 1.56;
+    }
+
+    .warning {
+      background: #f4e6e1;
+      border-left-color: var(--red);
+    }
+
+    .equation {
+      margin-top: 14px;
+      padding: 14px 16px;
+      background: #fff;
+      border: 1px solid var(--line);
+      color: #24211e;
+      font-family: var(--mono);
+      font-size: 14px;
+      line-height: 1.55;
+      overflow-x: auto;
+      white-space: normal;
+    }
+
+    .big-equation {
+      border-color: var(--ink);
+      box-shadow: 5px 5px 0 var(--ink);
+      font-size: 18px;
+    }
+
+    .stage {
+      background: #fff;
+      border: 1px solid var(--ink);
+      box-shadow: var(--shadow);
+      padding: 18px;
+      min-width: 0;
+    }
+
+    .hero-visual .stage {
+      transform: rotate(0.4deg);
+    }
+
+    .gpu {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    .sm {
+      min-height: 66px;
+      border: 1px solid var(--line);
+      background: var(--soft);
+      padding: 8px;
+      font-family: var(--mono);
+      font-size: 11px;
+      display: grid;
+      align-content: space-between;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .sm.busy {
+      border-color: rgba(47, 116, 93, 0.56);
+      background: rgba(47, 116, 93, 0.14);
+    }
+
+    .sm.idle {
+      color: #928a80;
+      background: repeating-linear-gradient(135deg, #f7f1e8 0 8px, #efe7dc 8px 16px);
+    }
+
+    .sm .load {
+      height: 7px;
+      width: var(--load, 20%);
+      background: var(--green);
+      margin-top: 9px;
+    }
+
+    .sm.fa1.busy { background: rgba(155, 75, 61, 0.13); border-color: rgba(155, 75, 61, 0.46); }
+    .sm.fa1 .load { background: var(--red); }
+    .sm.fa2.busy { background: rgba(47, 95, 145, 0.13); border-color: rgba(47, 95, 145, 0.46); }
+    .sm.fa2 .load { background: var(--blue); }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 13px;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      border: 1px solid var(--line);
+      background: #fff;
+      padding: 7px 9px;
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+
+    .swatch {
+      width: 12px;
+      height: 12px;
+      border: 1px solid var(--ink);
+      background: var(--blue);
+    }
+
+    .swatch.red { background: var(--red); }
+    .swatch.green { background: var(--green); }
+    .swatch.idle { background: #efe7dc; }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 18px;
+    }
+
+    .control-button {
+      min-height: 38px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--muted);
+      padding: 9px 12px;
+      cursor: pointer;
+      font-family: var(--mono);
+      font-size: 13px;
+    }
+
+    .control-button:hover,
+    .control-button.active {
+      border-color: var(--ink);
+      color: var(--ink);
+      box-shadow: 3px 3px 0 var(--ink);
+    }
+
+    .compare-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      align-items: start;
+    }
+
+    .compare-card {
+      background: #fff;
+      border: 1px solid var(--ink);
+      box-shadow: var(--shadow);
+      padding: 18px;
+      min-width: 0;
+    }
+
+    .compare-card.fa1 h3 { color: var(--red); }
+    .compare-card.fa2 h3 { color: var(--blue); }
+
+    .loop-box {
+      display: grid;
+      gap: 10px;
+      margin-top: 14px;
+      font-family: var(--mono);
+      font-size: 13px;
+    }
+
+    .loop-line {
+      border: 1px solid var(--line);
+      background: var(--soft);
+      padding: 10px;
+    }
+
+    .loop-line.hot {
+      border-color: var(--ink);
+      background: #fff;
+      box-shadow: 3px 3px 0 var(--ink);
+    }
+
+    .matrix-wrap {
+      margin-top: 16px;
+      display: grid;
+      grid-template-columns: 42px minmax(0, 1fr);
+      gap: 8px;
+      align-items: stretch;
+      font-family: var(--mono);
+    }
+
+    .q-axis {
+      display: grid;
+      grid-template-rows: repeat(4, 1fr);
+      gap: 6px;
+    }
+
+    .q-axis div,
+    .k-axis div {
+      border: 1px solid var(--line);
+      background: #fff;
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+      font-size: 12px;
+      min-height: 30px;
+    }
+
+    .matrix-body {
+      display: grid;
+      grid-template-rows: 34px 1fr;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .k-axis {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+    }
+
+    .tile-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      grid-template-rows: repeat(4, 1fr);
+      gap: 6px;
+      aspect-ratio: 1 / 0.8;
+      min-height: 230px;
+    }
+
+    .attn-tile {
+      border: 1px solid var(--line);
+      background: var(--soft);
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+      font-size: 12px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .attn-tile.active-fa1 {
+      color: var(--ink);
+      background: rgba(155, 75, 61, 0.16);
+      border-color: rgba(155, 75, 61, 0.55);
+    }
+
+    .attn-tile.active-fa2 {
+      color: var(--ink);
+      background: rgba(47, 95, 145, 0.16);
+      border-color: rgba(47, 95, 145, 0.55);
+    }
+
+    .attn-tile.owner {
+      border-color: var(--ink);
+      box-shadow: inset 0 0 0 2px rgba(24, 23, 20, 0.10);
+    }
+
+    .attn-tile .worker-dot {
+      position: absolute;
+      width: 10px;
+      height: 10px;
+      border: 1px solid var(--ink);
+      background: var(--green);
+      top: 6px;
+      right: 6px;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 16px;
+      font-family: var(--mono);
+    }
+
+    .flow-step {
+      border: 1px solid var(--line);
+      background: #fff;
+      min-height: 118px;
+      padding: 12px;
+      font-size: 13px;
+      line-height: 1.42;
+    }
+
+    .flow-step strong {
+      display: block;
+      color: var(--ink);
+      font-size: 15px;
+      margin-bottom: 6px;
+    }
+
+    .flow-step.hot {
+      border-color: var(--ink);
+      box-shadow: 4px 4px 0 var(--ink);
+    }
+
+    .ownership-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 0.9fr) minmax(360px, 1.1fr);
+      gap: 22px;
+      align-items: start;
+      margin-top: 18px;
+    }
+
+    .owner-card {
+      background: #fff;
+      border: 1px solid var(--ink);
+      box-shadow: var(--shadow);
+      padding: 18px;
+      min-width: 0;
+    }
+
+    .owner-map {
+      display: grid;
+      gap: 12px;
+      margin-top: 14px;
+      font-family: var(--mono);
+    }
+
+    .owner-row {
+      display: grid;
+      grid-template-columns: 90px repeat(4, minmax(0, 1fr)) 116px;
+      gap: 7px;
+      align-items: stretch;
+    }
+
+    .owner-cell {
+      min-height: 54px;
+      border: 1px solid var(--line);
+      background: var(--soft);
+      display: grid;
+      place-items: center;
+      text-align: center;
+      padding: 8px;
+      font-size: 12px;
+      line-height: 1.25;
+      color: var(--muted);
+    }
+
+    .owner-cell.label-cell {
+      background: #fff;
+      color: var(--ink);
+      font-weight: 800;
+    }
+
+    .owner-cell.k-split {
+      background: rgba(155, 75, 61, 0.14);
+      border-color: rgba(155, 75, 61, 0.48);
+      color: var(--ink);
+    }
+
+    .owner-cell.q-split {
+      background: rgba(47, 95, 145, 0.14);
+      border-color: rgba(47, 95, 145, 0.48);
+      color: var(--ink);
+    }
+
+    .owner-cell.safe {
+      background: rgba(47, 116, 93, 0.15);
+      border-color: rgba(47, 116, 93, 0.50);
+      color: var(--ink);
+    }
+
+    .merge-box {
+      border-color: var(--ink);
+      background: #fff;
+      box-shadow: 3px 3px 0 var(--ink);
+      color: var(--ink);
+    }
+
+    .mini-code {
+      margin-top: 14px;
+      border: 1px solid var(--line);
+      background: var(--soft);
+      padding: 13px;
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.55;
+      overflow-x: auto;
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .metric {
+      border: 1px solid var(--line);
+      background: #fff;
+      padding: 14px;
+      min-height: 126px;
+    }
+
+    .metric strong {
+      display: block;
+      font-size: 28px;
+      line-height: 1;
+      margin-bottom: 8px;
+    }
+
+    .metric span {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    .occupancy {
+      display: grid;
+      gap: 12px;
+      margin-top: 18px;
+      font-family: var(--mono);
+    }
+
+    .occ-row {
+      display: grid;
+      grid-template-columns: 132px minmax(0, 1fr) 86px;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .occ-label,
+    .occ-value {
+      border: 1px solid var(--line);
+      background: #fff;
+      padding: 10px;
+      font-size: 13px;
+    }
+
+    .occ-bar {
+      height: 34px;
+      border: 1px solid var(--line);
+      background: var(--soft);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .occ-fill {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: var(--w);
+      background: rgba(155, 75, 61, 0.22);
+      border-right: 1px solid rgba(155, 75, 61, 0.48);
+    }
+
+    .occ-row.fa2 .occ-fill {
+      background: rgba(47, 95, 145, 0.24);
+      border-color: rgba(47, 95, 145, 0.48);
+    }
+
+    .scenario-panel {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 18px;
+      align-items: start;
+      margin-top: 18px;
+    }
+
+    .scenario-copy {
+      border: 1px solid var(--line);
+      background: #fff;
+      padding: 16px;
+    }
+
+    .scenario-copy h3 {
+      color: var(--ink);
+    }
+
+    .schedule-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .schedule {
+      border: 1px solid var(--ink);
+      background: #fff;
+      padding: 14px;
+      min-width: 0;
+    }
+
+    .mini-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--muted);
+      min-width: 0;
+    }
+
+    .mini-title strong {
+      color: var(--ink);
+      font-size: 14px;
+    }
+
+    .thread-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 5px;
+      min-width: 0;
+    }
+
+    .thread {
+      min-height: 42px;
+      border: 1px solid var(--line);
+      background: var(--soft);
+      display: grid;
+      place-items: center;
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--muted);
+      text-align: center;
+      padding: 4px;
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+
+    .thread.busy-fa1 {
+      background: rgba(155, 75, 61, 0.15);
+      border-color: rgba(155, 75, 61, 0.54);
+      color: var(--ink);
+    }
+
+    .thread.busy-fa2 {
+      background: rgba(47, 95, 145, 0.15);
+      border-color: rgba(47, 95, 145, 0.54);
+      color: var(--ink);
+    }
+
+    .thread.idle {
+      background: repeating-linear-gradient(135deg, #f7f1e8 0 8px, #ece4d8 8px 16px);
+    }
+
+    .pretrain-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 18px;
+    }
+
+    .mode-card {
+      border: 1px solid var(--line);
+      background: #fff;
+      padding: 16px;
+      min-height: 188px;
+    }
+
+    .mode-card.hot {
+      border-color: var(--ink);
+      box-shadow: 4px 4px 0 var(--ink);
+    }
+
+    .mode-card h3 { margin-bottom: 8px; }
+
+    .token-row {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 4px;
+      margin-top: 14px;
+    }
+
+    .tok {
+      height: 28px;
+      border: 1px solid var(--line);
+      background: var(--soft);
+    }
+
+    .tok.q { background: rgba(47, 95, 145, 0.20); border-color: rgba(47, 95, 145, 0.48); }
+    .tok.kv { background: rgba(47, 116, 93, 0.20); border-color: rgba(47, 116, 93, 0.48); }
+    .tok.one { background: rgba(155, 75, 61, 0.20); border-color: rgba(155, 75, 61, 0.48); }
+
+    .takeaway {
+      display: grid;
+      grid-template-columns: 92px minmax(0, 1fr);
+      gap: 16px;
+      align-items: center;
+      margin-top: 22px;
+      padding: 18px;
+      border: 1px solid var(--ink);
+      background: #fff;
+      box-shadow: var(--shadow);
+    }
+
+    .takeaway-badge {
+      width: 76px;
+      height: 76px;
+      display: grid;
+      place-items: center;
+      background: var(--ink);
+      color: #fff;
+      font-family: var(--mono);
+      font-weight: 800;
+    }
+
+    .sources {
+      margin-top: 20px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .sources a {
+      color: var(--blue);
+      text-decoration: none;
+      border-bottom: 1px solid rgba(47, 95, 145, 0.32);
+    }
+
+    .sources a:hover { border-color: var(--blue); }
+
+    @media (max-width: 920px) {
+      .hero,
+      .grid-2,
+      .scenario-panel {
+        grid-template-columns: 1fr;
+      }
+
+      .compare-grid,
+      .schedule-grid,
+      .pretrain-grid,
+      .ownership-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .hero-strip,
+      .metric-grid,
+      .flow {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .shell { width: min(100% - 22px, 1180px); padding-top: 16px; }
+      .topbar { align-items: flex-start; flex-direction: column; }
+      .nav {
+        width: 100%;
+        justify-content: flex-start;
+      }
+      .nav a { white-space: normal; }
+      .hero { min-height: auto; }
+      .hero,
+      .stage,
+      .truth,
+      .band,
+      .compare-card,
+      .schedule,
+      .scenario-copy,
+      .mode-card {
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+      h1 { font-size: 42px; }
+      .gpu { grid-template-columns: repeat(2, 1fr); }
+      .matrix-wrap { grid-template-columns: 32px minmax(0, 1fr); }
+      .tile-grid { min-height: 190px; gap: 4px; }
+      .attn-tile { font-size: 10px; }
+      .occ-row { grid-template-columns: 1fr; }
+      .takeaway { grid-template-columns: 1fr; }
+      .thread-grid { grid-template-columns: repeat(4, 1fr); }
+      .owner-row {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <nav class="topbar" aria-label="页面导航">
+      <div class="brand">
+        <div class="mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32" fill="none">
+            <path d="M7 22V10h5l8 12h5V10" stroke="#181714" stroke-width="2.2" stroke-linecap="square"/>
+            <path d="M7 22h18" stroke="#30745d" stroke-width="2.2"/>
+          </svg>
+        </div>
+        <span>FA1 → FA2 图解教程</span>
+      </div>
+      <div class="nav">
+        <a href="#core">核心思想</a>
+        <a href="#loops">循环顺序</a>
+        <a href="#inference">推理</a>
+        <a href="#modes">训练 vs 推理</a>
+      </div>
+    </nav>
+
+    <section class="hero">
+      <div class="hero-copy">
+        <div class="label">FlashAttention 演进</div>
+        <h1>相同的注意力，更好的 GPU 调度。</h1>
+        <p class="lead">
+          FlashAttention-1 让注意力具备 IO 感知：不要把 N × N 的注意力矩阵写进 HBM。
+          FlashAttention-2 保持相同的数学，但把更多相互独立的工作暴露给 GPU，
+          尤其是在 batch 很小而序列很长的时候。
+        </p>
+        <div class="hero-strip">
+          <div><strong>FA1</strong>并行工作主要来自 batch × head。</div>
+          <div><strong>问题</strong>推理常常 batch = 1 且上下文很长。</div>
+          <div><strong>FA2</strong>也把工作拆分到 Q 块上。</div>
+        </div>
+      </div>
+
+      <div class="hero-visual">
+        <div class="stage">
+          <div class="mini-title">
+            <strong>GPU 占用率图景</strong>
+            <span>小 batch、长序列</span>
+          </div>
+          <div id="heroGpu" class="gpu" aria-label="GPU 占用率对比"></div>
+          <div class="legend">
+            <span class="chip"><span class="swatch red"></span>FA1 风格的工作单元</span>
+            <span class="chip"><span class="swatch"></span>FA2 序列拆分的工作单元</span>
+            <span class="chip"><span class="swatch idle"></span>空闲容量</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="core" class="section grid-2">
+      <div>
+        <div class="label">核心思想</div>
+        <h2>FA1 找到了内存技巧，FA2 找到了更多并行工作。</h2>
+        <p>
+          两个版本都计算精确的注意力。它们把 Q、K、V 分块到片上内存，并
+          使用在线 softmax（online softmax），这样完整注意力矩阵就永远不需要被存储。区别在于
+          GPU worker 是如何分配的。
+        </p>
+        <div class="equation big-equation">
+          O = softmax(QKᵀ / √d) V &nbsp;&nbsp; // 在 FA1 和 FA2 中结果相同
+        </div>
+        <div class="note">
+          清晰的教学版本：当 batch × heads 给 GPU 提供了许多相互独立的任务时，FA1 非常出色。
+          FA2 则通过在单个 head 内沿序列/查询块拆分来增加并行度。
+        </div>
+      </div>
+      <div class="truth">
+        <div class="label">改变了什么？</div>
+        <div class="metric-grid">
+          <div class="metric">
+            <strong>25-40%</strong>
+            <span>在 FA2 论文里，FA1 在 A100 上达到了理论峰值 FLOPs/s 的大致这个区间。</span>
+          </div>
+          <div class="metric">
+            <strong>50-73%</strong>
+            <span>FA2 通过改进工作划分，更接近 GEMM 的效率。</span>
+          </div>
+          <div class="metric">
+            <strong>相同的数学</strong>
+            <span>提速来自调度、更少的标量运算，以及更少的共享内存流量。</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="loops" class="section">
+      <div class="label">循环顺序</div>
+      <h2>看看到底是谁拥有输出行。</h2>
+      <p>
+        在 FA1 中，一个有用的心智模型是：加载一个 K/V 分块，然后遍历 Q 分块。这能复用 K/V，
+        但并行工作自然地组织在 batch 和 head 上。在 FA2 的前向传播中，一个 worker
+        拥有一块 Q 行，并流式遍历所有 K/V 块，因此不同的 Q 块可以同时运行。
+      </p>
+      <div class="note">
+        重要：这并不是因为 K 块无法并行运行。而是因为把一行查询拆分到多个 K 块上，
+        会产生部分 softmax 片段，这些片段必须合并之后才能得到最终的输出行。
+      </div>
+
+      <div class="controls" role="tablist" aria-label="注意力分块动画控制">
+        <button class="control-button active" data-step="0" type="button">1. Batch × heads</button>
+        <button class="control-button" data-step="1" type="button">2. FA1 调度</button>
+        <button class="control-button" data-step="2" type="button">3. FA2 调度</button>
+        <button class="control-button" data-step="3" type="button">4. 为什么重要</button>
+      </div>
+
+      <div class="compare-grid" style="margin-top:18px;">
+        <article class="compare-card fa1">
+          <h3>FlashAttention-1：只有当 B × H 很大时任务才足够</h3>
+          <p id="fa1Caption">训练通常有很多 batch 和 head，因此 FA1 可以用相互独立的注意力问题填满 GPU。</p>
+          <div class="loop-box">
+            <div class="loop-line hot">并行轴：batch × 注意力头</div>
+            <div class="loop-line">外层循环：K/V 块</div>
+            <div class="loop-line">内层循环：Q 块，更新部分 softmax/输出</div>
+          </div>
+          <div id="fa1Matrix" class="matrix-wrap"></div>
+        </article>
+
+        <article class="compare-card fa2">
+          <h3>FlashAttention-2：把一个 head 拆分到 Q 块上</h3>
+          <p id="fa2Caption">即使只有一个 batch 和几个 head，一个长序列也包含许多可以变成独立 GPU 任务的 Q 块。</p>
+          <div class="loop-box">
+            <div class="loop-line hot">并行轴：batch × head × Q 块</div>
+            <div class="loop-line">外层归属：Q 行 / 输出行</div>
+            <div class="loop-line">内层循环：流式遍历 K/V 块</div>
+          </div>
+          <div id="fa2Matrix" class="matrix-wrap"></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="label">令人困惑的部分</div>
+      <h2>为什么不让 K0、K1、K2、K3 并行运行？</h2>
+      <p>
+        对于一行查询，注意力是对所有 key 做 softmax。如果四个 worker 各自处理一个不同的
+        K 块，它们并不会产生四个相互独立的输出。它们产生的是同一输出行的四个部分片段。
+        这些片段需要一次 max/sum/输出合并。
+      </p>
+
+      <div class="ownership-grid">
+        <div class="owner-card">
+          <h3>跨 K 块拆分会产生一个归约问题</h3>
+          <p>
+            同一行 Q 拥有一个最终的输出向量 Oᵢ。每个 K/V 块都为同一个 Oᵢ 做贡献，
+            而 softmax 归一化把所有 K 块耦合在一起。
+          </p>
+          <div class="owner-map" aria-label="K 拆分归属图">
+            <div class="owner-row">
+              <div class="owner-cell label-cell">Q 行 i</div>
+              <div class="owner-cell k-split">K0/V0<br>部分 m,l,O</div>
+              <div class="owner-cell k-split">K1/V1<br>部分 m,l,O</div>
+              <div class="owner-cell k-split">K2/V2<br>部分 m,l,O</div>
+              <div class="owner-cell k-split">K3/V3<br>部分 m,l,O</div>
+              <div class="owner-cell merge-box">必须合并<br>一个 Oᵢ</div>
+            </div>
+          </div>
+          <div class="mini-code">
+            softmax([QᵢK0ᵀ, QᵢK1ᵀ, QᵢK2ᵀ, QᵢK3ᵀ]) V<br>
+            需要一个全局最大值、一个全局分母、一行最终输出。
+          </div>
+        </div>
+
+        <div class="owner-card">
+          <h3>跨 Q 块拆分则避免了那次合并</h3>
+          <p>
+            Q 行是相互独立的输出行。Q0 产生 O0。Q1 产生 O1。Q2 产生 O2。
+            每个 worker 都可以流式遍历所有 K/V 块，并在本地完成自己的行。
+          </p>
+          <div class="owner-map" aria-label="Q 拆分归属图">
+            <div class="owner-row">
+              <div class="owner-cell label-cell">worker A</div>
+              <div class="owner-cell q-split">Q0 × 全部 K/V</div>
+              <div class="owner-cell safe">拥有 O0</div>
+              <div class="owner-cell label-cell">worker B</div>
+              <div class="owner-cell q-split">Q1 × 全部 K/V</div>
+              <div class="owner-cell safe">拥有 O1</div>
+            </div>
+            <div class="owner-row">
+              <div class="owner-cell label-cell">worker C</div>
+              <div class="owner-cell q-split">Q2 × 全部 K/V</div>
+              <div class="owner-cell safe">拥有 O2</div>
+              <div class="owner-cell label-cell">worker D</div>
+              <div class="owner-cell q-split">Q3 × 全部 K/V</div>
+              <div class="owner-cell safe">拥有 O3</div>
+            </div>
+          </div>
+          <div class="mini-code">
+            针对 Q 块 r 的 worker：<br>
+            &nbsp;&nbsp;在本地保留 mᵣ、lᵣ、Oᵣ<br>
+            &nbsp;&nbsp;对每个 K/V 块：更新本地的在线 softmax
+          </div>
+        </div>
+      </div>
+
+      <div class="note warning">
+        K 块并行是可能的，但它需要额外的合并步骤。这种风格出现在专门的长上下文解码 kernel 中，
+        那里的 Q 长度可能只有一个 token，跨 Q 行拆分没有并行度可言。FA2 干净的前向传播改进
+        就是跨 Q 块拆分。
+      </div>
+    </section>
+
+    <section id="inference" class="section grid-2">
+      <div>
+        <div class="label">小 batch、长上下文</div>
+        <h2>推理暴露了只使用 batch × head 并行度的弱点。</h2>
+        <p>
+          在预填充期间，推理可能会以 batch 大小为 1 处理一个长 prompt。如果 kernel 只能
+          为每个 head 创建一个任务，GPU 就可能占用不足。FA2 通过拆分序列维度创建更多任务，
+          这样一个长 prompt 就能占用许多线程块（thread block）。
+        </p>
+        <div class="note">
+          这是要用视觉展示的关键故事：FA2 并不会减少 N² 的注意力数学。
+          它给 GPU 提供更多可以同时执行的数学片段。
+        </div>
+      </div>
+      <div class="stage">
+        <div class="mini-title">
+          <strong>试试这个工作负载</strong>
+          <span>存在多少个 worker 组？</span>
+        </div>
+        <div class="controls" id="scenarioButtons"></div>
+        <div class="scenario-panel">
+          <div class="scenario-copy">
+            <h3 id="scenarioTitle"></h3>
+            <p id="scenarioBody"></p>
+            <div class="occupancy">
+              <div class="occ-row fa1">
+                <div class="occ-label">FA1 任务</div>
+                <div class="occ-bar"><div id="fa1Occ" class="occ-fill" style="--w:25%"></div></div>
+                <div id="fa1OccValue" class="occ-value"></div>
+              </div>
+              <div class="occ-row fa2">
+                <div class="occ-label">FA2 任务</div>
+                <div class="occ-bar"><div id="fa2Occ" class="occ-fill" style="--w:88%"></div></div>
+                <div id="fa2OccValue" class="occ-value"></div>
+              </div>
+            </div>
+          </div>
+          <div class="schedule-grid">
+            <div class="schedule">
+              <div class="mini-title"><strong>FA1 worker 图</strong><span>batch × head</span></div>
+              <div id="fa1Threads" class="thread-grid"></div>
+            </div>
+            <div class="schedule">
+              <div class="mini-title"><strong>FA2 worker 图</strong><span>batch × head × Q 块</span></div>
+              <div id="fa2Threads" class="thread-grid"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section grid-2">
+      <div>
+        <div class="label">为什么峰值 FLOPs 更高？</div>
+        <h2>张量核心喜欢大而稳定的矩阵工作。FA2 移除了周围更多的等待。</h2>
+        <p>
+          FA1 已经避免了大量的 HBM 写入。但与 GEMM 相比，它仍然有开销：
+          标量 softmax 工作、同步，以及 warp 之间的共享内存移动。FA2 改进了
+          工作划分，让更多时间花在高吞吐的矩阵乘法部分。
+        </p>
+      </div>
+      <div class="stage">
+        <div class="flow">
+          <div class="flow-step">
+            <strong>1. 更多块</strong>
+            一个长序列可以创建许多独立的 Q 块任务。
+          </div>
+          <div class="flow-step hot">
+            <strong>2. 更少等待</strong>
+            更高的占用率意味着更多 SM 同时拥有有用的工作。
+          </div>
+          <div class="flow-step">
+            <strong>3. 更好的 warp 拆分</strong>
+            FA2 减少了线程块内通过共享内存的通信。
+          </div>
+        </div>
+        <div class="equation">
+          FA2 提速 = 更好的并行 + 更少的非矩阵乘法 FLOPs + 更少的共享内存流量
+        </div>
+      </div>
+    </section>
+
+    <section id="modes" class="section">
+      <div class="label">训练 vs 推理</div>
+      <h2>FA1 与 FA2 在预训练和推理之间会有所不同吗？</h2>
+      <p>
+        注意力公式并没有改变。改变的是工作负载的形态。
+        这个形态决定了 FA2 额外的序列并行度是否特别有价值。
+      </p>
+      <div class="pretrain-grid">
+        <article class="mode-card">
+          <h3>预训练</h3>
+          <p>通常有很多 batch 和 head。FA1 已经拥有大量独立的注意力任务，所以它表现良好。FA2 仍然能提高吞吐。</p>
+          <div class="token-row" aria-hidden="true">
+            <span class="tok q"></span><span class="tok q"></span><span class="tok q"></span><span class="tok q"></span>
+            <span class="tok q"></span><span class="tok q"></span><span class="tok q"></span><span class="tok q"></span>
+            <span class="tok q"></span><span class="tok q"></span><span class="tok q"></span><span class="tok q"></span>
+          </div>
+        </article>
+        <article class="mode-card hot">
+          <h3>推理预填充</h3>
+          <p>通常 batch 很小，但 prompt 很长。这正是 FA2 的 Q 块序列并行度帮助保持 GPU 忙碌的干净场景。</p>
+          <div class="token-row" aria-hidden="true">
+            <span class="tok q"></span><span class="tok q"></span><span class="tok q"></span><span class="tok q"></span>
+            <span class="tok q"></span><span class="tok q"></span><span class="tok q"></span><span class="tok q"></span>
+            <span class="tok q"></span><span class="tok q"></span><span class="tok q"></span><span class="tok q"></span>
+          </div>
+        </article>
+        <article class="mode-card">
+          <h3>推理解码</h3>
+          <p>通常 q 长度是 1 个 token，而 K/V 来自缓存。跨 Q 行拆分用处较小；专门的解码 kernel 会把工作拆分到长 K/V 缓存上。</p>
+          <div class="token-row" aria-hidden="true">
+            <span class="tok one"></span><span class="tok kv"></span><span class="tok kv"></span><span class="tok kv"></span>
+            <span class="tok kv"></span><span class="tok kv"></span><span class="tok kv"></span><span class="tok kv"></span>
+            <span class="tok kv"></span><span class="tok kv"></span><span class="tok kv"></span><span class="tok kv"></span>
+          </div>
+        </article>
+      </div>
+      <div class="takeaway">
+        <div class="takeaway-badge">要点</div>
+        <p>
+          FA2 并不是一个不同的注意力层。它是 FlashAttention 思想的更好 GPU 实现：
+          完全相同的输出，更好的工作调度。当 batch × heads 单独不足以填满 GPU 时，
+          它的序列并行度最为重要，这在长上下文推理预填充中很常见。
+        </p>
+      </div>
+      <p class="sources">
+        来源：Tri Dao 等人，
+        <a href="https://arxiv.org/abs/2205.14135">FlashAttention</a> 与
+        <a href="https://arxiv.org/abs/2307.08691">FlashAttention-2</a>。
+      </p>
+    </section>
+  </main>
+
+  <script>
+    const smCount = 16;
+    const qLabels = ["Q0", "Q1", "Q2", "Q3"];
+    const kLabels = ["K0", "K1", "K2", "K3"];
+
+    function renderGpu(containerId, mode) {
+      const container = document.getElementById(containerId);
+      const busy = mode === "fa1" ? 4 : 14;
+      container.innerHTML = Array.from({ length: smCount }, (_, index) => {
+        const isBusy = index < busy;
+        const cls = isBusy ? `sm busy ${mode}` : "sm idle";
+        const label = isBusy ? (mode === "fa1" ? `批/头 ${index + 1}` : `Q 块 ${index + 1}`) : "空闲";
+        const load = isBusy ? (mode === "fa1" ? "58%" : "86%") : "12%";
+        return `<div class="${cls}" style="--load:${load}"><span>SM ${index + 1}</span><span>${label}</span><div class="load"></div></div>`;
+      }).join("");
+    }
+
+    function matrixMarkup(mode, step) {
+      const activeClass = mode === "fa1" ? "active-fa1" : "active-fa2";
+      const cells = [];
+      for (let r = 0; r < 4; r += 1) {
+        for (let c = 0; c < 4; c += 1) {
+          let active = false;
+          let owner = false;
+          if (step === 1 && mode === "fa1") active = c === 1;
+          if (step === 2 && mode === "fa2") active = true, owner = r >= 0;
+          if (step === 3 && mode === "fa1") active = c === 1 && r < 2;
+          if (step === 3 && mode === "fa2") active = r < 4;
+          const dot = mode === "fa2" && (step === 2 || step === 3) ? '<span class="worker-dot"></span>' : "";
+          cells.push(`<div class="attn-tile ${active ? activeClass : ""} ${owner ? "owner" : ""}">${qLabels[r]}×${kLabels[c]}${dot}</div>`);
+        }
+      }
+
+      return `
+        <div class="q-axis">${qLabels.map((q) => `<div>${q}</div>`).join("")}</div>
+        <div class="matrix-body">
+          <div class="k-axis">${kLabels.map((k) => `<div>${k}</div>`).join("")}</div>
+          <div class="tile-grid">${cells.join("")}</div>
+        </div>
+      `;
+    }
+
+    const captions = [
+      {
+        fa1: "当 batch × heads 很大时，每个注意力头都是一个独立任务。FA1 有足够的工作。",
+        fa2: "FA2 仍然可以使用 batch × heads，但它还有另一个可用的轴：Q 块。"
+      },
+      {
+        fa1: "FA1 风格的调度加载一个 K/V 块并遍历 Q 块，更新部分 softmax/输出。",
+        fa2: "FA2 保持相同的分块思想，但让 Q 块成为独立的输出行拥有者。"
+      },
+      {
+        fa1: "你可以拆分 K 块，但那样多个 worker 会争夺同一输出行并需要合并。",
+        fa2: "FA2 把不同的 Q 块分配给不同的 worker。每个 worker 流式遍历 K/V 并完成自己的行。"
+      },
+      {
+        fa1: "FA1 通过为输出行的 softmax 状态保留一个拥有者，避免了那次 K 拆分合并。",
+        fa2: "更多同时的 Q 块任务提高了占用率，让 kernel 表现得更像高效的 GEMM。"
+      }
+    ];
+
+    function renderStep(step) {
+      document.querySelectorAll("[data-step]").forEach((button) => {
+        button.classList.toggle("active", Number(button.dataset.step) === step);
+      });
+      document.getElementById("fa1Caption").textContent = captions[step].fa1;
+      document.getElementById("fa2Caption").textContent = captions[step].fa2;
+      document.getElementById("fa1Matrix").innerHTML = matrixMarkup("fa1", step);
+      document.getElementById("fa2Matrix").innerHTML = matrixMarkup("fa2", step);
+    }
+
+    const scenarios = [
+      {
+        id: "train",
+        label: "训练",
+        title: "大批量训练",
+        body: "示例：batch = 16，heads = 32。batch × heads 已经给出数百个独立的注意力任务。FA2 仍然胜出，但 FA1 并不缺工作。",
+        fa1Jobs: 16,
+        fa2Jobs: 16
+      },
+      {
+        id: "prefill",
+        label: "长预填充",
+        title: "小 batch、长 prompt",
+        body: "示例：batch = 1，heads = 8，序列 = 16k。仅靠 head 的 FA1 风格工作很稀薄。FA2 把每个 head 拆分到许多 Q 块上。",
+        fa1Jobs: 4,
+        fa2Jobs: 15
+      },
+      {
+        id: "decode",
+        label: "解码",
+        title: "一次一个新 token",
+        body: "在自回归解码中，Q 长度往往是 1。FA2 的 Q 行拆分几乎没有施展空间；专门的解码注意力通常改为跨 K/V 缓存拆分。",
+        fa1Jobs: 3,
+        fa2Jobs: 5
+      }
+    ];
+
+    function renderThreads(containerId, count, cls) {
+      const container = document.getElementById(containerId);
+      container.innerHTML = Array.from({ length: 16 }, (_, index) => {
+        const active = index < count;
+        return `<div class="thread ${active ? cls : "idle"}">${active ? `任务 ${index + 1}` : "空闲"}</div>`;
+      }).join("");
+    }
+
+    function renderScenario(index) {
+      const scenario = scenarios[index];
+      document.querySelectorAll("[data-scenario]").forEach((button) => {
+        button.classList.toggle("active", Number(button.dataset.scenario) === index);
+      });
+      document.getElementById("scenarioTitle").textContent = scenario.title;
+      document.getElementById("scenarioBody").textContent = scenario.body;
+      document.getElementById("fa1Occ").style.setProperty("--w", `${Math.max(10, scenario.fa1Jobs / 16 * 100)}%`);
+      document.getElementById("fa2Occ").style.setProperty("--w", `${Math.max(10, scenario.fa2Jobs / 16 * 100)}%`);
+      document.getElementById("fa1OccValue").textContent = `${scenario.fa1Jobs}/16`;
+      document.getElementById("fa2OccValue").textContent = `${scenario.fa2Jobs}/16`;
+      renderThreads("fa1Threads", scenario.fa1Jobs, "busy-fa1");
+      renderThreads("fa2Threads", scenario.fa2Jobs, "busy-fa2");
+    }
+
+    function bindScenarioButtons() {
+      const holder = document.getElementById("scenarioButtons");
+      holder.innerHTML = scenarios.map((scenario, index) => `
+        <button class="control-button ${index === 1 ? "active" : ""}" type="button" data-scenario="${index}">
+          ${scenario.label}
+        </button>
+      `).join("");
+      holder.querySelectorAll("button").forEach((button) => {
+        button.addEventListener("click", () => renderScenario(Number(button.dataset.scenario)));
+      });
+    }
+
+    document.querySelectorAll("[data-step]").forEach((button) => {
+      button.addEventListener("click", () => renderStep(Number(button.dataset.step)));
+    });
+
+    renderGpu("heroGpu", "fa2");
+    renderStep(0);
+    bindScenarioButtons();
+    renderScenario(1);
+  </script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+Lecture Notes: https://miro.com/app/board/uXjVHb72krs=/?share_link_id=970747418881
+
+(1) TurboQuant Visual Guide: https://vizuaraai.github.io/turboquant-rotation-visual-guide/
+(2) DeepSeek V4 KVCache Visual Guide: https://vizuaraai.github.io/deepseek-v4-kv-cache-walkthrough/
+^ Visual Walkthroughs
+

@@ -1,0 +1,1404 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>哪些注意力变体需要重新训练？ —— 可视化指南</title>
+<meta name="description" content="一张横跨《推理工程》第 8、9、10 章的实用可视化地图：head 压缩、token 压缩与 FlashAttention。哪些变体是纯系统优化，哪些改变了模型，以及你需要多大的模型与数据集来复现它们。" />
+<link rel="icon" type="image/png" href="vizlogo.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=JetBrains+Mono:wght@400;500;700&family=Inter+Tight:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper:        #f4ecd8;
+    --paper-deep:   #ebe1c7;
+    --ink:          #1a1815;
+    --ink-soft:     #3d3833;
+    --ink-faint:    #6b6359;
+    --rule:         #2a2622;
+    --accent:       #c8351b;
+    --accent-soft:  #e08a76;
+    --gold:         #b8862f;
+    --teal:         #2f5e5a;
+    --blue:         #2e4a7b;
+    --green:        #4a6b3a;
+    --hot:          #c8351b;
+    --cool:         #2e4a7b;
+    --margin:       max(2rem, calc(50vw - 38rem));
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'Fraunces', 'Times New Roman', 'PingFang SC', 'Microsoft YaHei', serif;
+    font-feature-settings: "ss01" on, "ss02" on, "onum" on;
+    background: var(--paper);
+    color: var(--ink);
+    line-height: 1.55;
+    font-size: 18px;
+    overflow-x: hidden;
+    position: relative;
+  }
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      radial-gradient(circle at 20% 30%, rgba(120,90,40,0.04) 0%, transparent 40%),
+      radial-gradient(circle at 80% 70%, rgba(60,40,20,0.035) 0%, transparent 40%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  body::after {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.15 0 0 0 0 0.12 0 0 0 0 0.08 0 0 0 0.18 0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
+    opacity: 0.35;
+    mix-blend-mode: multiply;
+    pointer-events: none;
+    z-index: 1;
+  }
+  main { position: relative; z-index: 2; }
+
+  h1, h2, h3, h4 {
+    font-family: 'Fraunces', 'PingFang SC', 'Microsoft YaHei', serif;
+    font-variation-settings: "opsz" 144;
+    color: var(--ink);
+    letter-spacing: -0.02em;
+    line-height: 1.05;
+    font-weight: 500;
+  }
+  h2 { font-size: clamp(2.2rem, 5vw, 3.6rem); margin-bottom: 1.5rem; font-weight: 400; }
+  h3 { font-size: clamp(1.5rem, 3vw, 2.1rem); margin: 2.5rem 0 1rem; font-weight: 500; }
+  h4 { font-size: 1.25rem; margin: 1.5rem 0 0.6rem; font-weight: 600; font-variation-settings: "opsz" 14; }
+
+  p { font-size: 1.125rem; margin-bottom: 1.25rem; max-width: 65ch; }
+  p.lede {
+    font-size: 1.45rem;
+    line-height: 1.5;
+    color: var(--ink-soft);
+    font-style: italic;
+    font-weight: 300;
+    max-width: 60ch;
+  }
+  .small-caps {
+    font-family: 'Inter Tight', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--ink-faint);
+  }
+  .drop::first-letter {
+    font-family: 'Fraunces', serif;
+    font-weight: 600;
+    font-size: 4.5rem;
+    float: left;
+    line-height: 0.85;
+    margin: 0.4rem 0.5rem 0 0;
+    color: var(--accent);
+  }
+
+  code, .mono {
+    font-family: 'JetBrains Mono', 'PingFang SC', 'Microsoft YaHei', monospace;
+    font-size: 0.9em;
+    background: rgba(40,30,20,0.06);
+    padding: 0.1em 0.35em;
+    border-radius: 3px;
+    color: var(--ink);
+  }
+
+  section {
+    padding: 6rem var(--margin);
+    position: relative;
+    border-bottom: 1px solid rgba(40,30,20,0.08);
+  }
+  section:last-child { border-bottom: none; }
+
+  .section-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    letter-spacing: 0.05em;
+    color: var(--accent);
+    margin-bottom: 1rem;
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border: 1px solid var(--accent);
+    border-radius: 2px;
+  }
+
+  .hero {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 4rem var(--margin) 2rem;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    border-bottom: 2px solid var(--ink);
+    padding-bottom: 0.75rem;
+    margin-bottom: 3rem;
+  }
+  .hero-meta .vol {
+    font-family: 'Fraunces', 'PingFang SC', 'Microsoft YaHei', serif;
+    font-style: italic;
+    font-size: 1rem;
+    color: var(--ink-soft);
+  }
+  .hero h1 {
+    font-size: clamp(3rem, 9.5vw, 8rem);
+    font-weight: 300;
+    line-height: 0.92;
+    margin: 1rem 0 2rem;
+    font-variation-settings: "opsz" 144, "wght" 300;
+  }
+  .hero h1 em {
+    font-style: italic;
+    color: var(--accent);
+    font-variation-settings: "opsz" 144, "wght" 400;
+  }
+  .hero-sub {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3rem;
+    margin-top: 3rem;
+    border-top: 1px solid rgba(40,30,20,0.2);
+    padding-top: 1.5rem;
+  }
+  .hero-sub p { font-size: 1rem; color: var(--ink-soft); }
+
+  .hero-formula {
+    margin: 2rem 0;
+    padding: 2rem;
+    background: var(--ink);
+    color: var(--paper);
+    font-family: 'JetBrains Mono', 'PingFang SC', 'Microsoft YaHei', monospace;
+    text-align: center;
+    border-radius: 2px;
+    position: relative;
+  }
+  .hero-formula .label {
+    position: absolute;
+    top: -0.7rem; left: 1rem;
+    background: var(--paper);
+    color: var(--ink);
+    padding: 0 0.5rem;
+    font-size: 0.7rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
+  .hero-formula .eq {
+    font-size: 1.4rem;
+    letter-spacing: 0.05em;
+    line-height: 1.5;
+  }
+  .hero-formula .eq .var { color: var(--accent-soft); }
+  .hero-formula .eq .same { color: #9bd1a8; }
+
+  .toc {
+    background: var(--paper-deep);
+    padding: 4rem var(--margin);
+    border-top: 1px solid rgba(40,30,20,0.15);
+    border-bottom: 1px solid rgba(40,30,20,0.15);
+  }
+  .toc h2 {
+    font-size: 1.2rem;
+    font-family: 'Inter Tight', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: 2rem;
+    font-weight: 600;
+  }
+  .toc-list { list-style: none; }
+  .toc-list li {
+    border-top: 1px solid rgba(40,30,20,0.15);
+    padding: 1rem 0;
+    display: flex;
+    align-items: baseline;
+    gap: 1.5rem;
+  }
+  .toc-list li:last-child { border-bottom: 1px solid rgba(40,30,20,0.15); }
+  .toc-list .num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85rem;
+    color: var(--accent);
+    width: 3rem;
+    flex-shrink: 0;
+  }
+  .toc-list a {
+    color: var(--ink);
+    text-decoration: none;
+    font-family: 'Fraunces', 'PingFang SC', 'Microsoft YaHei', serif;
+    font-size: 1.4rem;
+    flex-grow: 1;
+    transition: color 0.2s;
+  }
+  .toc-list a:hover { color: var(--accent); font-style: italic; }
+  .toc-list .pg {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--ink-faint);
+  }
+
+  figure {
+    margin: 3rem auto;
+    padding: 0;
+    text-align: center;
+    max-width: 100%;
+  }
+  figure svg {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 0 auto;
+    background: var(--paper);
+  }
+  figcaption {
+    font-family: 'Inter Tight', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    font-size: 0.85rem;
+    color: var(--ink-faint);
+    margin-top: 1rem;
+    line-height: 1.4;
+    max-width: 50ch;
+    margin-left: auto;
+    margin-right: auto;
+    text-align: center;
+  }
+  figcaption .fig-label {
+    font-weight: 700;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-size: 0.72rem;
+    margin-right: 0.5rem;
+  }
+
+  .interactive {
+    background: var(--paper-deep);
+    border: 1px solid rgba(40,30,20,0.15);
+    padding: 2rem;
+    border-radius: 4px;
+    margin: 3rem 0;
+    position: relative;
+  }
+  .interactive::before {
+    content: 'Try it ↓';
+    position: absolute;
+    top: -0.6rem; left: 1.2rem;
+    background: var(--accent);
+    color: var(--paper);
+    padding: 0.15rem 0.7rem;
+    font-family: 'Inter Tight', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    font-size: 0.7rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    font-weight: 700;
+    border-radius: 2px;
+  }
+
+  button {
+    font-family: 'Inter Tight', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 500;
+    padding: 0.5rem 1rem;
+    background: var(--ink);
+    color: var(--paper);
+    border: none;
+    border-radius: 2px;
+    cursor: pointer;
+    letter-spacing: 0.05em;
+    transition: all 0.15s;
+  }
+  button:hover { background: var(--accent); }
+  button.ghost {
+    background: transparent;
+    color: var(--ink);
+    border: 1px solid var(--ink);
+  }
+  button.ghost:hover { background: var(--ink); color: var(--paper); }
+  button.ghost.active {
+    background: var(--accent);
+    color: var(--paper);
+    border-color: var(--accent);
+  }
+
+  .pull-quote {
+    font-family: 'Fraunces', 'PingFang SC', 'Microsoft YaHei', serif;
+    font-style: italic;
+    font-weight: 300;
+    font-size: clamp(1.6rem, 3.8vw, 2.6rem);
+    line-height: 1.25;
+    color: var(--ink);
+    margin: 4rem auto;
+    padding: 2.5rem 0;
+    max-width: 50ch;
+    text-align: center;
+    border-top: 1px solid var(--ink);
+    border-bottom: 1px solid var(--ink);
+    position: relative;
+  }
+  .pull-quote::before {
+    content: '"';
+    position: absolute;
+    top: -1.5rem; left: 50%;
+    transform: translateX(-50%);
+    background: var(--paper);
+    padding: 0 1rem;
+    font-size: 4rem;
+    color: var(--accent);
+    line-height: 1;
+    font-style: normal;
+  }
+
+  .marginalia {
+    font-family: 'Inter Tight', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    font-size: 0.85rem;
+    color: var(--ink-faint);
+    line-height: 1.4;
+    border-left: 2px solid var(--accent);
+    padding-left: 1rem;
+    margin: 1.5rem 0;
+    font-style: italic;
+  }
+
+  .formula {
+    background: var(--paper-deep);
+    border: 1px solid rgba(40,30,20,0.15);
+    padding: 1.5rem 2rem;
+    margin: 2rem 0;
+    text-align: center;
+    font-family: 'JetBrains Mono', 'PingFang SC', 'Microsoft YaHei', monospace;
+    font-size: 1.1rem;
+    border-radius: 3px;
+    overflow-x: auto;
+  }
+  .formula em { color: var(--accent); font-style: normal; font-weight: 700; }
+
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 0;
+    margin: 2.5rem 0;
+    border-top: 1px solid var(--ink);
+    border-bottom: 1px solid var(--ink);
+  }
+  .stat {
+    padding: 1.5rem;
+    border-right: 1px solid rgba(40,30,20,0.15);
+    text-align: center;
+  }
+  .stat:last-child { border-right: none; }
+  .stat .num {
+    font-family: 'Fraunces', serif;
+    font-variation-settings: "opsz" 144, "wght" 400;
+    font-size: 2.6rem;
+    color: var(--accent);
+    line-height: 1;
+    display: block;
+  }
+  .stat .lbl {
+    font-family: 'Inter Tight', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--ink-faint);
+    margin-top: 0.5rem;
+    display: block;
+  }
+
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3rem;
+    margin: 2rem 0;
+  }
+  @media (max-width: 768px) {
+    .two-col { grid-template-columns: 1fr; gap: 1.5rem; }
+    .hero-sub { grid-template-columns: 1fr; }
+    .stat-grid { grid-template-columns: 1fr 1fr; }
+    .stat { border-right: 1px solid rgba(40,30,20,0.15); border-bottom: 1px solid rgba(40,30,20,0.15); }
+  }
+
+  /* Decision table */
+  .verdict-table {
+    margin: 3rem 0;
+    border: 1px solid var(--ink);
+    border-radius: 3px;
+    overflow: hidden;
+    font-family: 'Inter Tight', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    font-size: 0.95rem;
+  }
+  .verdict-table .row {
+    display: grid;
+    grid-template-columns: 1.5fr 1.2fr 1.4fr 2fr;
+    border-bottom: 1px solid rgba(40,30,20,0.12);
+  }
+  .verdict-table .row:last-child { border-bottom: none; }
+  .verdict-table .row.head {
+    background: var(--ink);
+    color: var(--paper);
+    font-family: 'Inter Tight', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    font-weight: 600;
+    font-size: 0.75rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .verdict-table .cell {
+    padding: 1rem 1.2rem;
+    border-right: 1px solid rgba(40,30,20,0.1);
+    line-height: 1.4;
+  }
+  .verdict-table .cell:last-child { border-right: none; }
+  .verdict-table .row .cell strong {
+    font-family: 'Fraunces', 'PingFang SC', 'Microsoft YaHei', serif;
+    font-style: italic;
+    font-weight: 500;
+    font-size: 1.1rem;
+    color: var(--ink);
+  }
+  .verdict-table .verdict-pill {
+    display: inline-block;
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+    font-family: 'Inter Tight', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .v-none  { background: rgba(74,107,58,0.18); color: #3a5028; border: 1px solid #4a6b3a; }
+  .v-light { background: rgba(184,134,47,0.18); color: #8a6418; border: 1px solid #b8862f; }
+  .v-heavy { background: rgba(200,53,27,0.15); color: #a02410; border: 1px solid #c8351b; }
+  @media (max-width: 768px) {
+    .verdict-table .row { grid-template-columns: 1fr; }
+    .verdict-table .cell { border-right: none; border-bottom: 1px solid rgba(40,30,20,0.06); }
+  }
+
+  /* Recipe card */
+  .recipe {
+    background: var(--ink);
+    color: var(--paper);
+    padding: 2.5rem;
+    margin: 3rem 0;
+    border-radius: 3px;
+    position: relative;
+  }
+  .recipe::before {
+    content: 'Reproduction recipe';
+    position: absolute;
+    top: -0.7rem; left: 1.5rem;
+    background: var(--paper);
+    color: var(--ink);
+    padding: 0.2rem 0.7rem;
+    font-family: 'Inter Tight', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    font-size: 0.7rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    font-weight: 700;
+  }
+  .recipe h4 {
+    color: var(--accent-soft);
+    font-family: 'Inter Tight', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-size: 0.75rem;
+    margin: 1.6rem 0 0.4rem;
+  }
+  .recipe h4:first-child { margin-top: 0; }
+  .recipe p { color: var(--paper); margin-bottom: 0.6rem; max-width: none; font-size: 1rem; }
+  .recipe code, .recipe .mono { background: rgba(244,236,216,0.12); color: var(--accent-soft); }
+  .recipe ul { margin: 0.4rem 0 0.8rem 1.2rem; }
+  .recipe li { font-size: 1rem; line-height: 1.55; margin-bottom: 0.3rem; }
+
+  footer {
+    padding: 4rem var(--margin) 3rem;
+    background: var(--ink);
+    color: var(--paper);
+    text-align: center;
+  }
+  footer p { color: var(--paper); margin: 0 auto 0.5rem; max-width: none; }
+  footer .small-caps { color: var(--accent-soft); }
+
+  .svg-text {
+    font-family: 'Inter Tight', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    font-size: 13px;
+    fill: var(--ink);
+  }
+  .svg-mono { font-family: 'JetBrains Mono', monospace; }
+  .svg-serif { font-family: 'Fraunces', 'PingFang SC', 'Microsoft YaHei', serif; font-style: italic; }
+
+  .hl { background: linear-gradient(180deg, transparent 60%, rgba(200,53,27,0.25) 60%); padding: 0 0.1em; }
+  .hl-gold { background: linear-gradient(180deg, transparent 60%, rgba(184,134,47,0.3) 60%); padding: 0 0.1em; }
+  .hl-green { background: linear-gradient(180deg, transparent 60%, rgba(74,107,58,0.3) 60%); padding: 0 0.1em; }
+
+  .ornament {
+    text-align: center;
+    margin: 3rem 0;
+    color: var(--ink-faint);
+    font-size: 1.5rem;
+    letter-spacing: 1rem;
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .anim { animation: fadeUp 0.8s ease-out backwards; }
+</style>
+</head>
+<body>
+<main>
+
+<!-- ===================================================================== -->
+<!-- HERO                                                                  -->
+<!-- ===================================================================== -->
+<section class="hero">
+  <div class="hero-meta">
+    <span class="small-caps" style="display:flex;align-items:center;gap:0.6rem"><img src="vizlogo.png" alt="Vizuara" style="width:26px;height:26px;border-radius:5px;border:1px solid rgba(40,30,20,0.25);background:#fff"> Vizuara · 推理工程</span>
+    <span class="vol">第四卷 · 视觉伴侣</span>
+    <span class="small-caps">第 8 · 9 · 10 章</span>
+  </div>
+
+  <p class="small-caps anim" style="animation-delay:.05s">一张横跨注意力章节的实用地图</p>
+  <h1 class="anim" style="animation-delay:.15s">
+    哪些注意力<br>
+    变体需要<br>
+    <em>重新训练？</em>
+  </h1>
+  <p class="lede anim" style="animation-delay:.35s">
+    并不是每一种「注意力加速」都是同一种对象。有些重排了 GPU 的调度，却不动数学。另一些则改变了架构本身——更少的 K/V head、一个窗口化掩码、没有 softmax——而模型必须被（重新）训练才能使用它们。这篇文章会梳理整个家族，并准确地告诉你：要亲自复现每一个变体，需要启动什么。
+  </p>
+
+  <div class="hero-formula anim" style="animation-delay:.55s">
+    <span class="label">唯一的检验</span>
+    <div class="eq">
+      attention(Q,K,V) &nbsp;<span class="same">≡</span>&nbsp; attention'(Q,K,V) &nbsp;?
+      <br>
+      <span style="font-size:0.9rem;color:#bda88f">如果相同 → 系统技巧（无需重训）。&nbsp; 如果不同 → 架构改变（需要重训）。</span>
+    </div>
+  </div>
+
+  <div class="hero-sub anim" style="animation-delay:.75s">
+    <p>这篇走读横跨书中的三个章节。<strong>第 8 章</strong>压缩的是<em>跨 head</em>的缓存（MHA → MQA → GQA → MLA）。<strong>第 9 章</strong>压缩的是<em>跨 token</em>的缓存（滑动窗口、线性注意力、SSM、Mamba）。<strong>第 10 章</strong>是 FlashAttention——对同一数学做系统级的重排。采纳每一种所需的训练成本天差地别，而这正是本页要画的差异。</p>
+    <p style="text-align:right">向下滚动开始。<br><span style="font-size:1.5rem">↓</span></p>
+  </div>
+</section>
+
+<!-- ===================================================================== -->
+<!-- TABLE OF CONTENTS                                                     -->
+<!-- ===================================================================== -->
+<nav class="toc">
+  <h2>目录</h2>
+  <ol class="toc-list">
+    <li><span class="num">I</span><a href="#s1">两种对象，一个共享的名字</a><span class="pg">p. 01</span></li>
+    <li><span class="num">II</span><a href="#s2">一条轴，三个桶</a><span class="pg">p. 02</span></li>
+    <li><span class="num">III</span><a href="#s3">FlashAttention——同样的数学，更聪明的调度</a><span class="pg">p. 03</span></li>
+    <li><span class="num">IV</span><a href="#s4">跨 head 压缩——MQA、GQA、MLA</a><span class="pg">p. 04</span></li>
+    <li><span class="num">V</span><a href="#s5">跨 token 压缩——滑动窗口与稀疏</a><span class="pg">p. 05</span></li>
+    <li><span class="num">VI</span><a href="#s6">线性注意力、SSM 与 Mamba</a><span class="pg">p. 06</span></li>
+    <li><span class="num">VII</span><a href="#s7">总表</a><span class="pg">p. 07</span></li>
+    <li><span class="num">VIII</span><a href="#s8">亲自跑一遍对比</a><span class="pg">p. 08</span></li>
+    <li><span class="num">IX</span><a href="#s9">挑选一个变体，看看代价</a><span class="pg">p. 09</span></li>
+    <li><span class="num">X</span><a href="#s10">结语</a><span class="pg">p. 10</span></li>
+  </ol>
+</nav>
+
+<!-- ===================================================================== -->
+<!-- SECTION I                                                             -->
+<!-- ===================================================================== -->
+<section id="s1">
+  <span class="section-num">§ I</span>
+  <h2>两种对象，一个共享的名字。</h2>
+  <p class="lede">人们很容易把书中的第 8、9、10 章读成同一层架子上的「注意力变体」。术语掩盖了一条贯穿整个家族的清晰分界线。</p>
+
+  <p class="drop">你读到的每一种「更快的注意力」技术，都是两种截然不同的对象之一。第一种让算子的输入-输出关系保持不变，只是用不同的方式去计算它。第二种则<em>定义了一个新算子</em>——参数量不同、掩码不同、softmax 不同。第一种在推理时采纳不花任何成本。第二种至少要付出一次微调——而且往往是一次完整的预训练。</p>
+
+  <p>把它们都叫作「注意力变体」，就掩盖了这一区别。这篇文章的任务是把它变得清晰到像外科手术一样精确，并告诉你这条线的每一侧需要付出多少成本来复现。</p>
+
+  <div class="pull-quote">通往同一目的地的更快路线是免费的。通往不同目的地的更快路线，要求你重新教会模型它要去哪里。</div>
+</section>
+
+<!-- ===================================================================== -->
+<!-- SECTION II                                                            -->
+<!-- ===================================================================== -->
+<section id="s2">
+  <span class="section-num">§ II</span>
+  <h2>一条轴，三个桶。</h2>
+  <p class="lede">把每一个注意力变体钉到一条轴上：<em>给定相同的已训练权重，它是否产生与标准多头注意力相同的输出？</em></p>
+
+  <figure>
+    <svg viewBox="0 0 820 360" xmlns="http://www.w3.org/2000/svg">
+      <!-- horizontal axis -->
+      <line x1="60" y1="200" x2="780" y2="200" stroke="#1a1815" stroke-width="1.5"/>
+      <polygon points="780,200 770,195 770,205" fill="#1a1815"/>
+      <text class="svg-text" x="60" y="225" font-size="11" letter-spacing="0.15em" fill="#6b6359">与标准 MHA 输出相同</text>
+      <text class="svg-text" x="780" y="225" font-size="11" letter-spacing="0.15em" fill="#6b6359" text-anchor="end">完全不同的算子</text>
+
+      <!-- left bucket -->
+      <g transform="translate(80,60)">
+        <rect x="0" y="0" width="240" height="110" rx="3" fill="#ebe1c7" stroke="#4a6b3a" stroke-width="2"/>
+        <text class="svg-text" x="120" y="22" text-anchor="middle" font-size="11" letter-spacing="0.15em" fill="#4a6b3a" font-weight="700">系统级</text>
+        <text class="svg-text svg-serif" x="120" y="48" text-anchor="middle" font-size="16" fill="#1a1815" font-style="italic">无需重新训练</text>
+        <text class="svg-text svg-mono" x="120" y="75" text-anchor="middle" font-size="13" fill="#1a1815">FlashAttention 1 / 2 / 3</text>
+        <text class="svg-text svg-mono" x="120" y="93" text-anchor="middle" font-size="13" fill="#1a1815">PagedAttention</text>
+      </g>
+
+      <!-- middle bucket -->
+      <g transform="translate(335,60)">
+        <rect x="0" y="0" width="160" height="110" rx="3" fill="#ebe1c7" stroke="#b8862f" stroke-width="2"/>
+        <text class="svg-text" x="80" y="22" text-anchor="middle" font-size="11" letter-spacing="0.15em" fill="#b8862f" font-weight="700">续训</text>
+        <text class="svg-text svg-serif" x="80" y="48" text-anchor="middle" font-size="16" fill="#1a1815" font-style="italic">约 5% 的预训练</text>
+        <text class="svg-text svg-mono" x="80" y="75" text-anchor="middle" font-size="13" fill="#1a1815">GQA</text>
+        <text class="svg-text svg-mono" x="80" y="93" text-anchor="middle" font-size="13" fill="#1a1815">MQA（某些情况）</text>
+      </g>
+
+      <!-- right bucket -->
+      <g transform="translate(510,60)">
+        <rect x="0" y="0" width="270" height="110" rx="3" fill="#ebe1c7" stroke="#c8351b" stroke-width="2"/>
+        <text class="svg-text" x="135" y="22" text-anchor="middle" font-size="11" letter-spacing="0.15em" fill="#c8351b" font-weight="700">完全重训或重度微调</text>
+        <text class="svg-text svg-serif" x="135" y="48" text-anchor="middle" font-size="16" fill="#1a1815" font-style="italic">新算子</text>
+        <text class="svg-text svg-mono" x="135" y="75" text-anchor="middle" font-size="13" fill="#1a1815">滑动窗口 · 稀疏</text>
+        <text class="svg-text svg-mono" x="135" y="93" text-anchor="middle" font-size="13" fill="#1a1815">线性（Performer、RetNet……）</text>
+      </g>
+
+      <!-- below axis: question -->
+      <g transform="translate(0,260)">
+        <text class="svg-text svg-serif" x="200" y="0" text-anchor="middle" font-size="14" fill="#1a1815" font-style="italic">「矩阵乘法输出逐位相同吗？」</text>
+        <text class="svg-text svg-serif" x="415" y="0" text-anchor="middle" font-size="14" fill="#1a1815" font-style="italic">「架构相同，只是 K/V 更少？」</text>
+        <text class="svg-text svg-serif" x="650" y="0" text-anchor="middle" font-size="14" fill="#1a1815" font-style="italic">「新的掩码还是新的 softmax？」</text>
+
+        <text class="svg-text" x="200" y="30" text-anchor="middle" font-size="12" fill="#6b6359">直接使用，无需微调</text>
+        <text class="svg-text" x="415" y="30" text-anchor="middle" font-size="12" fill="#6b6359">轻度继续预训练</text>
+        <text class="svg-text" x="650" y="30" text-anchor="middle" font-size="12" fill="#6b6359">从头训练</text>
+      </g>
+    </svg>
+    <figcaption><span class="fig-label">Fig. 2.1</span>学生想要抓住的那条轴。大多数「注意力变体」在这条线上彼此相距甚远。知道每一个坐在哪里，就能准确地告诉你需要什么样的训练基础设施。</figcaption>
+  </figure>
+
+  <p>那么，三个桶：</p>
+  <p><strong>① 系统级（第 10 章）。</strong> 在数值精度范围内输出相同。你可以拿一个用 vanilla 注意力训练的检查点，直接用 FlashAttention 或 PagedAttention 跑推理。损失不动。准确率不动。输出的 token 相同。</p>
+  <p><strong>② 续训（第 8 章——跨 head）。</strong> 架构变了——更少的 K/V head，或一个潜在压缩——但模型仍然在整个序列上做 softmax 注意力。你可以通过以原始 token 预算的一小部分继续预训练，<span class="hl-gold">廉价地恢复失去的行为</span>。Ainslie 等人（2023）报告 GQA 约为 5%。</p>
+  <p><strong>③ 完全重训（第 9 章——跨 token）。</strong> 掩码、感受野或 softmax 本身变了。模型必须从头学习如何使用新算子。一般来说，没有任何「检查点洗白」的技巧能让你跳过这一步。</p>
+
+  <p class="marginalia">本文中的「重新训练」指的是用新算子继续预训练。任务级的微调太短、太下游，无法弥补一个算子层面的改变。</p>
+</section>
+
+<!-- ===================================================================== -->
+<!-- SECTION III                                                           -->
+<!-- ===================================================================== -->
+<section id="s3">
+  <span class="section-num">§ III</span>
+  <h2>FlashAttention——同样的数学，更聪明的调度。</h2>
+  <p class="lede">这就是第 10 章的一行总结。FlashAttention 是典型的系统级优化：输出与标准注意力逐位相等（在浮点运算顺序的范围内）。它重排的是计算发生<em>在哪里</em>，而不是计算<em>什么</em>。</p>
+
+  <p>标准注意力计算一个完整的 <span class="mono">N × N</span> 分数矩阵 <span class="mono">S = QKᵀ/√d</span>，逐行应用 softmax，再乘以 <span class="mono">V</span>。分数矩阵是一个内存大户——对于 32K 的上下文，它是十亿个浮点数，并且驻留在缓慢的 HBM 上。FlashAttention <em>从不物化它</em>。相反，它把 Q、K、V 切成能装进快速 SRAM 的块，并用一个流式算法增量地计算 softmax。</p>
+
+  <figure>
+    <svg viewBox="0 0 820 380" xmlns="http://www.w3.org/2000/svg">
+      <!-- Standard attention -->
+      <g transform="translate(40,40)">
+        <text class="svg-text" x="160" y="-5" text-anchor="middle" font-size="11" letter-spacing="0.15em" fill="#6b6359">标准注意力</text>
+        <!-- N x N score matrix -->
+        <rect x="40" y="20" width="240" height="180" fill="#c8351b" opacity="0.18" stroke="#c8351b" stroke-width="1.2"/>
+        <text class="svg-text svg-mono" x="160" y="115" text-anchor="middle" font-size="14" fill="#1a1815">S = QKᵀ ∈ ℝ^(N×N)</text>
+        <text class="svg-text" x="160" y="140" text-anchor="middle" font-size="11" fill="#6b6359">存储在 HBM 中</text>
+        <text class="svg-text svg-serif" x="160" y="165" text-anchor="middle" font-size="13" fill="#c8351b" font-style="italic">O(N²) 内存</text>
+        <text class="svg-text" x="160" y="225" text-anchor="middle" font-size="12" fill="#1a1815">→ softmax → 乘以 V</text>
+      </g>
+
+      <!-- Arrow -->
+      <g transform="translate(345,140)">
+        <text class="svg-text svg-serif" x="40" y="-5" text-anchor="middle" font-size="13" fill="#1a1815" font-style="italic">输出相同</text>
+        <text class="svg-text svg-mono" x="40" y="10" text-anchor="middle" font-size="11" fill="#4a6b3a">≡</text>
+        <line x1="0" y1="20" x2="80" y2="20" stroke="#1a1815" stroke-width="1.5"/>
+        <polygon points="80,20 73,16 73,24" fill="#1a1815"/>
+      </g>
+
+      <!-- FlashAttention -->
+      <g transform="translate(450,40)">
+        <text class="svg-text" x="160" y="-5" text-anchor="middle" font-size="11" letter-spacing="0.15em" fill="#6b6359">FLASHATTENTION</text>
+        <!-- Tiled blocks -->
+        <g>
+          <!-- 4x4 grid of small tiles -->
+          <g>
+            <rect x="40"  y="20"  width="55" height="42" fill="#4a6b3a" opacity="0.45" stroke="#4a6b3a"/>
+            <rect x="100" y="20"  width="55" height="42" fill="#4a6b3a" opacity="0.18" stroke="#4a6b3a"/>
+            <rect x="160" y="20"  width="55" height="42" fill="#4a6b3a" opacity="0.18" stroke="#4a6b3a"/>
+            <rect x="220" y="20"  width="55" height="42" fill="#4a6b3a" opacity="0.18" stroke="#4a6b3a"/>
+
+            <rect x="40"  y="65"  width="55" height="42" fill="#4a6b3a" opacity="0.18" stroke="#4a6b3a"/>
+            <rect x="100" y="65"  width="55" height="42" fill="#4a6b3a" opacity="0.45" stroke="#4a6b3a"/>
+            <rect x="160" y="65"  width="55" height="42" fill="#4a6b3a" opacity="0.18" stroke="#4a6b3a"/>
+            <rect x="220" y="65"  width="55" height="42" fill="#4a6b3a" opacity="0.18" stroke="#4a6b3a"/>
+
+            <rect x="40"  y="110" width="55" height="42" fill="#4a6b3a" opacity="0.18" stroke="#4a6b3a"/>
+            <rect x="100" y="110" width="55" height="42" fill="#4a6b3a" opacity="0.18" stroke="#4a6b3a"/>
+            <rect x="160" y="110" width="55" height="42" fill="#4a6b3a" opacity="0.45" stroke="#4a6b3a"/>
+            <rect x="220" y="110" width="55" height="42" fill="#4a6b3a" opacity="0.18" stroke="#4a6b3a"/>
+
+            <rect x="40"  y="155" width="55" height="42" fill="#4a6b3a" opacity="0.18" stroke="#4a6b3a"/>
+            <rect x="100" y="155" width="55" height="42" fill="#4a6b3a" opacity="0.18" stroke="#4a6b3a"/>
+            <rect x="160" y="155" width="55" height="42" fill="#4a6b3a" opacity="0.18" stroke="#4a6b3a"/>
+            <rect x="220" y="155" width="55" height="42" fill="#4a6b3a" opacity="0.45" stroke="#4a6b3a"/>
+          </g>
+          <text class="svg-text svg-mono" x="160" y="225" text-anchor="middle" font-size="13" fill="#1a1815">分块 · 流式 · 累加</text>
+          <text class="svg-text" x="160" y="245" text-anchor="middle" font-size="11" fill="#6b6359">在 SRAM 中，从不写回 HBM</text>
+          <text class="svg-text svg-serif" x="160" y="270" text-anchor="middle" font-size="13" fill="#4a6b3a" font-style="italic">O(N) 内存</text>
+        </g>
+      </g>
+
+      <!-- Footer formula -->
+      <g transform="translate(0,330)">
+        <text class="svg-text svg-mono" x="410" y="0" text-anchor="middle" font-size="14" fill="#1a1815">y_i = Σ_j softmax(s_ij) · v_j  &nbsp;&nbsp;—— 完全相同，逐块计算</text>
+      </g>
+    </svg>
+    <figcaption><span class="fig-label">Fig. 3.1</span>FlashAttention 重新洗牌了计算图，但产生相同的数字。一个预训练模型不知道任何东西变了——它的权重仍然意味着原来的意思。</figcaption>
+  </figure>
+
+  <p>因为算子是相同的，所以你不需要任何新的梯度步。每一个用 eager attention 训练的 Llama、Mistral、Qwen、GPT 检查点，在推理时都能用 FlashAttention。PyTorch 的 <span class="mono">scaled_dot_product_attention</span> 已经在形状允许时自动换入 FlashAttention 2。你改的是一个运行时标志，而不是一个权重。</p>
+
+  <p>FA1 / FA2 / FA3 的区别在于，调度<em>有多聪明地</em>在不同 GPU（A100 vs H100）上重叠内存移动与矩阵乘法，但数学契约是相同的。</p>
+
+  <p class="marginalia">一个微妙之处：浮点加法是不可结合的。FA 的输出并不是字面意义上与朴素实现逐位相等；它们在舍入范围内数值等价。这对下游任务准确率从来不构成问题。</p>
+</section>
+
+<!-- ===================================================================== -->
+<!-- SECTION IV                                                            -->
+<!-- ===================================================================== -->
+<section id="s4">
+  <span class="section-num">§ IV</span>
+  <h2>跨 head 压缩——MQA、GQA、MLA。</h2>
+  <p class="lede">这就是书中第 8 章的三个架构。本节中的每一个变体都保留整个序列上的 softmax 注意力，但减少了 K/V 的占用。数学现在与 MHA 确实不同了——但改变足够小，可以通过继续预训练廉价地撤销。</p>
+
+  <p class="drop">在有 H 个 head 的 MHA 中，逐 token 的 KV 缓存是 <span class="mono">4·H·D·L</span> 字节。对于 Llama-3-70B，在 H = 64、D = 128、L = 80 时，每个 token 是 2.6 MB，在 32K 上下文下就是 84 GB——完全不切实际。几乎所有现代开源模型首先攻击的都是 H 因子，因为 H 是你在不改变算子结构的前提下，唯一能在架构上缩小的项。</p>
+
+  <figure>
+    <svg viewBox="0 0 820 320" xmlns="http://www.w3.org/2000/svg">
+      <!-- MHA -->
+      <g transform="translate(30,40)">
+        <text class="svg-text" x="105" y="-5" text-anchor="middle" font-size="11" letter-spacing="0.15em" fill="#6b6359">MHA · 8 个 head</text>
+        <!-- Q heads -->
+        <g transform="translate(0,15)">
+          <text class="svg-text svg-mono" x="105" y="12" text-anchor="middle" font-size="11" fill="#6b6359">Q head（8 个）</text>
+          <g>
+            <rect x="0"   y="20" width="22" height="36" fill="#2e4a7b" opacity="0.7"/>
+            <rect x="26"  y="20" width="22" height="36" fill="#2e4a7b" opacity="0.7"/>
+            <rect x="52"  y="20" width="22" height="36" fill="#2e4a7b" opacity="0.7"/>
+            <rect x="78"  y="20" width="22" height="36" fill="#2e4a7b" opacity="0.7"/>
+            <rect x="104" y="20" width="22" height="36" fill="#2e4a7b" opacity="0.7"/>
+            <rect x="130" y="20" width="22" height="36" fill="#2e4a7b" opacity="0.7"/>
+            <rect x="156" y="20" width="22" height="36" fill="#2e4a7b" opacity="0.7"/>
+            <rect x="182" y="20" width="22" height="36" fill="#2e4a7b" opacity="0.7"/>
+          </g>
+        </g>
+        <!-- K -->
+        <g transform="translate(0,75)">
+          <text class="svg-text svg-mono" x="105" y="12" text-anchor="middle" font-size="11" fill="#6b6359">K head（8 个）</text>
+          <g>
+            <rect x="0"   y="20" width="22" height="36" fill="#c8351b" opacity="0.6"/>
+            <rect x="26"  y="20" width="22" height="36" fill="#c8351b" opacity="0.6"/>
+            <rect x="52"  y="20" width="22" height="36" fill="#c8351b" opacity="0.6"/>
+            <rect x="78"  y="20" width="22" height="36" fill="#c8351b" opacity="0.6"/>
+            <rect x="104" y="20" width="22" height="36" fill="#c8351b" opacity="0.6"/>
+            <rect x="130" y="20" width="22" height="36" fill="#c8351b" opacity="0.6"/>
+            <rect x="156" y="20" width="22" height="36" fill="#c8351b" opacity="0.6"/>
+            <rect x="182" y="20" width="22" height="36" fill="#c8351b" opacity="0.6"/>
+          </g>
+        </g>
+        <!-- V -->
+        <g transform="translate(0,135)">
+          <text class="svg-text svg-mono" x="105" y="12" text-anchor="middle" font-size="11" fill="#6b6359">V head（8 个）</text>
+          <g>
+            <rect x="0"   y="20" width="22" height="36" fill="#b8862f" opacity="0.7"/>
+            <rect x="26"  y="20" width="22" height="36" fill="#b8862f" opacity="0.7"/>
+            <rect x="52"  y="20" width="22" height="36" fill="#b8862f" opacity="0.7"/>
+            <rect x="78"  y="20" width="22" height="36" fill="#b8862f" opacity="0.7"/>
+            <rect x="104" y="20" width="22" height="36" fill="#b8862f" opacity="0.7"/>
+            <rect x="130" y="20" width="22" height="36" fill="#b8862f" opacity="0.7"/>
+            <rect x="156" y="20" width="22" height="36" fill="#b8862f" opacity="0.7"/>
+            <rect x="182" y="20" width="22" height="36" fill="#b8862f" opacity="0.7"/>
+          </g>
+        </g>
+        <text class="svg-text svg-serif" x="105" y="225" text-anchor="middle" font-size="13" fill="#c8351b" font-style="italic">KV 缓存 = 8 + 8 = 16 块</text>
+      </g>
+
+      <!-- GQA -->
+      <g transform="translate(290,40)">
+        <text class="svg-text" x="105" y="-5" text-anchor="middle" font-size="11" letter-spacing="0.15em" fill="#6b6359">GQA · 8Q / 2KV</text>
+        <g transform="translate(0,15)">
+          <text class="svg-text svg-mono" x="105" y="12" text-anchor="middle" font-size="11" fill="#6b6359">Q head（8 个）</text>
+          <g>
+            <rect x="0" y="20" width="22" height="36" fill="#2e4a7b" opacity="0.7"/>
+            <rect x="26" y="20" width="22" height="36" fill="#2e4a7b" opacity="0.7"/>
+            <rect x="52" y="20" width="22" height="36" fill="#2e4a7b" opacity="0.7"/>
+            <rect x="78" y="20" width="22" height="36" fill="#2e4a7b" opacity="0.7"/>
+            <rect x="104" y="20" width="22" height="36" fill="#2e4a7b" opacity="0.7"/>
+            <rect x="130" y="20" width="22" height="36" fill="#2e4a7b" opacity="0.7"/>
+            <rect x="156" y="20" width="22" height="36" fill="#2e4a7b" opacity="0.7"/>
+            <rect x="182" y="20" width="22" height="36" fill="#2e4a7b" opacity="0.7"/>
+          </g>
+        </g>
+        <g transform="translate(0,75)">
+          <text class="svg-text svg-mono" x="105" y="12" text-anchor="middle" font-size="11" fill="#6b6359">K head（2 个）</text>
+          <g>
+            <rect x="40"  y="20" width="48" height="36" fill="#c8351b" opacity="0.6" stroke="#c8351b" stroke-width="1.2"/>
+            <rect x="120" y="20" width="48" height="36" fill="#c8351b" opacity="0.6" stroke="#c8351b" stroke-width="1.2"/>
+            <!-- group lines -->
+            <line x1="11" y1="0" x2="40" y2="20" stroke="#6b6359" stroke-width="0.6" stroke-dasharray="2,2"/>
+            <line x1="63" y1="0" x2="64" y2="20" stroke="#6b6359" stroke-width="0.6" stroke-dasharray="2,2"/>
+            <line x1="115" y1="0" x2="120" y2="20" stroke="#6b6359" stroke-width="0.6" stroke-dasharray="2,2"/>
+            <line x1="167" y1="0" x2="144" y2="20" stroke="#6b6359" stroke-width="0.6" stroke-dasharray="2,2"/>
+          </g>
+        </g>
+        <g transform="translate(0,135)">
+          <text class="svg-text svg-mono" x="105" y="12" text-anchor="middle" font-size="11" fill="#6b6359">V head（2 个）</text>
+          <g>
+            <rect x="40"  y="20" width="48" height="36" fill="#b8862f" opacity="0.7" stroke="#b8862f" stroke-width="1.2"/>
+            <rect x="120" y="20" width="48" height="36" fill="#b8862f" opacity="0.7" stroke="#b8862f" stroke-width="1.2"/>
+          </g>
+        </g>
+        <text class="svg-text svg-serif" x="105" y="225" text-anchor="middle" font-size="13" fill="#b8862f" font-style="italic">KV 缓存 = 2 + 2 = 4 块 · 缩小 4 倍</text>
+      </g>
+
+      <!-- MQA -->
+      <g transform="translate(550,40)">
+        <text class="svg-text" x="105" y="-5" text-anchor="middle" font-size="11" letter-spacing="0.15em" fill="#6b6359">MQA · 8Q / 1KV</text>
+        <g transform="translate(0,15)">
+          <text class="svg-text svg-mono" x="105" y="12" text-anchor="middle" font-size="11" fill="#6b6359">Q head（8 个）</text>
+          <g>
+            <rect x="0" y="20" width="22" height="36" fill="#2e4a7b" opacity="0.7"/>
+            <rect x="26" y="20" width="22" height="36" fill="#2e4a7b" opacity="0.7"/>
+            <rect x="52" y="20" width="22" height="36" fill="#2e4a7b" opacity="0.7"/>
+            <rect x="78" y="20" width="22" height="36" fill="#2e4a7b" opacity="0.7"/>
+            <rect x="104" y="20" width="22" height="36" fill="#2e4a7b" opacity="0.7"/>
+            <rect x="130" y="20" width="22" height="36" fill="#2e4a7b" opacity="0.7"/>
+            <rect x="156" y="20" width="22" height="36" fill="#2e4a7b" opacity="0.7"/>
+            <rect x="182" y="20" width="22" height="36" fill="#2e4a7b" opacity="0.7"/>
+          </g>
+        </g>
+        <g transform="translate(0,75)">
+          <text class="svg-text svg-mono" x="105" y="12" text-anchor="middle" font-size="11" fill="#6b6359">K head（1 个）</text>
+          <rect x="80" y="20" width="44" height="36" fill="#c8351b" opacity="0.6" stroke="#c8351b" stroke-width="1.2"/>
+        </g>
+        <g transform="translate(0,135)">
+          <text class="svg-text svg-mono" x="105" y="12" text-anchor="middle" font-size="11" fill="#6b6359">V head（1 个）</text>
+          <rect x="80" y="20" width="44" height="36" fill="#b8862f" opacity="0.7" stroke="#b8862f" stroke-width="1.2"/>
+        </g>
+        <text class="svg-text svg-serif" x="105" y="225" text-anchor="middle" font-size="13" fill="#4a6b3a" font-style="italic">KV 缓存 = 1 + 1 = 2 块 · 缩小 8 倍</text>
+      </g>
+    </svg>
+    <figcaption><span class="fig-label">Fig. 4.1</span>MQA 把 K 和 V 坍缩成一个所有 query 共享的头；GQA 保留少数几个。架构确实变了——参数量下降，模型必须学会以不同的方式路由信息。</figcaption>
+  </figure>
+
+  <p>两个后果。第一：参数量下降，所以一个用完整 MHA 训练的模型没有一组等价的权重可以「迁移」到 MQA 里。第二：归纳偏置变了——之前在不同 K 子空间上各司其职的 head，现在开始共享。从 MHA → GQA 做朴素的权重平均能给你一个起步，但在获得更多训练信号之前，模型是退化的。</p>
+
+  <p>好消息是这个差距会很快弥合。GQA 论文（Ainslie 等人 2023）发现，<span class="hl-gold">约 5% 的原始预训练计算</span>就能恢复几乎全部的 MHA 质量，同时完整保留 GQA 的推理优势。这就是「续训」所在的格子：一次真正的架构改变，但学习新算子的成本只是最初学习语言成本的一小片。</p>
+
+  <div class="formula">
+    cost(MHA → GQA) &nbsp; ≈ &nbsp; 0.05 · cost(预训练)
+  </div>
+
+  <p>Llama-3（所有尺寸，G = 8）、Qwen-2/3（G = 4）、Mistral 和 Command-R 都采用了 GQA。它们要么从头用 GQA 预训练，要么从一个 MHA 的近亲续训而来。</p>
+
+  <h3>MLA——把 head 压缩做到位。</h3>
+  <p>生产中最精巧的 head 压缩是 DeepSeek-V3 的 <strong>多头潜在注意力</strong>（Multi-head Latent Attention）。MLA 不是丢掉 K/V head，而是把每个 token 下投影到一个小的潜在向量 <span class="mono">c_KV ∈ ℝ^R</span>（通常 <span class="mono">R = 512</span>），只缓存潜在量。在注意力时，一个吸收技巧把上投影合并进 <span class="mono">W_Q</span>，这样 K 和 V 就永远不会在 kernel 里被重建。每个 head 的多样性得以保留；缓存相对 MHA 缩小约 64 倍，且没有可测量的质量损失。</p>
+
+  <div class="formula">
+    cache_MLA &nbsp;=&nbsp; <em>2 · R · L</em> &nbsp;每 token 字节数 &nbsp;&nbsp;（对比 MHA 的 <em>4 · H · D · L</em>）
+  </div>
+
+  <p>MLA 仍然是架构性的——模型的下/上投影被烘焙进了它的权重——所以你无法在运行时把一个 MHA 检查点迁移进 MLA。但就像 GQA 一样，算子仍然是整个序列上的 softmax 注意力，而且这种转换可以通过继续预训练来恢复。DeepSeek 从头用 MLA 预训练；对于已有检查点，GQA 风格的续训练配方是正确的思路。</p>
+</section>
+
+<!-- ===================================================================== -->
+<!-- SECTION V                                                             -->
+<!-- ===================================================================== -->
+<section id="s5">
+  <span class="section-num">§ V</span>
+  <h2>跨 token 压缩——滑动窗口与稀疏。</h2>
+  <p class="lede">这是第 9 章的前半部分。head 压缩缩小的是 H 因子，token 压缩攻击的是 N 因子——缓存不再随序列长度线性增长，因为存在模型完全看不到的位置了。</p>
+
+  <p>标准注意力是稠密的：每个 query 关注每个在它之前的 key。<strong>滑动窗口注意力</strong>把每个 query 限制在最后 <span class="mono">W</span> 个 key 上，逐 token 缓存变成 <span class="mono">4·W·H·D·L</span>——与 N 无关的常数。<strong>稀疏注意力</strong>（块局部 + 少量全局 token）同样去掉了对 N 的依赖。无论哪种方式，模型正在计算的函数都不再是同一个函数：关于掩码之外 token 的信息都没了。</p>
+
+  <figure>
+    <svg viewBox="0 0 820 360" xmlns="http://www.w3.org/2000/svg">
+      <!-- Three masks side by side -->
+      <!-- Common header -->
+      <text class="svg-text" x="410" y="22" text-anchor="middle" font-size="11" letter-spacing="0.15em" fill="#6b6359">因果掩码 · 行 = QUERY，列 = KEY</text>
+
+      <!-- DENSE -->
+      <g transform="translate(50,55)">
+        <text class="svg-text svg-mono" x="100" y="-6" text-anchor="middle" font-size="12" fill="#1a1815">稠密因果（MHA）</text>
+        <!-- 12x12 lower triangle -->
+        <g>
+          <!-- background -->
+          <rect x="0" y="0" width="200" height="200" fill="#ebe1c7" stroke="#3d3833" stroke-width="1"/>
+          <!-- triangle fill -->
+          <g>
+            <path d="M0,0 L0,200 L200,200 Z" fill="#c8351b" opacity="0.55"/>
+          </g>
+        </g>
+        <text class="svg-text svg-serif" x="100" y="225" text-anchor="middle" font-size="13" fill="#1a1815" font-style="italic">每个 query 看到每个过去的 key</text>
+        <text class="svg-text" x="100" y="245" text-anchor="middle" font-size="11" fill="#6b6359">N² 条连接</text>
+      </g>
+
+      <!-- SLIDING WINDOW -->
+      <g transform="translate(310,55)">
+        <text class="svg-text svg-mono" x="100" y="-6" text-anchor="middle" font-size="12" fill="#1a1815">滑动窗口（W = 4）</text>
+        <rect x="0" y="0" width="200" height="200" fill="#ebe1c7" stroke="#3d3833" stroke-width="1"/>
+        <!-- band along diagonal: window of width 4 cells -->
+        <g>
+          <!-- generate diagonal band -->
+          <!-- 12x12 grid; cell ~16.6px -->
+          <!-- We approximate band -->
+          <path d="
+            M0,0   L0,16.7  L16.7,16.7  L16.7,0  Z
+            M0,16.7  L0,33.4  L33.4,33.4 L33.4,16.7 Z
+            M0,33.4  L0,50.1  L50.1,50.1 L50.1,33.4 Z
+            M0,50.1  L0,66.8  L66.8,66.8 L66.8,50.1 Z
+            M16.7,66.8 L16.7,83.5 L83.5,83.5 L83.5,66.8 Z
+            M33.4,83.5 L33.4,100.2 L100.2,100.2 L100.2,83.5 Z
+            M50.1,100.2 L50.1,116.9 L116.9,116.9 L116.9,100.2 Z
+            M66.8,116.9 L66.8,133.6 L133.6,133.6 L133.6,116.9 Z
+            M83.5,133.6 L83.5,150.3 L150.3,150.3 L150.3,133.6 Z
+            M100.2,150.3 L100.2,167.0 L167.0,167.0 L167.0,150.3 Z
+            M116.9,167.0 L116.9,183.7 L183.7,183.7 L183.7,167.0 Z
+            M133.6,183.7 L133.6,200.4 L200.4,200.4 L200.4,183.7 Z
+          " fill="#c8351b" opacity="0.55"/>
+        </g>
+        <text class="svg-text svg-serif" x="100" y="225" text-anchor="middle" font-size="13" fill="#1a1815" font-style="italic">每个 query 只看到最后 W 个 key</text>
+        <text class="svg-text" x="100" y="245" text-anchor="middle" font-size="11" fill="#6b6359">N · W 条连接</text>
+      </g>
+
+      <!-- SPARSE (block + global) -->
+      <g transform="translate(570,55)">
+        <text class="svg-text svg-mono" x="100" y="-6" text-anchor="middle" font-size="12" fill="#1a1815">稀疏（块 + 全局）</text>
+        <rect x="0" y="0" width="200" height="200" fill="#ebe1c7" stroke="#3d3833" stroke-width="1"/>
+        <!-- block diagonal blocks of ~50x50 -->
+        <g>
+          <rect x="0"   y="0"   width="50" height="50" fill="#c8351b" opacity="0.55"/>
+          <rect x="50"  y="50"  width="50" height="50" fill="#c8351b" opacity="0.55"/>
+          <rect x="100" y="100" width="50" height="50" fill="#c8351b" opacity="0.55"/>
+          <rect x="150" y="150" width="50" height="50" fill="#c8351b" opacity="0.55"/>
+        </g>
+        <!-- global tokens: first 2 columns visible to all rows below diagonal -->
+        <g>
+          <rect x="0" y="0" width="14" height="200" fill="#b8862f" opacity="0.5"/>
+        </g>
+        <!-- triangular mask cover -->
+        <path d="M0,0 L200,0 L200,200 Z" fill="#f4ecd8"/>
+        <text class="svg-text svg-serif" x="100" y="225" text-anchor="middle" font-size="13" fill="#1a1815" font-style="italic">局部块 + 少量全局 token</text>
+        <text class="svg-text" x="100" y="245" text-anchor="middle" font-size="11" fill="#6b6359">约 N · √N 条连接</text>
+      </g>
+
+      <!-- bottom -->
+      <text class="svg-text svg-serif" x="410" y="335" text-anchor="middle" font-size="14" fill="#c8351b" font-style="italic">不同的掩码就是不同的算子——必须训练模型去使用它</text>
+    </svg>
+    <figcaption><span class="fig-label">Fig. 5.1</span>掩码就是算子。限制一个 query 可以关注哪些 key，并不是一个数值技巧——它改变了这一层能计算什么，模型必须被重新训练或重度微调，才能利用新的几何结构。</figcaption>
+  </figure>
+
+  <p>滑动窗口注意力有一条部分逃逸路线。因为每一层都关注自己的窗口，深层堆叠会建立起更大的有效感受野——大约是 <span class="mono">W × L</span>。Mistral-7B（W = 4K，L = 32）通过层叠达到约 128K token 的有效感受野，KV 缓存变成了一个固定大小 W 的<em>环形缓冲区</em>。但 Mistral 是从头用窗口化掩码预训练的。你不能拿一个稠密的 Llama 检查点，打开窗口，然后指望得到好东西——直接注意力严格强于通过层间接的注意力，模型必须学会如何通过接力来路由信息。</p>
+
+  <p>稀疏注意力（Longformer、BigBird、DeepSeek 的 NSA）也类似。模型必须学会某些 token 是「全局汇总」token，而块局部注意力对其余部分已经足够。那是一项习得的技能，不是一次免费的调度替换。即便是 Gemma-2/3 的混合模式（每五层是完整注意力），也是从一开始就这样训练的。</p>
+
+  <p class="marginalia">一个细微之处：在冻结的主干上、带着小的窗口化扩展做短期微调，<em>可以</em>对某些下游任务有效。但除非你用新掩码继续预训练，否则底层的语言建模能力会退化。</p>
+</section>
+
+<!-- ===================================================================== -->
+<!-- SECTION VI                                                            -->
+<!-- ===================================================================== -->
+<section id="s6">
+  <span class="section-num">§ VI</span>
+  <h2>线性注意力、SSM 与 Mamba。</h2>
+  <p class="lede">第 9 章的后半部分。滑动窗口保留了 softmax，但把感受野封顶在 W。这一族则迈出更激进的一步：完全丢掉 softmax，让整个过去坍缩成一个固定大小的运行状态。</p>
+
+  <p>标准 softmax 注意力计算 <span class="mono">softmax(QKᵀ)V</span>——逐行的 softmax 迫使 N×N 分数矩阵被物化。<strong>线性注意力</strong>用一个核特征映射 <span class="mono">φ</span> 把它替换为 <span class="mono">φ(Q) · (φ(K)ᵀ V)</span>。内积现在是 D×D 而不是 N×N，整个过去由一个恒定大小的运行状态 <span class="mono">S = Σ φ(K_t)ᵀ V_t</span> 概括。缓存完全不再随 N 增长。</p>
+
+  <figure>
+    <svg viewBox="0 0 820 280" xmlns="http://www.w3.org/2000/svg">
+      <g transform="translate(40,30)">
+        <text class="svg-text svg-mono" x="180" y="0" text-anchor="middle" font-size="13" fill="#6b6359">SOFTMAX 注意力</text>
+        <text class="svg-text svg-mono" x="180" y="38" text-anchor="middle" font-size="18" fill="#1a1815">y = softmax(QKᵀ / √d) · V</text>
+        <rect x="40" y="60" width="280" height="40" fill="#c8351b" opacity="0.18" stroke="#c8351b"/>
+        <text class="svg-text" x="180" y="85" text-anchor="middle" font-size="13" fill="#1a1815">QKᵀ ∈ ℝ^(N×N)  →  成本 ∝ N²</text>
+      </g>
+
+      <g transform="translate(440,30)">
+        <text class="svg-text svg-mono" x="180" y="0" text-anchor="middle" font-size="13" fill="#6b6359">线性注意力</text>
+        <text class="svg-text svg-mono" x="180" y="38" text-anchor="middle" font-size="18" fill="#1a1815">y = φ(Q) · ( φ(K)ᵀ V )</text>
+        <rect x="40" y="60" width="280" height="40" fill="#4a6b3a" opacity="0.22" stroke="#4a6b3a"/>
+        <text class="svg-text" x="180" y="85" text-anchor="middle" font-size="13" fill="#1a1815">φ(K)ᵀV ∈ ℝ^(d×d)  →  成本 ∝ N</text>
+      </g>
+
+      <g transform="translate(0,170)">
+        <text class="svg-text svg-serif" x="410" y="0" text-anchor="middle" font-size="14" fill="#1a1815" font-style="italic">softmax 没了。没有它，注意力权重不再是概率，</text>
+        <text class="svg-text svg-serif" x="410" y="22" text-anchor="middle" font-size="14" fill="#1a1815" font-style="italic">模型对「该看哪里」的整个概念都必须重新学习。</text>
+      </g>
+
+      <g transform="translate(0,225)">
+        <text class="svg-text svg-mono" x="410" y="0" text-anchor="middle" font-size="13" fill="#c8351b">Performer · Linformer · RetNet · RWKV · Mamba（一个相关家族）</text>
+      </g>
+    </svg>
+    <figcaption><span class="fig-label">Fig. 6.1</span>线性注意力是一个结构上不同的算子。矩阵乘法的顺序被重排，使得大小为 N 的轴永远不会与自身相撞，但代价是 softmax——那个唯一赋予注意力「软检索」特性的东西——没了。</figcaption>
+  </figure>
+
+  <p>因为 softmax 是赋予注意力那种尖锐的、依赖 query 的检索行为的东西，移除它并不是一次免费的替换。从头用线性注意力训练的模型可以在许多基准上匹敌稠密 softmax 注意力，但通常在需要精确长程查找的任务上失分（那个众所周知的「大海捞针」）。RetNet、Mamba、RWKV 和类似架构本质上是<em>不同的模型家族</em>，而不是对已有模型的补丁。</p>
+
+  <p>一条逃逸路线：<em>线性化</em>。近期工作（例如 Mamba-in-Llama、注意力蒸馏）表明，你可以拿一个 softmax 注意力检查点，换入线性注意力层，然后微调以恢复大部分原始质量。但这里的「微调」意味着对一个 7B 模型需要数百亿 token——远超任何任务微调的成本。</p>
+</section>
+
+<!-- ===================================================================== -->
+<!-- SECTION VII                                                           -->
+<!-- ===================================================================== -->
+<section id="s7">
+  <span class="section-num">§ VII</span>
+  <h2>总表。</h2>
+  <p class="lede">现在是对学生的回答。逐行读它；前三列是结论，第四列是该怎么处理。</p>
+
+  <div class="verdict-table">
+    <div class="row head">
+      <div class="cell">变体</div>
+      <div class="cell">数学相同吗？</div>
+      <div class="cell">采纳成本</div>
+      <div class="cell">可由……复现</div>
+    </div>
+
+    <div class="row">
+      <div class="cell"><strong>FlashAttention 1 / 2 / 3</strong><br><span class="mono" style="font-size:0.8rem">PagedAttention</span></div>
+      <div class="cell">是（在 FP 舍入范围内）</div>
+      <div class="cell"><span class="verdict-pill v-none">无需重新训练</span></div>
+      <div class="cell">推理时替换 kernel。<span class="mono">torch.nn.functional.scaled_dot_product_attention</span> 已经做到了。</div>
+    </div>
+
+    <div class="row">
+      <div class="cell"><strong>MQA</strong><br><span class="mono" style="font-size:0.8rem">1 个 K/V head</span></div>
+      <div class="cell">否（参数更少）</div>
+      <div class="cell"><span class="verdict-pill v-light">续训</span></div>
+      <div class="cell">从 MHA 出发，跨 head 对 K/V 均值池化来初始化，然后继续预训练原始 token 的约 5%。</div>
+    </div>
+
+    <div class="row">
+      <div class="cell"><strong>GQA</strong><br><span class="mono" style="font-size:0.8rem">少量 K/V 组</span></div>
+      <div class="cell">否（参数更少）</div>
+      <div class="cell"><span class="verdict-pill v-light">续训</span></div>
+      <div class="cell">与 MQA 相同的配方。约 5% 就很好；这正是 Llama-3（G=8）和 Qwen-2/3（G=4）所采用的。</div>
+    </div>
+
+    <div class="row">
+      <div class="cell"><strong>MLA</strong><br><span class="mono" style="font-size:0.8rem">潜在秩 R</span></div>
+      <div class="cell">否（潜在压缩）</div>
+      <div class="cell"><span class="verdict-pill v-light">续训（或预训练）</span></div>
+      <div class="cell">下/上投影是权重的一部分。DeepSeek 从头预训练；对于已有模型，使用 GQA 风格的继续预训练。</div>
+    </div>
+
+    <div class="row">
+      <div class="cell"><strong>滑动窗口</strong><br><span class="mono" style="font-size:0.8rem">例如 Mistral W=4K</span></div>
+      <div class="cell">否（不同的掩码）</div>
+      <div class="cell"><span class="verdict-pill v-heavy">带着它预训练</span></div>
+      <div class="cell">带着窗口化掩码从头训练，或者在稠密检查点上做重度继续预训练（原始 token 的 ≥10–20%）。</div>
+    </div>
+
+    <div class="row">
+      <div class="cell"><strong>稀疏 / 块稀疏</strong><br><span class="mono" style="font-size:0.8rem">Longformer, BigBird, NSA</span></div>
+      <div class="cell">否（不同的掩码）</div>
+      <div class="cell"><span class="verdict-pill v-heavy">带着它预训练</span></div>
+      <div class="cell">当作新架构对待。稠密 → 稀疏的转换属于研究级别；从头开始是安全的路径。</div>
+    </div>
+
+    <div class="row">
+      <div class="cell"><strong>线性注意力</strong><br><span class="mono" style="font-size:0.8rem">Performer, Linformer, RetNet, Mamba</span></div>
+      <div class="cell">否（没有 softmax）</div>
+      <div class="cell"><span class="verdict-pill v-heavy">新的家族</span></div>
+      <div class="cell">预训练一个新模型；或者用数百亿 token 的蒸馏把稠密模型「线性化」。</div>
+    </div>
+  </div>
+
+  <div class="pull-quote">FlashAttention 你在运行时采纳。GQA 你用一个长周末采纳。滑动窗口、稀疏和线性注意力你用一次预训练来采纳。</div>
+</section>
+
+<!-- ===================================================================== -->
+<!-- SECTION VIII — Recipe                                                 -->
+<!-- ===================================================================== -->
+<section id="s8">
+  <span class="section-num">§ VIII</span>
+  <h2>亲自跑一遍对比。</h2>
+  <p class="lede">知道结论表是一回事。亲自跑一遍对比——面对面对决、同样的数据、同样的条件——才会把这张表变成你脑子里的一个校准。所以：什么样的模型大小和数据集，大到足以给出真实信号，又小到能装进一个合理的预算？</p>
+
+  <p>诚实的回答是：有一个甜点区，大约在 <span class="hl">1.25 亿到 4.1 亿参数，用 50–200 亿 token 的 FineWeb-Edu 或 SlimPajama 训练</span>。低于这个，数字太嘈杂，无法把架构选择与种子方差区分开。高于这个，可复现预算就崩了。</p>
+
+  <div class="stat-grid">
+    <div class="stat"><span class="num">160M</span><span class="lbl">参数量 · 模型大小</span></div>
+    <div class="stat"><span class="num">10B</span><span class="lbl">每个消融的 token 数</span></div>
+    <div class="stat"><span class="num">2K</span><span class="lbl">上下文长度</span></div>
+    <div class="stat"><span class="num">~6h</span><span class="lbl">在单张 H100 上</span></div>
+    <div class="stat"><span class="num">~$15</span><span class="lbl">云端每个消融</span></div>
+  </div>
+
+  <p>这个规模大致是 Pythia-160M 的足迹。它大到足以显示架构之间有意义的困惑度差距，又小到足以在一天内跑完一个干净的网格。Pythia、GPT-Neo-125M、TinyLlama-1.1B 和 SmolLM-135M 都是合理的起点；<span class="mono">nanoGPT</span> 是最容易修改的脚手架。</p>
+
+  <div class="recipe">
+    <h4>模型</h4>
+    <ul>
+      <li>仅解码器 Transformer，12 层，12 个 head，<span class="mono">d_model = 768</span> → 约 1.6 亿参数。</li>
+      <li>RoPE 位置编码（这样窗口/稀疏变体就能像现代论文测试它们那样表现）。</li>
+      <li>标准初始化：GPT-2 风格，不用花哨技巧。</li>
+    </ul>
+
+    <h4>数据</h4>
+    <ul>
+      <li><span class="mono">FineWeb-Edu</span>（10B token 子集）——干净、精心整理的网页文本。</li>
+      <li>或者把 <span class="mono">SlimPajama-627B</span> 采样到 10B，如果你想要更多样化的混合。</li>
+      <li>使用同一个共享分词器（例如 Llama-2 32K BPE），这样困惑度才可比较。</li>
+    </ul>
+
+    <h4>每个变体的训练预算</h4>
+    <ul>
+      <li>10B token · 上下文 2048 · batch 0.5M token · 约 20K 步。</li>
+      <li>AdamW，余弦调度，峰值学习率 6e-4，warmup 1%，权重衰减 0.1。</li>
+      <li>单张 H100（或 8× A10G）→ 每次运行约 6 小时。每个变体三个种子以控制噪声。</li>
+    </ul>
+
+    <h4>要对比的变体</h4>
+    <ul>
+      <li><span class="mono">baseline</span>——稠密 MHA + FlashAttention（控制 kernel 速度）。</li>
+      <li><span class="mono">gqa-2</span>、<span class="mono">gqa-4</span>、<span class="mono">mqa</span>——改变 K/V 组数（第 8 章）。</li>
+      <li><span class="mono">mla-128</span>——潜在秩 128，最便宜的严肃 MLA 测试（第 8 章）。</li>
+      <li><span class="mono">swa-256</span>、<span class="mono">swa-1024</span>——两种宽度的滑动窗口（第 9 章）。</li>
+      <li><span class="mono">block-sparse</span>——块局部 + 小型全局 token 集（第 9 章）。</li>
+      <li><span class="mono">linear-elu</span>——用 ELU+1 特征映射的线性注意力（第 9 章）。</li>
+    </ul>
+
+    <h4>评估</h4>
+    <ul>
+      <li>在留出的 FineWeb-Edu 分片上验证困惑度（头条数字）。</li>
+      <li>这个规模下的 HellaSwag、ARC-easy、LAMBADA——它们有噪声，但能追踪真实能力。</li>
+      <li>在 <span class="mono">N = 1, 4, 32</span> 的 batch 和 4K、16K 上下文下测解码吞吐，以暴露系统差距。</li>
+      <li>每 token 的 KV 缓存内存——MQA/GQA 存在的真正原因。</li>
+    </ul>
+
+    <h4>好的结果长什么样</h4>
+    <ul>
+      <li>FlashAttention 替换：损失曲线完全相同，真实的墙钟加速。</li>
+      <li>GQA-4 vs MHA：困惑度差距 ≤0.05，KV 缓存缩小 2–4 倍。</li>
+      <li>SWA-1024：这个规模下困惑度小幅受损，长上下文下吞吐大幅提升。</li>
+      <li>线性注意力：可见的困惑度差距；它的存在就是为了成为一个你可以超越的基线。</li>
+    </ul>
+  </div>
+
+  <p>如果你只能挑一个配置：<strong>1.6 亿参数、100 亿 token 的 FineWeb-Edu、三个种子、一张 H100、每个消融六小时。</strong> 这能在一周内给出一个可信的网格，而且正是大多数现代注意力论文在扩展之前做受控消融的区间。关于 GQA、滑动窗口、MLA 和线性注意力的已发表结论，最初都是在这个规模附近验证的。</p>
+</section>
+
+<!-- ===================================================================== -->
+<!-- SECTION IX — Interactive                                              -->
+<!-- ===================================================================== -->
+<section id="s9">
+  <span class="section-num">§ IX</span>
+  <h2>挑选一个变体，看看代价。</h2>
+  <p class="lede">一个小交互，让结论表变得可触摸。挑选一个变体，面板会更新，用最简单的语言告诉你，把这个变体放进一个运行中的模型，实际需要什么。</p>
+
+  <div class="interactive">
+    <div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-bottom:1.5rem">
+      <button class="ghost active" data-variant="flash">FlashAttention</button>
+      <button class="ghost" data-variant="gqa">GQA</button>
+      <button class="ghost" data-variant="mqa">MQA</button>
+      <button class="ghost" data-variant="mla">MLA</button>
+      <button class="ghost" data-variant="swa">滑动窗口</button>
+      <button class="ghost" data-variant="sparse">块稀疏</button>
+      <button class="ghost" data-variant="linear">线性注意力</button>
+    </div>
+
+    <div id="variant-card" style="background:var(--paper);border:1px solid rgba(40,30,20,0.15);padding:1.5rem;border-radius:3px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;align-items:start">
+        <div>
+          <div class="small-caps" style="margin-bottom:0.4rem">与 MHA 的数学相同吗？</div>
+          <div id="vc-same" style="font-family:'Fraunces',serif;font-style:italic;font-size:1.6rem;color:#1a1815">是——在 FP 舍入范围内逐位相等。</div>
+
+          <div class="small-caps" style="margin-bottom:0.4rem;margin-top:1.2rem">改变了什么</div>
+          <p id="vc-change" style="margin:0;color:var(--ink-soft)">GPU 上的调度。kernel 从不物化 N×N 分数矩阵——它把 Q、K、V 切成驻留在 SRAM 中的块，并流式地计算 softmax。</p>
+
+          <div class="small-caps" style="margin-bottom:0.4rem;margin-top:1.2rem">你要做什么</div>
+          <p id="vc-action" style="margin:0;color:var(--ink-soft)">对权重什么都不用做。使用 <span class="mono">torch.nn.functional.scaled_dot_product_attention</span> 或 <span class="mono">flash-attn</span> 包，然后像以前一样跑推理。</p>
+        </div>
+
+        <div style="border-left:1px solid rgba(40,30,20,0.15);padding-left:1.5rem">
+          <div class="small-caps" style="margin-bottom:0.4rem">结论</div>
+          <div id="vc-verdict" class="verdict-pill v-none" style="font-size:0.85rem">无需重新训练</div>
+
+          <div class="small-caps" style="margin-bottom:0.4rem;margin-top:1.2rem">复现配方</div>
+          <table style="width:100%;border-collapse:collapse;font-family:'Inter Tight',sans-serif;font-size:0.92rem">
+            <tr><td style="padding:0.4rem 0;color:var(--ink-faint);width:50%">模型大小</td><td id="vc-size" style="padding:0.4rem 0">任意预训练模型</td></tr>
+            <tr style="border-top:1px solid rgba(40,30,20,0.08)"><td style="padding:0.4rem 0;color:var(--ink-faint)">所需数据</td><td id="vc-data" style="padding:0.4rem 0">无——纯运行时替换</td></tr>
+            <tr style="border-top:1px solid rgba(40,30,20,0.08)"><td style="padding:0.4rem 0;color:var(--ink-faint)">需要（重新）训练的 token</td><td id="vc-tokens" style="padding:0.4rem 0;font-family:'JetBrains Mono',monospace;color:var(--accent)">0</td></tr>
+            <tr style="border-top:1px solid rgba(40,30,20,0.08)"><td style="padding:0.4rem 0;color:var(--ink-faint)">硬件</td><td id="vc-hw" style="padding:0.4rem 0">1× H100，仅运行时</td></tr>
+            <tr style="border-top:1px solid rgba(40,30,20,0.08)"><td style="padding:0.4rem 0;color:var(--ink-faint)">墙钟时间</td><td id="vc-time" style="padding:0.4rem 0">分钟</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p>这个交互的重点，是你从 <em>FlashAttention</em> 点击到 <em>线性注意力</em> 时的那一跃：你从一个运行时标志，跳到了一次预训练。这两个操作在综述论文里被放进同一个句子里，但它们根本不是同一种对象。</p>
+</section>
+
+<!-- ===================================================================== -->
+<!-- SECTION X — Closing                                                   -->
+<!-- ===================================================================== -->
+<section id="s10">
+  <span class="section-num">§ X</span>
+  <h2>结语。</h2>
+  <p class="lede">把贯穿第 8、9、10 章的那条线磨利，你就得到了那条持久的规则。</p>
+
+  <p>FlashAttention（第 10 章）是系统优化的教科书案例：数学相同，调度更聪明，无需重新训练。跨 head 压缩（第 8 章）——MQA、GQA、MLA——是一次架构改变，但是一次宽容的改变；用原始 token 预算的一小片续训就足够了。跨 token 压缩（第 9 章）——滑动窗口、稀疏、线性、SSM、Mamba——是算子层面的改变，要求模型学会以新的方式计算注意力，你欠它们一次预训练。</p>
+
+  <p>复现配方——1.6 亿参数、100 亿 FineWeb-Edu token、一张 H100——小到足以让整个网格在一周的云花费内跑完。注意力文献里的大多数已发表结论，都是在被放大之前，恰好在这个规模上验证的。这些架构决策没有任何理由应该让人感到神秘。</p>
+
+  <div class="ornament">· · ·</div>
+
+  <p style="text-align:center;font-style:italic;color:var(--ink-faint)">挑选一个变体。训练它。观察损失曲线。这篇文章画的图景会变成你脑子里的一把校准尺——你从此再也不会把一次 kernel 重写和一次预训练决策混为一谈。</p>
+</section>
+
+<footer>
+  <p class="small-caps">Vizuara · 推理工程</p>
+  <p style="margin-top:1rem;font-size:1rem;font-style:italic">第 8、9、10 章的视觉伴侣。</p>
+  <p style="margin-top:2rem;font-size:0.85rem;color:#bda88f">
+    <a href="visual-walkthroughs.html" style="color:#e08a76;text-decoration:none">← 返回资料库</a>
+  </p>
+</footer>
+
+</main>
+
+<script>
+(function(){
+  const data = {
+    flash: {
+      same: "是——在 FP 舍入范围内逐位相等。",
+      change: "GPU 上的调度。kernel 从不物化 N×N 分数矩阵——它把 Q、K、V 切成驻留在 SRAM 中的块，并流式地计算 softmax。",
+      action: "对权重什么都不用做。使用 <span class='mono'>torch.nn.functional.scaled_dot_product_attention</span> 或 <span class='mono'>flash-attn</span> 包，然后像以前一样跑推理。",
+      verdict: "无需重新训练",
+      verdictClass: "v-none",
+      size: "任意预训练模型",
+      dataNeeded: "无——纯运行时替换",
+      tokens: "0",
+      hw: "1× H100，仅运行时",
+      time: "分钟"
+    },
+    gqa: {
+      same: "否——更少的 K/V 投影，更少的参数。",
+      change: "头被分组；多个 Q head 共享一个 K head 和一个 V head。架构和参数量都发生了变化。",
+      action: "从 MHA 检查点出发，跨 head 对 K/V 做均值池化来初始化，然后在原始数据上继续预训练。",
+      verdict: "轻量续训",
+      verdictClass: "v-light",
+      size: "消融实验 160M · 生产环境 7B+",
+      dataNeeded: "FineWeb-Edu / SlimPajama",
+      tokens: "≈ 原始预训练的 5%",
+      hw: "160M 用 1× H100，7B+ 用多节点",
+      time: "160M 规模约 6 小时"
+    },
+    mqa: {
+      same: "否——只有一个共享的 K head 和 V head。",
+      change: "所有 Q head 都通过单个 K/V 投影进行注意力。对于 8 头模型，缓存缩小 8 倍。小规模下质量敏感。",
+      action: "与 GQA 相同的配方，但由于偏差变化更大，续训通常需要更多 token。",
+      verdict: "续训（更重）",
+      verdictClass: "v-light",
+      size: "消融实验 160M · 在 ≥1B 时最佳",
+      dataNeeded: "FineWeb-Edu / SlimPajama",
+      tokens: "原始预训练的 5–10%",
+      hw: "160M 用 1× H100",
+      time: "160M 规模约 6 小时"
+    },
+    mla: {
+      same: "否——K 和 V 以低秩潜在量 c_KV 存储。",
+      change: "每个 token 在缓存前被下投影到一个小的潜在向量（秩 R ≈ 512）。吸收技巧把上投影合并进 W_Q，这样在解码时 K 就永远不会被重建。",
+      action: "带着下/上投影从头预训练（DeepSeek-V3 的路径）。对于已有检查点，GQA 风格的继续预训练是正确的思路。",
+      verdict: "续训（或预训练）",
+      verdictClass: "v-light",
+      size: "消融实验 160M · 生产环境 ≥7B",
+      dataNeeded: "FineWeb-Edu / SlimPajama",
+      tokens: "≈ 5–10%（续训）或完整预训练",
+      hw: "160M 用 1× H100",
+      time: "160M 规模约 7 小时"
+    },
+    swa: {
+      same: "否——每个 query 只能看到最后 W 个 key。",
+      change: "注意力掩码变成一条对角带。感受野通过层叠增长，但每一层都是窗口化的。",
+      action: "带着窗口化掩码从头预训练。对稠密检查点、短窗口可以做重度继续预训练，但质量很脆弱。",
+      verdict: "带着它预训练",
+      verdictClass: "v-heavy",
+      size: "基线 160M · 真实结论用 7B",
+      dataNeeded: "FineWeb-Edu / SlimPajama，≥4K 上下文",
+      tokens: "160M 用 10B+ · 7B 完整预训练",
+      hw: "1× H100（160M）· 多 GPU（7B）",
+      time: "160M 规模约 10 小时"
+    },
+    sparse: {
+      same: "否——固定的稀疏模式（块局部 + 全局 token）。",
+      change: "大多数 query 看到一小块邻近的 key 加上几个全局汇总 token。信息必须通过全局 token 来路由。",
+      action: "把它当作新架构。从头预训练。从稠密转换属于研究级别，并非开箱即用。",
+      verdict: "带着它预训练",
+      verdictClass: "v-heavy",
+      size: "基线 160M · 生产环境 7B+",
+      dataNeeded: "长上下文语料（≥8K）",
+      tokens: "160M 用 10B+ · 7B 完整预训练",
+      hw: "1× H100（160M）· 多 GPU（7B）",
+      time: "160M 规模约 12 小时"
+    },
+    linear: {
+      same: "否——softmax 被替换为核特征映射。",
+      change: "注意力变成 φ(Q)·(φ(K)ᵀV)，一个 O(N) 算子。概率加权的检索行为消失了；模型必须学习一种不同的路由方式。",
+      action: "预训练一个新模型，或者把一个 softmax 注意力模型蒸馏成线性注意力模型（数百亿 token）。",
+      verdict: "新的模型家族",
+      verdictClass: "v-heavy",
+      size: "基线 160M · 可信度需要 1.3B+",
+      dataNeeded: "FineWeb-Edu / SlimPajama，长上下文有帮助",
+      tokens: "160M 用 ≥10B · 1.3B 用 100B+",
+      hw: "1× H100（160M）· 多 GPU（1.3B+）",
+      time: "160M 规模约 10 小时"
+    }
+  };
+
+  const buttons = document.querySelectorAll('[data-variant]');
+  const fields = {
+    same: document.getElementById('vc-same'),
+    change: document.getElementById('vc-change'),
+    action: document.getElementById('vc-action'),
+    verdict: document.getElementById('vc-verdict'),
+    size: document.getElementById('vc-size'),
+    dataNeeded: document.getElementById('vc-data'),
+    tokens: document.getElementById('vc-tokens'),
+    hw: document.getElementById('vc-hw'),
+    time: document.getElementById('vc-time')
+  };
+
+  function render(key){
+    const d = data[key];
+    fields.same.textContent = d.same;
+    fields.change.innerHTML = d.change;
+    fields.action.innerHTML = d.action;
+    fields.verdict.textContent = d.verdict;
+    fields.verdict.className = 'verdict-pill ' + d.verdictClass;
+    fields.size.textContent = d.size;
+    fields.dataNeeded.textContent = d.dataNeeded;
+    fields.tokens.textContent = d.tokens;
+    fields.hw.textContent = d.hw;
+    fields.time.textContent = d.time;
+  }
+
+  buttons.forEach(b => {
+    b.addEventListener('click', () => {
+      buttons.forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      render(b.dataset.variant);
+    });
+  });
+
+  render('flash');
+})();
+</script>
+
+</body>
+</html>

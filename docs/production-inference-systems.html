@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>生产级推理系统 - 深度可视化课堂笔记</title>
+  <style>
+    :root{--ink:#161616;--muted:#625f5a;--paper:#fbfaf7;--line:#ded8cf;--soft:#f0ebe3;--blue:#315d8d;--green:#2f765f;--red:#9a4a3c;--gold:#92742f;--violet:#72569a;--shadow:0 16px 42px rgba(30,28,25,.08);--font:"Avenir Next","Helvetica Neue","PingFang SC","Microsoft YaHei",Arial,sans-serif;--mono:"SFMono-Regular",Consolas,monospace}
+    *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;color:var(--ink);background:linear-gradient(90deg,rgba(22,22,22,.035) 1px,transparent 1px),linear-gradient(180deg,rgba(22,22,22,.03) 1px,transparent 1px),var(--paper);background-size:28px 28px;font-family:var(--font);line-height:1.65;letter-spacing:0}
+    .nav{position:sticky;top:0;z-index:5;background:rgba(251,250,247,.94);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}.nav-inner{width:min(1160px,calc(100vw - 32px));margin:auto;display:flex;justify-content:space-between;gap:16px;align-items:center;padding:12px 0}.brand{font-weight:800}.nav a{color:var(--muted);text-decoration:none;border:1px solid var(--line);background:#fff;padding:7px 10px;border-radius:999px;font-size:12px}.links{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+    .shell{width:min(1160px,calc(100vw - 32px));margin:auto}.hero{min-height:calc(100vh - 64px);display:grid;grid-template-columns:minmax(0,1fr) minmax(360px,.74fr);gap:28px;align-items:center;padding:48px 0}.label{font:800 12px var(--mono);text-transform:uppercase;color:var(--gold);margin-bottom:10px}h1{font-size:clamp(48px,7vw,88px);line-height:.96;margin:0;letter-spacing:0}h2{font-size:clamp(30px,4vw,50px);line-height:1.05;margin:0 0 14px;letter-spacing:0}h3{font-size:22px;margin:26px 0 10px}.lead{font-size:20px;color:#3d3a36;max-width:800px;margin-top:22px}p{margin:0 0 14px;color:#36322f}.muted{color:var(--muted)}section{padding:62px 0;border-top:1px solid var(--line)}.card{background:#fff;border:1px solid var(--line);border-radius:8px;padding:20px;box-shadow:0 1px 2px rgba(0,0,0,.04);margin:16px 0}.hero-card,.figure{background:#fff;border:1px solid var(--ink);border-radius:8px;padding:14px;box-shadow:var(--shadow);margin:18px 0}.hero-card img,.figure img{width:100%;display:block;border:1px solid var(--line);border-radius:8px;background:#fff}.caption{font-size:13px;color:var(--muted);margin:10px 2px 0}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.four{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.two{display:grid;grid-template-columns:1fr 1fr;gap:16px}.stat{background:#fff;border:1px solid var(--line);border-radius:8px;padding:16px}.stat strong{display:block;font:800 28px var(--mono);line-height:1;margin-bottom:6px}.callout{border-left:4px solid var(--green);background:#e7f0ed;padding:16px 18px;border-radius:0 8px 8px 0;margin:18px 0}.warnbox{border-left-color:var(--red);background:#fff0ed}.blue{border-left-color:var(--blue);background:#eaf2ff}.gold{border-left-color:var(--gold);background:#fff7dd}.violet{border-left-color:var(--violet);background:#f4edff}code,pre{font-family:var(--mono)}pre{background:#151923;color:#f8fafc;border-radius:8px;padding:16px;overflow:auto;font-size:13px;line-height:1.6}table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:8px;overflow:hidden;margin:16px 0;font-size:14px}th{background:var(--soft);text-align:left;font:800 12px var(--mono);text-transform:uppercase}td,th{padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:top}tr:last-child td{border-bottom:0}.pill{display:inline-block;border:1px solid var(--line);border-radius:999px;background:#fff;padding:4px 8px;font:700 12px var(--mono);color:var(--muted);margin:2px}.mini{font-size:13px}.diagram{background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px;margin:16px 0;overflow:auto}.flow{display:grid;grid-template-columns:repeat(6,minmax(130px,1fr));gap:10px}.flow .node{border:1px solid var(--line);background:var(--soft);border-radius:8px;padding:12px;min-height:96px}.node b{display:block;margin-bottom:6px}.bars{display:grid;gap:8px}.bar{display:grid;grid-template-columns:160px 1fr 70px;gap:8px;align-items:center}.bar span:nth-child(2){height:18px;border-radius:999px;background:linear-gradient(90deg,var(--blue),var(--green));display:block}.bar.red span:nth-child(2){background:linear-gradient(90deg,var(--red),var(--gold))}.bar.violet span:nth-child(2){background:linear-gradient(90deg,var(--violet),var(--blue))}.formula{font-family:var(--mono);background:#fff;border:1px solid var(--line);border-radius:8px;padding:14px;margin:14px 0;color:#1f2937;overflow:auto}
+    @media(max-width:960px){.hero,.two{grid-template-columns:1fr}.grid,.four{grid-template-columns:1fr 1fr}.flow{grid-template-columns:1fr 1fr}.nav-inner{align-items:flex-start;flex-direction:column}}
+    @media(max-width:640px){.grid,.four,.flow{grid-template-columns:1fr}.bar{grid-template-columns:1fr}.hero-card{padding:8px}}
+  </style>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><div class="brand">生产级推理系统</div><div class="links"><a href="visual-walkthroughs.html">资料库</a><a href="#lifecycle">生命周期</a><a href="#cold">冷启动</a><a href="#autoscale">自动扩缩容</a><a href="#routing">路由</a><a href="#deploy">金丝雀</a><a href="#guardrails">护栏</a><a href="#batch">批量</a><a href="#incidents">故障</a></div></div></nav>
+<main class="shell">
+  <section class="hero">
+    <div>
+      <div class="label">最终篇章：生产系统</div>
+      <h1>从快速 kernel 到真实服务。</h1>
+      <p class="lead">一个生产级 LLM 系统不只是「模型服务器」。它是环绕模型服务器的一个控制面（control plane）：路由、预热容量、缓存局部性、部署门槛、护栏、可观测性与过载行为。本讲展示之前所有优化如何变成运维决策。</p>
+      <div class="grid" style="margin-top:20px">
+        <div class="stat"><strong>P99</strong><span class="muted">产品的痛藏在尾延迟里</span></div>
+        <div class="stat"><strong>KV</strong><span class="muted">缓存局部性是一个路由信号</span></div>
+        <div class="stat"><strong>$</strong><span class="muted">输出长度变成云开销</span></div>
+      </div>
+    </div>
+    <aside class="hero-card"><img src="assets/production-systems/production-stack.jpg" alt="生产级 LLM 推理栈"></aside>
+  </section>
+
+  <section id="lifecycle">
+    <div class="label">第 1 部分</div>
+    <h2>请求生命周期：每个阶段都有一个指标。</h2>
+    <p>当用户说「模型很慢」时，他们把十个可能的瓶颈压缩成了一句话。生产推理系统会把延迟分解成阶段，然后给每个阶段一个「归属者」与一个「指标」。</p>
+    <div class="diagram">
+      <div class="flow">
+        <div class="node"><b>1. 边缘（Edge）</b><span class="mini">TLS、区域、认证 token、租户 ID。</span></div>
+        <div class="node"><b>2. 网关（Gateway）</b><span class="mini">限流、配额、schema 契约、请求 ID。</span></div>
+        <div class="node"><b>3. 护栏（Guardrails）</b><span class="mini">输入策略、PII、提示注入检查。</span></div>
+        <div class="node"><b>4. 路由器（Router）</b><span class="mini">模型层级、副本、缓存命中、金丝雀分流。</span></div>
+        <div class="node"><b>5. 引擎（Engine）</b><span class="mini">队列、prefill、decode、采样、KV 分配。</span></div>
+        <div class="node"><b>6. 输出（Output）</b><span class="mini">校验、过滤、流式、遥测。</span></div>
+      </div>
+    </div>
+    <table>
+      <tr><th>阶段</th><th>指标</th><th>坏味道</th><th>典型修复</th></tr>
+      <tr><td>网关</td><td>requests/sec、tokens/min、429 错误</td><td>免费租户导致付费租户 P99 尖峰</td><td>租户级限流与优先级队列</td></tr>
+      <tr><td>路由器</td><td>缓存命中率、回退率、模型混合</td><td>70B 流量无产品理由地上升</td><td>难度分类器或级联阈值调优</td></tr>
+      <tr><td>队列</td><td>队列深度、等待时间</td><td>GPU 未饱和时队列却在增长</td><td>调度器配置、batch token 上限、错误的准入策略</td></tr>
+      <tr><td>预填充</td><td>prefill 毫秒数、prompt tokens/sec</td><td>prompt 模板变更后 TTFT 跳升</td><td>前缀缓存、prompt 归一化、分块预填充</td></tr>
+      <tr><td>解码</td><td>ITL/TPOT、输出 tokens/sec</td><td>每隔几个 token 流式就卡一下</td><td>decode 容量、更小 batch、分离式服务</td></tr>
+      <tr><td>输出</td><td>schema 合法性、安全标志、修复率</td><td>文本合法但工具调用非法</td><td>引导解码、校验器、评测门槛</td></tr>
+    </table>
+  </section>
+
+  <section id="cold">
+    <div class="label">第 2 部分</div>
+    <h2>冷启动是「权重驻留」问题。</h2>
+    <p>冷启动主要不是 HTTP 延迟。它是从「不存在有用的 GPU 进程」到「模型权重已驻留在 HBM、引擎可以接受请求」的整条路径。模型越大，冷路径越被「权重搬运、运行时设置与缓存分配」所主导。</p>
+    <div class="figure"><img src="assets/production-systems/cold-start-warm-pool.jpg" alt="冷启动 vs 预热池路径"><p class="caption">PaperBanana 图示：冷启动 vs 热路径。热路径之所以存在，是因为模型权重与运行时状态已经驻留。</p></div>
+    <div class="two">
+      <div class="card">
+        <h3>冷路径轨迹</h3>
+        <pre>t=0ms    request arrives
+t=5ms    router sees no warm capacity
+t=100ms  cluster scheduler assigns GPU
+t=2s     container ready
+t=8s     model files opened / fetched
+t=18s    weights copied into GPU HBM
+t=22s    runtime initialized, CUDA graphs/kernels warmed
+t=23s    KV block pool allocated
+t=24s    first prefill can start</pre>
+      </div>
+      <div class="card">
+        <h3>热路径轨迹</h3>
+        <pre>t=0ms    request arrives
+t=2ms    router chooses warm replica
+t=4ms    prefix hash lookup
+t=8ms    admitted into continuous batch
+t=30ms   prefill begins
+t=250ms  first token streams</pre>
+      </div>
+    </div>
+    <div class="formula">warm_replicas = ceil(p95_burst_tokens_per_sec / safe_tokens_per_sec_per_replica)</div>
+    <p>如果一个预热的 70B 副本每小时花费 $X，但能在课堂演示、企业 agent 会话或语音通话中避免一次 20 秒的冷启动，那这个预热池就不是浪费，而是「延迟保险的保费」。</p>
+    <table>
+      <tr><th>模型层级</th><th>冷启动敏感性</th><th>预热策略</th></tr>
+      <tr><td>小模型 7B/8B</td><td>中等</td><td>保持一个小预热池；可以更快扩缩</td></tr>
+      <tr><td>70B 稠密</td><td>高</td><td>保持模型驻留；对交互流量避免 scale-to-zero</td></tr>
+      <tr><td>MoE/前沿模型</td><td>非常高</td><td>容量预留、滚动热切换、区域感知路由</td></tr>
+    </table>
+  </section>
+
+  <section id="autoscale">
+    <div class="label">第 3 部分</div>
+    <h2>按 token 与队列自动扩缩容，而不是 CPU。</h2>
+    <p>对 LLM 服务来说，CPU 利用率往往是一个糟糕的信号。一个模型服务器可能 CPU 使用率很低，但 GPU 内存已满、decode 卡住、请求队列正在爆炸。</p>
+    <div class="two">
+      <div class="card">
+        <h3>糟糕的自动扩缩容器</h3>
+        <pre>if cpu_utilization > 70%:
+  add_replica()
+
+# actual incident:
+CPU = 24%
+GPU = 96%
+VRAM = 94%
+queue_depth = 380
+P99_TTFT = 11.2s
+autoscaler does nothing</pre>
+      </div>
+      <div class="card">
+        <h3>更好的自动扩缩容器</h3>
+        <pre>pressure =
+  w1 * queue_time_p95
++ w2 * active_tokens / token_capacity
++ w3 * vram_pressure
++ w4 * p99_ttft_slo_violation
++ w5 * decode_itl_slo_violation
+
+if pressure > threshold:
+  add_warm_replica_or_shed_load()</pre>
+      </div>
+    </div>
+    <div class="bars">
+      <div class="bar"><span>CPU 利用率</span><span style="width:24%"></span><b>弱</b></div>
+      <div class="bar violet"><span>队列等待 P95</span><span style="width:88%"></span><b>强</b></div>
+      <div class="bar red"><span>VRAM 压力</span><span style="width:92%"></span><b>强</b></div>
+      <div class="bar"><span>输出 tok/sec</span><span style="width:76%"></span><b>强</b></div>
+    </div>
+    <div class="callout blue"><strong>扩缩延迟很重要。</strong>如果一个新副本需要 45 秒才能变热，那就在「队列预测到未来疼痛」时扩缩容，而不是在 P99 已经被打破之后。</div>
+  </section>
+
+  <section id="routing">
+    <div class="label">第 4 部分</div>
+    <h2>缓存感知路由胜过盲目负载均衡。</h2>
+    <p>传统负载均衡问的是「哪个服务器负载最低」。LLM 路由还要问「哪个服务器已经持有有用的 KV 状态」。如果两个请求共享一段长前缀，缓存局部性可能比一点点队列差异更重要。</p>
+    <div class="figure"><img src="assets/production-systems/cache-aware-routing-decision.jpg" alt="缓存感知路由决策"><p class="caption">PaperBanana 图示：路由器选择「队列惩罚小于省下的 prefill 工作」的那个副本。</p></div>
+    <div class="card">
+      <h3>具体的路由算术</h3>
+      <pre>Request R2:
+  prompt = 9,200 tokens
+  prefix_hash = abc
+  reusable_prefix_on_P4 = 9,000 tokens
+
+Option A: least-loaded P1
+  queue_delay = 30 ms
+  prefill = 9,200 tokens * 0.045 ms/token = 414 ms
+  total_before_decode = 444 ms
+
+Option B: cache-hit P4
+  queue_delay = 120 ms
+  residual_prefill = 200 tokens * 0.045 ms/token = 9 ms
+  total_before_decode = 129 ms
+
+Decision:
+  P4 wins by 315 ms, despite being busier.</pre>
+    </div>
+    <table>
+      <tr><th>信号</th><th>路由器如何使用</th><th>失败模式</th></tr>
+      <tr><td>前缀哈希</td><td>找到精确的 KV 复用</td><td>prompt 开头的请求 ID 或时间戳会摧毁命中</td></tr>
+      <tr><td>语义缓存键</td><td>等价查询跳过推理</td><td>相似度阈值随意会导致错误复用</td></tr>
+      <tr><td>prompt 长度</td><td>选择 prefill 密集的池</td><td>短但难的 prompt 仍可能需要强模型</td></tr>
+      <tr><td>期望输出长度</td><td>预留 decode 容量</td><td>生成前很难知道</td></tr>
+      <tr><td>租户层级</td><td>应用 SLO 与优先级</td><td>层级不等于任务难度</td></tr>
+    </table>
+  </section>
+
+  <section id="deploy">
+    <div class="label">第 5 部分</div>
+    <h2>LLM 的金丝雀部署需要质量门槛。</h2>
+    <p>Web 金丝雀盯的是错误率与延迟。LLM 金丝雀还必须盯「行为」：输出长度漂移、拒答漂移、schema 合法性、工具调用正确性、安全标志率、每请求成本与缓存命中率。</p>
+    <div class="diagram">
+      <div class="flow">
+        <div class="node"><b>离线评测</b><span class="mini">金标集、对抗集、延迟回放。</span></div>
+        <div class="node"><b>影子流量</b><span class="mini">在真实输入上跑候选；隐藏输出。</span></div>
+        <div class="node"><b>1% 金丝雀</b><span class="mini">仅低风险流量。</span></div>
+        <div class="node"><b>5-25%</b><span class="mini">纳入更长 prompt 与付费租户。</span></div>
+        <div class="node"><b>50-100%</b><span class="mini">仅在护栏带（guard band）成立时放量。</span></div>
+        <div class="node"><b>回滚</b><span class="mini">一键回滚，放量前先测试。</span></div>
+      </div>
+    </div>
+    <pre>promotion_gate(candidate):
+  require eval_score >= baseline - tolerance
+  require json_validity >= baseline
+  require tool_call_success >= baseline
+  require p99_ttft <= baseline * 1.10
+  require p99_itl <= baseline * 1.10
+  require avg_output_tokens <= baseline * 1.15
+  require safety_flag_rate <= baseline + guard_band
+  require cost_per_request <= baseline * 1.15
+  require rollback_plan == tested</pre>
+    <div class="callout warnbox"><strong>经典事故：</strong>一次 prompt 变更把「简洁回答」改成了「详尽回答」。输出长度翻三倍，decode 占用翻三倍，队列深度上升，自动扩缩容滞后，账单爆炸。没有抛出任何异常——只有 token 分布与「每请求成本」能抓住它。</div>
+  </section>
+
+  <section id="guardrails">
+    <div class="label">第 6 部分</div>
+    <h2>护栏是一条流水线，而不是魔法分类器。</h2>
+    <p>护栏存在于生成之前、之中与之后。正确的系统会：早期用廉价的确定性检查，只在必要时用更强的基于模型的检查，并在输出边界做结构化校验。</p>
+    <div class="two">
+      <div class="card">
+        <h3>输入护栏</h3>
+        <p><span class="pill">认证</span><span class="pill">租户策略</span><span class="pill">PII 扫描</span><span class="pill">提示注入</span><span class="pill">工具权限</span><span class="pill">限流</span></p>
+        <pre>if user asks for forbidden action:
+  reject before GPU work
+if tool call exceeds tenant permission:
+  block before model generation
+if prompt contains high-risk content:
+  route to stricter policy/model</pre>
+      </div>
+      <div class="card">
+        <h3>输出护栏</h3>
+        <p><span class="pill">schema 解析</span><span class="pill">业务规则</span><span class="pill">安全分类器</span><span class="pill">引用检查</span><span class="pill">修复</span><span class="pill">回退</span></p>
+        <pre>parse output
+validate schema
+validate tool args
+check policy and PII
+return, repair, redact, or fallback</pre>
+      </div>
+    </div>
+    <table>
+      <tr><th>护栏</th><th>延迟成本</th><th>何时使用</th></tr>
+      <tr><td>正则 / 解析器 / 枚举检查</td><td>微秒到低毫秒</td><td>结构化输出始终使用</td></tr>
+      <tr><td>小分类器</td><td>个位数到几十毫秒</td><td>策略分诊、路由风险</td></tr>
+      <tr><td>LLM 评判器</td><td>数百毫秒或更多</td><td>抽样审计或高风险决策</td></tr>
+      <tr><td>人工审阅</td><td>分钟到天</td><td>受监管或不可逆的工作流</td></tr>
+    </table>
+  </section>
+
+  <section id="batch">
+    <div class="label">第 7 部分</div>
+    <h2>批量与在线推理不应争夺同一个 SLO。</h2>
+    <p>在线流量关心首 token 延迟与平滑流式。批量流量关心吞吐与成本。在没有优先级规则的情况下混合它们，会得到「两头都最糟」的结果。</p>
+    <table>
+      <tr><th>维度</th><th>在线推理</th><th>批量推理</th></tr>
+      <tr><td>用户期望</td><td>首 token 快、流式平滑</td><td>最终完成、最大化吞吐</td></tr>
+      <tr><td>调度器目标</td><td>保护 P99 TTFT 与 ITL</td><td>最大化 tokens/sec 与 GPU 占用</td></tr>
+      <tr><td>批处理</td><td>连续、受延迟 SLO 约束</td><td>大批量、等到高效再跑</td></tr>
+      <tr><td>失败行为</td><td>立即回退或优雅报错</td><td>重试、checkpoint、续跑</td></tr>
+      <tr><td>示例</td><td>聊天、编程 agent、语音助手</td><td>评测、重建索引、摘要、文档处理</td></tr>
+    </table>
+    <div class="callout gold"><strong>生产规则：</strong>批量可以消耗空闲 GPU 容量，但在线 decode 优先。如果批量工作不能被抢占（preempt），它就应该放在独立的容量上。</div>
+  </section>
+
+  <section id="incidents">
+    <div class="label">第 8 部分</div>
+    <h2>故障手册：按指标模式诊断。</h2>
+    <table>
+      <tr><th>症状</th><th>可能原因</th><th>第一动作</th></tr>
+      <tr><td>TTFT P99 上升，ITL 正常</td><td>prefill 队列、缓存未命中、prompt 长度漂移</td><td>检查 prompt token 数与前缀命中率</td></tr>
+      <tr><td>ITL 尖峰，TTFT 正常</td><td>decode 过载、batch 太大、内存带宽压力</td><td>降低最大 batch token 数或增加 decode 容量</td></tr>
+      <tr><td>每请求成本跳升，质量看起来正常</td><td>输出长度漂移或模型层级路由漂移</td><td>对比输出 token 分布与模型混合</td></tr>
+      <tr><td>GPU 低、队列高</td><td>调度器 bug、准入上限、上游瓶颈</td><td>检查引擎准入日志与队列策略</td></tr>
+      <tr><td>缓存命中率崩盘</td><td>prompt 前缀变了、插入了时间戳、租户隔离 bug</td><td>diff prompt 模板与前缀哈希</td></tr>
+      <tr><td>schema 修复率上升</td><td>模型/prompt 回归或更严格的 schema</td><td>跑结构化输出评测切片</td></tr>
+    </table>
+    <div class="card">
+      <h3>运维思维</h3>
+      <p>课程中的每个推理优化都会产生一个生产指标。前缀缓存产生命中率；分块预填充产生 prefill 队列与 chunk 大小指标；量化产生质量门槛；批处理产生队列与 ITL 的取舍；分离式服务产生 KV 传输指标。生产工程就是「让这些指标保持平衡」的学科。</p>
+    </div>
+  </section>
+</main>
+</body>
+</html>

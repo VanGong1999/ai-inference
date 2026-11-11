@@ -1,0 +1,6 @@
+Lecture Notes : https://miro.com/app/board/uXjVHXz5hxs=/?share_link_id=8837796048
+
+Visual Walkthroughs:
+(1) The GPU Architecture: https://brrrviz.com/the-machine/device-architecture
+(2) Flash Attention 1 vs 2: https://vizuaraai.github.io/convolution-musical-journey/flashattention-1-2.html
+(3) Flash Attention 3: https://vizuaraai.github.io/convolution-musical-journey/flashattention-3.html

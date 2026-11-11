@@ -1,0 +1,17 @@
+Visual Walkthroughs: 6 of them (extremely detailed and the heart of this lecture)!
+
+(1) Reducing KV Cache Across Tokens entire lecture visual walkthrough: https://vizuaraai.github.io/kv-cache-token-reduction-walkthrough/visual-walkthroughs/kv-cache-token-reduction-visual-walkthrough.html
+
+(2) Why convolution is NlogN: A visual journey through Fast Fourier Transform (FFT): https://vizuaraai.github.io/convolution-musical-journey/
+
+(3) Why Mamba needs selectivity: https://vizuaraai.github.io/convolution-musical-journey/mamba-why-selectivity-matters.html
+
+(4) Inside the Mamba block: https://vizuaraai.github.io/convolution-musical-journey/mamba-architecture-step-by-step.html
+
+(5) Receptive field growth in Sliding Window Attention, from the ground up: https://vizuaraai.github.io/convolution-musical-journey/receptive-field-sliding-window-walkthrough.html
+
+(6) Summary of Attention Mechanism Optimizations: https://vizuaraai.github.io/convolution-musical-journey/attention-variants-inference-comparison.html
+
+----------------------
+
+Lecture Notes: https://miro.com/app/board/uXjVHYq1m0I=/?share_link_id=539633013885

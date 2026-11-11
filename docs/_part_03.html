@@ -1,0 +1,1048 @@
+<section class="chapter-wrapper" id="breadcrumb-01-after-ch04">
+<h1>Breadcrumb——基础已奠定</h1>
+<p>你现在已经读完了本书的前五章（第 0 章到第 4 章）。在我们踏入运行时层（runtime layer）——真正技术所在之处——之前，先暂停一下，盘点你此刻在这张地图上的位置。</p>
+<hr>
+<h2>到目前为止的旅程</h2>
+<p>你在第 0 章从一句断言出发：<strong>推理工程（inference engineering）是 2026 年应用 AI 中最举足轻重的学科</strong>。你从一个真实的 Vizuara 产品中看到了原因：一个实时 AI 导师每月 30 万美元的 Gemini 账单让经济账变得清晰——自托管开源模型不是一种优化，而是一种生存。你看到推理发生在六级硬件谱系上，从 Raspberry Pi（1–5 tok/s）到 Taalas（约 17,000 tok/s），而 Apple 正在打造业内最大的端侧（on-device）推理布局。</p>
+<p>第 1 章给了你那张地图。三个同心环，<strong>运行时（runtime）</strong>、<strong>基础设施（infrastructure）</strong>、<strong>工具（tooling）</strong>，以及为什么必须按这个顺序学习它们。运行时层关乎让一块 GPU 跑得更快。基础设施层关乎让多块 GPU 协同工作。工具层关乎交付。推理工程师站在这个交汇点上，而当下应用 AI 中最常见的失败模式，就是在不理解底下两环的情况下直接选用工具层（vLLM、SGLang）。</p>
+<p>第 2 章给了你记分板。<strong>五个数字</strong>——TTFT、ITL、TPS、P99、$/M tokens——本书中的每一个推理决策最终都在改变它们。你看到了每个数字为何重要、如何测量，以及公司里哪一方会为哪个数字跟你争执。你还看到了系统吞吐量与单用户延迟之间的根本权衡，图 2.4 把它可视化了出来。记住 H100 上批量大小 16–32 附近的甜点区；这个数字还会回来。</p>
+<p>第 3 章给了你北极星。<strong>GPU roofline（屋顶线）</strong>是本书所有技术赖以立足的那一张图。你从第一性原理推导了它——两道硬件天花板（带宽与算力）、决定你先撞上哪道天花板的算术强度（arithmetic intensity）、以及两者同时饱和的脊点（ridge point）。你把 prefill 和 decode 放到上面，看到它们处在相反的区间：prefill 是算力受限（compute-bound），decode 是内存带宽受限（memory-bound）。你还看到每一个运行时层技术都沿着三个方向之一移动工作点：向右（更高的 AI）、向上（更高的天花板）、或向右上（通过批处理爬上斜率）。后续每一章都会回到图 3.1。</p>
+<p>第 4 章以一段对预训练的谨慎迂回结束了基础部分。你看到训练与推理是<em>同一个</em>前向传播，只是输入形状相反、成本结构相反。训练是算力受限的，使用海量批量，运行数月。推理是内存带宽受限的，使用微小批量，必须在毫秒内响应。你看到了训练 FLOPs 的 6× 法则和推理 FLOPs 的 2× 法则，也看到了为什么推理是支配模型整个生命周期的运营成本，大约是训练的 10× 到 100× 倍。</p>
+<hr>
+<h2>你现在能做什么</h2>
+<p>如果你读得仔细，现在你可以：</p>
+<ul>
+<li>看到任何新的推理技术时问：<em>它属于哪一层？</em>（第 1 章的三个环。）</li>
+<li>看到任何“加速”的说法时问：<em>它改变了五个指标中的哪一个，又以其他指标为多大代价？</em>（第 2 章。）</li>
+<li>看到任何优化时问：<em>它把 roofline 上的点往哪个方向移动？</em>（第 3 章。）</li>
+<li>看到任何 transformer 时知道：推理时权重是冻结的、前向传播是相同的、成本结构发生变化是因为批量维度从几百塌缩到一。（第 4 章。）</li>
+</ul>
+<p>这四个透镜——层、指标、roofline、训练/推理不对称性——是你阅读本书其余部分所需的心智装置。从第 5 章起的每一项技术，都会用这四者来分析。</p>
+<hr>
+<h2>接下来去哪</h2>
+<p>剩下的二十五章是技术所在之处。路径大致如下：</p>
+<ul>
+<li><strong>第 5 章</strong>讲解<em>朴素推理（naive inference）</em>：当你直接使用预训练的前向传播、一次一个 token 时会发生什么。你会精确地看到什么是冗余的，这为 KV 缓存（KV cache）——推理中最大的单一优化——做好了铺垫。</li>
+<li><strong>第 6 章</strong>是唯一一章硬件内容：一次 GPU 巡礼，但只讲推理工程师真正接触的部分。SRAM、HBM、张量核心（tensor core）、warp、NVLink。</li>
+<li><strong>第 7 到 15 章</strong>是运行时层，用九章讲 KV 缓存、注意力变体、FlashAttention、PagedAttention、量化、连续批处理（continuous batching）和投机解码（speculative decoding）。这是本书的核心。</li>
+<li><strong>第 16 到 18 章</strong>是基础设施层：并行、解耦（disaggregation）、复制、路由。</li>
+<li><strong>第 19 到 21 章</strong>是工具层：深入 vLLM、SGLang、TensorRT-LLM，以及 2026 年的引擎格局。</li>
+<li><strong>第 22 章</strong>覆盖微调与蒸馏，因为它们涉及推理经济学，包括潜意识学习（subliminal-learning）实验。</li>
+<li><strong>第 23 章</strong>巡礼前沿：多模态（语音、音频、视频）与具身（世界模型、机器人流水线）。</li>
+<li><strong>第 24 到 26 章</strong>是顶点项目（capstone）：一个速度优化的服务器、在 Modal 上扩展到一百万用户、以及 OpenClaw-RL。</li>
+</ul>
+<p>从第 5 章起节奏会改变。此前你一直在读基础。从这里开始，你读的是技术，其中大多数都配有显式的矩阵演练、具体的数字，以及每章结尾处一句“放到 roofline 上”的论断。</p>
+<p>深呼吸。续上咖啡。第 5 章才是真正开始干活的地方。</p>
+</section>
+
+<section class="chapter-wrapper" id="ch05-naive-inference-and-redundancy">
+<h1>第 5 章：朴素推理及其冗余</h1>
+<p>在第 4 章我们确立了：推理使用与训练相同的 transformer 前向传播，但批量维度塌缩了（每一步一个 token，而非数千个），而且没有反向传播。这是一句很紧凑的话。本章把它完全拆开，因为这句话里埋藏着整个应用 AI 中最大的浪费计算，以及解锁本书其余部分的那个单一优化。</p>
+<p>计划如下。我们拿出第 4 章看到的预训练前向传播，尝试朴素地把它用于推理。我们在一个四 token 的玩具例子上逐 token 地走一遍，用真实的矩阵数值，观察发生了什么。到第五个 token 进入计算时，你会亲眼看到：<strong>注意力矩阵五行中有四行，在每一步都在从相同的输入到相同的输出被重新计算</strong>。这就是本章标题里的冗余。修好它——缓存之前 token 的 K 和 V 矩阵——你就得到了 KV 缓存，它把 decode 成本从每个 token O(N²·d) 降到每个 token O(N·d)。在一个 4,096 token 的上下文上，这大约是每一步 FLOPs 减少 1,000×。</p>
+<p>本章有意做成矩阵密集型。阅读时手边放一个笔记本或这些图。每一个关于冗余的论断都会在具体数字上演示，而这些数字将成为本书其余部分反复使用的标准玩具数值。</p>
+<hr>
+<h2>自回归循环，一张图</h2>
+<h3>5.1：朴素推理长什么样</h3>
+<p>推理始于一个<strong>提示（prompt）</strong>，即用户提供的一串输入 token。“The next day is”在某个词表下被 tokenize 成类似 <code>[0, 1, 2, 3]</code> 的东西。模型的任务是产生下一个 token，把它追加到序列末尾，然后重复，直到某个停止条件（特殊的 <code>&lt;end&gt;</code> token、最大长度、用户取消）触发。</p>
+<p><img alt="图 5.1：自回归 decode 循环" src="figures/ch05-fig1-autoregressive-loop/final.png">
+<em>图 5.1.</em> 水平流程中的四个方框。方框 1：“到目前为止的输入 token。”方框 2：“Transformer 前向传播。”方框 3：“词表上的 logits。”方框 4：“采样下一个 token。”一条弯曲箭头从方框 4 绕回方框 1，标注为“追加并重复”。</p>
+<p>图 5.1 是对自回归生成最简单可能的描述。循环的每一步：</p>
+<ol>
+<li>取当前的 token 序列。</li>
+<li>把它跑过完整的 transformer 前向传播（与训练中使用的同一个前向传播，见第 4 章）。</li>
+<li>只提取<em>最后一个</em>位置的 logits（因为下一个 token 的预测就在那里）。</li>
+<li>从这些 logits 中采样一个 token（使用 temperature、top-k、top-p 等任一配置好的策略）。</li>
+<li>把采样到的 token 追加到序列末尾。</li>
+<li>循环。</li>
+</ol>
+<p>这是正确的算法。它产生正确的输出。运行这个循环的语言模型会生成与任何优化过的推理栈完全一致的连贯文本，语义上是相同的。但<em>成本</em>不是。每次经过循环，我们都对整个<em>迄今的</em>序列重新跑一遍完整的 transformer 前向传播。如果我们在 100 token 的提示之上生成了 500 个新 token，那么第 501 个 token 的 decode 步骤就要在 600 个 token 上跑一次前向传播。这就是问题所在。</p>
+<hr>
+<h3>5.2：为什么这个循环很贵</h3>
+<p>transformer 的前向传播成本随输入 token 数增长。对于长度为 N、隐藏维度为 d 的序列，主导运算是：</p>
+<ul>
+<li>Q、K、V 投影：<code>3 × 2 × N × d² = 6Nd²</code> FLOPs</li>
+<li>注意力分数（Q · Kᵀ）：<code>2 × N² × d</code> FLOPs</li>
+<li>上下文（权重 · V）：<code>2 × N² × d</code> FLOPs</li>
+<li>输出投影：<code>2 × N × d²</code> FLOPs</li>
+<li>FFN（两层，4d 扩展）：<code>16 × N × d²</code> FLOPs</li>
+</ul>
+<p>每个 transformer 层，一次前向传播的 FLOP 成本大约是：</p>
+<pre><code>FLOPs_per_layer ≈ 24 N d² + 4 N² d
+</code></pre>
+<p>对于 <code>d = 4096</code>（Llama-3-8B）和 <code>N = 600</code>（我们假设的 500 token decode）：</p>
+<pre><code>FLOPs_per_layer  ≈  24 × 600 × 4096²  +  4 × 600² × 4096
+                  ≈  2.4 × 10¹⁰  +  5.9 × 10⁹
+                  ≈  3.0 × 10¹⁰   （每层每次前向传播）
+</code></pre>
+<p>对于一个 32 层模型：<code>每次前向传播约 10¹² FLOPs</code>。</p>
+<p>现在再乘以 500 个 decode 步骤（每个输出 token 一个）：<strong>5 × 10¹⁴ FLOPs</strong>，大约 500 teraflops 的计算量，才能生成一个 500 token 的响应。</p>
+<p>其中大部分是被浪费的。我们马上就会看到确切的原因。</p>
+<hr>
+<h2>冗余藏在哪里</h2>
+<h3>5.3：追踪两次相同的计算</h3>
+<p>考虑一个玩具系统上连续的两个 decode 步骤：从 N=4 个 token 到 N=5 个 token。4 token 的提示是“The next day is.”在第一次前向传播之后，我们采样下一个 token；假设它是“bright.”现在我们要对“The next day is bright.”做前向传播。</p>
+<p><img alt="图 5.2：朴素推理在每一步重新计算所有东西" src="figures/ch05-fig2-naive-recomputes-everything/final.png">
+<em>图 5.2.</em> 三个堆叠的 Q、K、V 矩阵快照，分别在 decode 步骤 T=4、T=5 和 T=6。在 T=4，每个矩阵有 4 行（每个 token 一行）。在 T=5，每个矩阵有 5 行，前 4 行被高亮为相同的浅薰衣草色，新的第 5 行是更深的色调。在 T=6，同样的模式，6 行。下方标注：“Q、K、V 的前几行在每一步都从头重新计算。这是被浪费的工作。”</p>
+<p>仔细看 图 5.2。在步骤 T=4，模型计算了各 4 行的 Q、K、V 矩阵，每个 token 一行。在步骤 T=5，它必须产生各 5 行的 Q、K、V 矩阵，同样是每个 token 一行。前 4 行（The、next、day、is）在 T=4 和 T=5 之间是相同的，因为它们由相同的输入（同样的四个 token 嵌入）乘以相同的权重矩阵（<code>W_Q</code>、<code>W_K</code>、<code>W_V</code>，在训练时冻结）计算而来。<strong>无论 Q、K、V 在 T=4 是什么，在 T=5 那四行都完全相同。</strong>只有第五行（对应“bright”）是真正新的。</p>
+<p>然而在朴素循环里，模型在 T=5 重新计算了全部 5 行。那 4 行没有变化的还是被重新计算了。然后在 T=6，它重新计算 6 行，其中 5 行没有变。依此类推。重新计算的成本随序列长度线性增长，而每一步的<em>新信息</em>却是恒定的一行。</p>
+<p>这就是冗余。它一旦被说出来就显得微不足道，一旦被认出来就令人难堪，而一旦被测量出来就代价高昂。</p>
+<hr>
+<h3>5.4：玩具演练：详细看 T=4</h3>
+<p>让我们通过一步一步走一遍具体的前向传播、用具体数字，把冗余变得具体。这是你将在全书反复看到的那个标准玩具例子。</p>
+<p><strong>设定。</strong>
+- N = 4 个 token：“The”、“next”、“day”、“is”
+- d = 4（模型维度，为可见性取小）
+- H = 1 个头，D = 4（头维度）
+- 总共两层；我们追踪一层</p>
+<p><strong>Q 和 K 矩阵。</strong>给定这些输入和冻结的权重矩阵 <code>W_Q</code> 与 <code>W_K</code>，模型产生形状为 (4, 4) 的 Q 和 K。对于本书通用的标准玩具例子，它们的值是：</p>
+<p><img alt="图 5.3：在 T=4 计算 Q 和 K" src="figures/test-matmul-fig1-inputs/final.png">
+<em>图 5.3.</em> 两个并排的矩阵，各 4 行乘 4 列，行标签为“The”/“next”/“day”/“is”，列标签为 c0/c1/c2/c3。Q 在左侧为浅薰衣草色，K 在右侧为浅薄荷色。</p>
+<p>图 5.3 展示了 4 token 输入的 Q 和 K。Q 的每一行代表一个 token 的“查询（query）”向量，即该 token 在上下文中寻找什么。K 的每一行代表一个 token 的“键（key）”，即它提供什么以供匹配。这些数值是训练好的权重从“The”、“next”、“day”、“is”的输入嵌入中产生的。</p>
+<p><strong>注意力分数。</strong>下一步计算 <code>scores = Q · Kᵀ / √d</code>，对于 N=4、d=4 这是一个 4×4 矩阵。为了计算它，我们首先取 K 的转置：</p>
+<p><img alt="图 5.4：转置 K" src="figures/test-matmul-fig2-transpose/final.png">
+<em>图 5.4.</em> K 在左侧（行标签“The”/“next”/“day”/“is”，列标签 c0/c1/c2/c3）。中间有一条淡淡的“转置”箭头。K^T 在右侧（行标签 c0/c1/c2/c3，列标签“The”/“next”/“day”/“is”）。同样的数字，行变成列。</p>
+<p>现在我们把 Q（在左）乘以 K^T（在右）。结果的第 (i, j) 项是 Q 的第 i 行与 K^T 的第 j 列的点积，也就是 Q 的第 i 行与 K 的第 j 行的点积。例如，score[0][0] = “The” 关注 “The”：</p>
+<p><img alt="图 5.5：计算一个单元：score[0][0]" src="figures/test-matmul-fig3-single-cell/final.png">
+<em>图 5.5.</em> 一行中的三个矩阵。Q 在左，第 0 行（“The”）被高亮。K^T 在中间，第 0 列（“The”）被高亮。Scores 在右，只有单元 [0][0] 被填入 0.150。下方是等式：<code>score[0][0] = Q[0] · K[0]ᵀ / √4 = (0.02 + 0.06 + 0.20 + 0.02) / 2 = 0.300 / 2 = 0.150</code>。</p>
+<pre><code>score[0][0] = Q[0] · K[0]ᵀ / √4 = 0.150
+</code></pre>
+<p>把 Q 的第 0 行扫过 Kᵀ 的所有四列，填满 scores 矩阵的第一行：</p>
+<p><img alt="图 5.6：填满 Scores 的第 0 行" src="figures/test-matmul-fig4-first-row/final.png">
+<em>图 5.6.</em> Q 在左，第 0 行被高亮。Scores 在右，第 0 行完全填满：[0.150, 0.135, 0.135, 0.110]。Scores 的第 1、2、3 行为空。标注：“Q 第 0 行扫过 K^T 的所有 4 列，填满 Scores 第 0 行。”</p>
+<p>对 Q 的其余三行重复这一过程，填满整个 scores 矩阵：</p>
+<p><img alt="图 5.7：T=4 时的完整 Scores 矩阵" src="figures/test-matmul-fig5-full-scores/final.png">
+<em>图 5.7.</em> 完整的 4×4 Scores 矩阵。行标签和列标签为“The”/“next”/“day”/“is”。全部 16 个单元都已填满。</p>
+<pre><code>Scores (4 × 4):
+         &quot;The&quot;  &quot;next&quot;  &quot;day&quot;   &quot;is&quot;
+&quot;The&quot;    0.150  0.135   0.135   0.110
+&quot;next&quot;   0.110  0.115   0.185   0.120
+&quot;day&quot;    0.190  0.225   0.295   0.180
+&quot;is&quot;     0.100  0.145   0.180   0.095
+</code></pre>
+<p>经过因果掩码（causal mask，把上三角清零，使 token 无法关注未来）和 softmax 之后，这些分数变成注意力权重。把权重乘以 V 就得到 4 个 token 各自的上下文向量。上下文矩阵的全部 4 行都被计算出来，最后一行经过输出投影、FFN 和反嵌入（unembedding），产生 logits，从中我们采样出“bright”。</p>
+<p>到此为止，一切都在预期之中。这就是第 4 章描述的标准 transformer 前向传播。现在看看 T=5 会发生什么。</p>
+<hr>
+<h3>5.5：玩具演练：T=5，冗余出现的地方</h3>
+<p>在 T=5，输入序列现在是“The next day is bright.”同样的权重矩阵 <code>W_Q</code>、<code>W_K</code>、<code>W_V</code> 被应用到一个 5 token 的输入嵌入上。</p>
+<p>结果是一个 5 行的 Q 矩阵、一个 5 行的 K 矩阵、一个 5 行的 V 矩阵。每个矩阵都比 T=4 时多一行。</p>
+<p><strong>关键问题：每个矩阵的前 4 行在 T=4 和 T=5 之间会变吗？</strong></p>
+<p>不会。绝对不会。它们不可能变。Q 的前 4 行由 X 的前 4 行（“The”、“next”、“day”、“is”的输入嵌入）乘以 W_Q 计算而来。输入嵌入没变（它们来自同样的 token）。W_Q 没变（它被冻结了）。因此 Q 的前 4 行与它们在 T=4 时完全相同。对 K 和 V 同理。</p>
+<p>只有第 5 行是新的，由“bright”的新嵌入乘以冻结的权重矩阵计算而来。</p>
+<p><img alt="图 5.8：冗余可视化：T=4 对比 T=5" src="figures/ch05-fig5-redundancy-visualized/final.png">
+<em>图 5.8.</em> 两个并排的面板。左：T=4 时的 K，4 行浅薰衣草色。右：T=5 时的 K，5 行，前 4 行与左面板完全相同，第 5 行是更深的色调。一个大括号标注为“完全相同，这次计算有 80% 被浪费。”下方是一个镜像的 V 矩阵面板。</p>
+<p>图 5.8 让浪费变得可视化。T=5 时 K 的五分之四行与 T=4 时 K 的四行完全相等。如果我们在 T=4 的计算中<strong>保存</strong>了那四行，就不必在 T=5 重新计算它们。V 同理。</p>
+<p>Q 是有意思的情况。T=5 时 Q 的前 4 行也与 T=4 的前 4 行相同，但<strong>我们不再需要这些行</strong>。Q[0] 到 Q[3] 在 T=4 被用来计算 token 0 到 3 的上下文向量，那些上下文向量产生了 token 1 到 4 的预测（回想第 4 章中的偏移一位）。在 T=5，我们只想产生位置 4 <em>之后</em>的下一个 token。那个预测来自位置 4 的上下文向量，它只需要 Q[4]，即新 token“bright”的查询。</p>
+<p>换句话说：在 decode 步骤 T=5，我们恰好需要一个新 Q 向量（对应位置 4，即“当前”token），并且我们需要完整的 K 和 V 矩阵（全部 5 行），这样 Q[4] 才能关注到每一个之前的 token。Q 的之前那些行永远不会再被使用。</p>
+<p><strong>这就是那个洞见。</strong>缓存 K 和 V。不要缓存 Q。</p>
+<hr>
+<h3>5.6：我们真正需要什么，倒推</h3>
+<p>让我们从所需输出倒推，把这一点形式化。</p>
+<p><img alt="图 5.9：倒推：为下一个 token 我们到底需要什么？" src="figures/ch05-fig6-what-we-actually-need/final.png">
+<em>图 5.9.</em> 三个自上而下的竖直方框。顶部：“目标：预测‘bright’（位置 4）之后的 token。”中间：“我们需要一个 logit 向量，对应位置 4。”底部：“那个 logit 向量来自一个上下文向量，即上下文矩阵的最后一行。”一个大注释箭头：“我们不需要 context 的前 4 行；它们预测了更早的 token，现在已经没用了。”</p>
+<p>下一个 token 的 logits 来自当前位置的上下文向量。位置 4 的上下文向量来自位置 4 的注意力权重（一行，长度 5）乘以完整的 V 矩阵（5 行乘 d 列）。位置 4 的注意力权重来自 Q[4]（一行）乘以 K^T 的所有 5 行，然后做 softmax 归一化。</p>
+<p>所以在 decode 步骤 T=5 我们需要：</p>
+<ol>
+<li><strong>Q[4]</strong>，新的查询向量。必须通过把新 token 的嵌入（一行）乘以 W_Q 来全新计算。</li>
+<li><strong>K 的全部 5 行。</strong>必须存在于某处。</li>
+<li><strong>V 的全部 5 行。</strong>必须存在于某处。</li>
+</ol>
+<p>我们不需要 Q 的任何其他东西。Q[0] 到 Q[3] 在这一步无关紧要。</p>
+<p>如果我们在 T=4 缓存了 K 和 V，那么在 T=5 我们只需要计算每一者的<strong>单个新行</strong>（对应“bright”）并把它追加到缓存中。我们不重新计算 0–3 行。我们也不重新计算任何只依赖于 X[0..3] 的其他东西，特别是不重新计算位置 0–3 的上下文向量，因为它们已经在 T=4 被用来预测各自的下一 token 了。</p>
+<p><img alt="图 5.10：注意力权重 × V = 新 token 的上下文向量" src="figures/ch05-fig7-attention-weights-times-V/final.png">
+<em>图 5.10.</em> 从左到右的等式：最后一个 token 的注意力权重（1 行 × 5 列）× 完整 V 矩阵（5 行 × 4 列）= “bright”的上下文向量（1 行 × 4 列）。V 上的标注：“我们确实需要完整的 V 矩阵，这就是 V 被缓存的原因。”权重上的标注：“我们只需要一行注意力权重，这就是我们不缓存注意力分数的原因。”</p>
+<p>图 5.10 展示了最后的乘法。注意完整的 V 矩阵被用到了，全部 5 行，因为单个新查询必须关注到所有过去的 token。这就是为什么 V 必须被缓存（所有行跨步骤保留），而注意力分数可以每步只为那一行新查询重新计算。</p>
+<p>这就是一句话策略：</p>
+<blockquote>
+<p><strong>在每一个 decode 步骤，为新 token 计算 Q、K 和 V。把新的 K 和 V 追加到一个持久缓存中。只为新的一行重新计算注意力权重。只为新的一行重新计算上下文向量。其他一切都作用在完整的缓存上。</strong></p>
+</blockquote>
+<hr>
+<h3>5.7：哪些量被缓存，哪些被重新计算</h3>
+<p><img alt="图 5.11：每个 decode 步骤的重新计算 vs 复用" src="figures/ch05-fig8-decision-tree-fresh-vs-reuse/final.png">
+<em>图 5.11.</em> 一棵决策树。根：“对于 decode 步骤 T+1 的每个量，我们是全新计算还是从缓存复用？”五个分支：(1) 新 token 的 Q 向量，全新计算；(2) 新 token 的 K 向量，全新计算（然后追加到缓存）；(3) 新 token 的 V 向量，全新计算（然后追加到缓存）；(4) 旧 token 的 K 向量，从缓存复用；(5) 旧 token 的 V 向量，从缓存复用。下方：“每步：计算 3 个新向量，从缓存读取 2(N-1) 个向量。加速随 N 增长。”</p>
+<p>图 5.11 是调度总结。每个 decode 步骤：</p>
+<ul>
+<li><strong>全新计算（3 样）：</strong>新 token 的 Q、新 token 的 K、新 token 的 V。每个都是一行 × d 维。成本：1×d 输入乘以 d×d 权重的三次矩阵-向量乘法，共 6d² FLOPs。</li>
+<li><strong>从缓存复用（2×(N-1) 个向量）：</strong>K 的第 0 到 N-2 行，V 的第 0 到 N-2 行。这些从 HBM 读取；没有计算。</li>
+<li><strong>附带计算：</strong>单个新查询行的注意力权重（1×N）、新位置的上下文向量（1×d）、输出投影（1×d²）、FFN（1×d² × 4 及回程）、logits（1×d × V）。</li>
+</ul>
+<p>缓存情形下每步的总 FLOP 成本：</p>
+<pre><code>FLOPs_per_step_cached  ≈  6d² (Q,K,V 投影)  +  2Nd (1 个查询对 N 个键的注意力分数)
+                            +  2Nd (权重 × V 得到 1 个上下文行)
+                            +  24d² (输出 + FFN 投影)
+                         ≈  30d²  +  4Nd         （近似，每层）
+</code></pre>
+<p>把它与 §5.2 的朴素成本 <code>24Nd² + 4N²d</code>（每层）对比。差异由 <code>d²</code> 项主导，恰好就是 N 这个因子：</p>
+<pre><code>FLOPs_naive / FLOPs_cached  ≈  24Nd² / 30d²  ≈  0.8 × N
+</code></pre>
+<p>对于 N = 4096，这是<strong>每个 decode 步骤 3,200× 的 FLOP 减少</strong>，一旦把带宽受限的情形也考虑进去，就几乎精确匹配本章开篇段落里的 1,000× 估计。</p>
+<hr>
+<h3>5.8：为什么缓存 K 和 V，但不缓存 Q？</h3>
+<p>我们在上面说过了，但值得单独用一节来讲，因为这是那种一旦看清楚就会牢牢记住的东西。</p>
+<p><img alt="图 5.12：为什么缓存 K 和 V 但从不缓存 Q？" src="figures/ch05-fig9-why-not-cache-Q/final.png">
+<em>图 5.12.</em> 一个 2×2 网格。左上：“Q 扮演什么角色？”，“Q 代表当前 token 在过去中寻找什么。”右上：“Q_i 何时被用到？”，“只在步骤 i，即 token i 被解码时。那一步之后，Q_i 就再也不会被使用。”左下：“K 和 V 扮演什么角色？”，“K 和 V 代表过去的 token 如何向未来的查询描述自己。”右下：“K_i、V_i 何时被用到？”，“K_i 和 V_i 在每一步 i、i+1、i+2、…… 永远都会被使用。”网格下方：“Q 是一次性的。K 和 V 永远被复用。这就是为什么只有 K 和 V 被缓存。”</p>
+<p>图 5.12 中的不对称性正是这种不对称缓存策略的依据。在注意力机制里，Q 来自“当前位置在提问”，而 K 和 V 来自“每一个过去的位置在回答问题”。注意力方程是：</p>
+<pre><code>attention_i  =  softmax(Q[i] · Kᵀ / √d) · V
+</code></pre>
+<p>对于位置 i 的 token，我们需要 Q[i]（一行），也需要位置 0 到 i 的 K 和 V（因为位置 i 关注所有之前的位置，包括它自己）。</p>
+<p>下一个 token，在位置 i+1，我们需要 Q[i+1]（一行，全新的）。Q[i] 再也不会被使用。我们仍然需要位置 0 到 i+1 的 K 和 V，包括之前的那些。所以 K[0..i] 和 V[0..i] 被复用；Q[i] 不。</p>
+<p>这不是一个聪明洞见；它是注意力公式的平凡推论。然而它却是生成本书几乎整个运行时层的那个洞见。KV 缓存是地基，第 7–15 章的每一项技术都是对 KV 缓存某一局限的回应，要么压缩它、要么共享它、要么重新安排如何访问它、要么围绕它的增长做调度。</p>
+<hr>
+<h3>5.9：FLOP 减少，量化</h3>
+<p>图 5.13 画出了朴素 vs 缓存 decode 的 FLOP 曲线随序列长度的变化。</p>
+<p><img alt="图 5.13：每个 decode 步骤的 FLOP 成本：朴素 vs 有 KV 缓存" src="figures/ch05-fig10-flop-reduction-curve/final.png">
+<em>图 5.13.</em> 一张折线图。X 轴：序列长度 N，从 0 到 4096。Y 轴：每个 decode 步骤的 FLOPs，对数刻度从 10⁶ 到 10¹²。两条曲线，朴素（O(N²·d)，二次上升）和缓存（O(N·d)，线性上升）。在 N=4096 处有一个竖直括号标注“约 1000× 加速”。</p>
+<p>图 5.13 中的差距就是 KV 缓存所弥合的差距。在短序列（N &lt; 100）时，两条曲线很接近，二次项还没占据主导。在 N = 500 时，差距约为 100×。在 N = 4096 时，差距约为 1000×。在长上下文（N = 32K，现代模型常规达到）时，差距约为 10,000×。</p>
+<p>没有 KV 缓存，任何上下文窗口超过几百 token 的 LLM 都无法在交互式延迟下可行。有了 KV 缓存，32K token 很轻松，128K token 是常态。现代聊天产品中的每一项长上下文能力，都追溯到这一个缓存。</p>
+<hr>
+<h2>加速及其后果</h2>
+<h3>5.10：新的 decode 循环</h3>
+<p>这里是修订后的算法，既然我们现在缓存了 K 和 V。这就是每个现代推理引擎都实现的<em>那个</em>推理 decode 循环。</p>
+<pre><code>Algorithm: KV-cached autoregressive decode
+
+Initialize:
+    - Compute and store K_cache = K[prompt], V_cache = V[prompt]
+      by running one parallel forward pass on the prompt (PREFILL)
+    - Set N := length of prompt
+
+Loop:
+    1. Take the most recently generated token's embedding x_new (shape 1 × d)
+    2. Compute q_new = x_new · W_Q                (shape 1 × d)
+    3. Compute k_new = x_new · W_K                (shape 1 × d)
+    4. Compute v_new = x_new · W_V                (shape 1 × d)
+    5. Append k_new to K_cache, v_new to V_cache  (cache grows to N+1 rows)
+    6. Compute attention scores for the new query:
+           scores_new = q_new · K_cacheᵀ / √d      (shape 1 × (N+1))
+    7. Apply softmax to scores_new, get attention weights (shape 1 × (N+1))
+    8. Compute context vector:
+           context_new = weights_new · V_cache     (shape 1 × d)
+    9. Run output projection and FFN on context_new
+   10. Project context to logits
+   11. Sample next token, append to output sequence
+   12. N := N + 1
+   13. If end-of-sequence token or max length, exit; else go to 1
+</code></pre>
+<p>初始化时的 prefill 步骤只运行一次，并且是算力受限的（对 N 个提示 token 做一次常规的批量前向传播）。之后每一个 decode 步骤都很便宜，每步成本对于注意力部分是 O(N·d)，对于投影/FFN 部分是 O(d²)，而朴素推理中分别是 O(N²·d) 和 O(N·d²)。</p>
+<p>这正是把第 3 章 roofline 中的 prefill 与 decode 区分开来的那个算法。<strong>Prefill 是算力密集的初始化；decode 是内存带宽受限的循环。</strong>KV 缓存正是让 decode 一开始就变得内存带宽受限的原因。没有缓存，decode 会像 prefill 一样算力密集。有了缓存，它丢掉了二次计算项，转而由每一步读取 K_cache 和 V_cache 所需的内存带宽主导。</p>
+<hr>
+<h3>5.11：这把你在 roofline 上放到哪里</h3>
+<p>回到第 3 章的北极星。KV 缓存把 decode 的工作点移到 roofline 的左侧。</p>
+<p>原因如下。在 KV 缓存之前，朴素 decode 每步做 O(N²·d) FLOPs，并读取 O(N·d) 字节的 K 和 V（因为无论如何它都得读取所有过去的 token 来做注意力）。算术强度约为每字节 N 个 FLOP，大致与 prefill 相同，对于长 N 实际上是算力受限的。</p>
+<p>在 KV 缓存之后，缓存 decode 每步做 O(N·d) FLOPs（主要是注意力核，因为投影现在是 1×d 而非 N×d），并读取 O(N·d) 字节的 K 和 V 缓存加上 O(d²) 字节的权重。算术强度下降到约每字节 1 个 FLOP，深深落在内存带宽受限区间。</p>
+<p>KV 缓存<strong>解决了 FLOPs 问题，却制造了带宽问题</strong>。它用 1000× 的 FLOP 减少换来了一个带宽约束，这个约束成为本书剩余部分的头号瓶颈。</p>
+<p>这就是我们将在第 7 章起着手解决的“KV 缓存阴暗面”。KV 缓存让推理变得可行。它也把 decode 置于这样一个区间：剩下的每一项优化都在于减少流经 HBM 的字节数，因为 FLOPs 早已是容易的部分。</p>
+<hr>
+<h3>5.12：prefill 与 decode，终于清晰区分</h3>
+<p>我们从第 0 章起就一直在用“prefill”和“decode”这两个词。现在它们有了精确的定义。</p>
+<p><strong>Prefill</strong> 是 KV 缓存算法的初始化阶段。给定一个 N token 的提示，对全部 N 个 token 跑一次并行的前向传播，产生完整的 K 缓存（N×H×D）、完整的 V 缓存（N×H×D），以及最后位置的 logits（从中采样第一个输出 token）。Prefill 是算力受限的，因为前向传播有 N token × d 维 × d² 权重的算术量，却只有 N×d 字节的激活要移动。算术强度约为 d/2，远高于 roofline 的脊点。</p>
+<p><strong>Decode</strong> 是 prefill 之后的主循环。每一步恰好处理一个新 token：计算新的 Q、K、V 行（各一个），追加到缓存，为这个新查询在完整 K/V 缓存上计算注意力，生成 logits，采样下一个 token。Decode 是内存带宽受限的，因为前向传播只为 1 个 token 的算术量就把完整权重矩阵从 HBM 搬了一遍。算术强度约为 1，远低于脊点。</p>
+<p>这就是为什么 prefill 和 decode 在本书剩余部分被区别对待。它们不是同一操作的两个阶段，而是两种有着不同瓶颈的根本不同的计算。许多高级技术都利用这一区别：</p>
+<ul>
+<li><strong>解耦 prefill/decode</strong>（第 17 章）把它们放到不同的 GPU 上。</li>
+<li><strong>分块 prefill</strong>（第 12 章）把 prefill 分块与进行中的 decode 交错。</li>
+<li><strong>连续批处理</strong>（第 14 章）把多个 decode 打包进一次前向传播。</li>
+</ul>
+<p>三者都依赖于 prefill/decode 的区别，而这一区别只有在有了 KV 缓存之后才有意义，这就是为什么我们在第 5 章为它命名。</p>
+<hr>
+<h3>5.13：我们为之付出什么</h3>
+<p>KV 缓存是推理工程中最大的单一加速。它也是我们仍需管理的那项最大成本的来源。</p>
+<p>回想 KV 缓存大小的公式：</p>
+<pre><code>KV bytes  =  2 (K and V)  ×  N  ×  H  ×  D  ×  L  ×  2 bytes per element (FP16)
+           =  4 × N × H × D × L
+</code></pre>
+<p>对于 <code>N = 32,768</code> 时的 Llama-3-70B：</p>
+<pre><code>KV bytes  =  4 × 32,768 × 8 × 128 × 80  =  2.68 × 10¹⁰  =  ~25 GB per user
+</code></pre>
+<p>每个用户会话 25 GB。在一块有 80 GB HBM 的 H100 上，其中 40 GB 是模型权重、5 GB 是激活工作区，在内存耗尽之前大约能容纳 1.4 个并发用户。这是不可行的。如果每个用户需要 25 GB，我们就无法同时服务很多用户。</p>
+<p>这就是催生接下来十章的那个问题：</p>
+<ul>
+<li><strong>第 7 章</strong>完整地为这个权衡命名。</li>
+<li><strong>第 8 章</strong>跨注意力头压缩缓存（MHA → MQA → GQA → MLA）。</li>
+<li><strong>第 9 章</strong>跨 token 压缩（滑动窗口、线性注意力、状态空间模型、Mamba）。</li>
+<li><strong>第 10 章</strong>把注意力分块进 SRAM 以减少每步读取（FlashAttention）。</li>
+<li><strong>第 11 章</strong>把缓存分页以消除碎片（PagedAttention）。</li>
+<li><strong>第 12 章</strong>跨用户共享前缀并分块 prefill（前缀缓存 + 分块 prefill）。</li>
+<li><strong>第 13 章</strong>把缓存本身量化到一半字节（FP8/INT4 KV 缓存）。</li>
+</ul>
+<p>这些章中的每一章都可以读作本章冗余论证的直接后裔。KV 缓存是地基；此后的一切都是对其成本的回应。</p>
+<hr>
+<h3>5.14：接下来去哪</h3>
+<p>我们从第一性原理推导了 KV 缓存，展示了它消除的矩阵级冗余，并把缓存与不缓存两种 decode 工作点都放到了 roofline 上。</p>
+<p>在深入缓存压缩技术之前，我们还需要一块地基。我们一直把 GPU 当作一个黑箱来谈——“从 HBM 读取”、“算力天花板”、“算术强度”——却没有看硬件本身。第 6 章是本书唯一一章硬件内容：以推理为透镜看 GPU。流式多处理器（streaming multiprocessor）、张量核心、warp 调度器、内存层级、NVLink 与 InfiniBand。那一章里的每个硬件概念，都是我们一直在隐式假设的东西。第 6 章之后，我们就拥有了直面运行时层的全部工具。</p>
+</section>
+
+<section class="chapter-wrapper" id="ch06-the-machine">
+<h1>第 6 章：机器（一台 GPU）</h1>
+<p>第 5 章以一个断言结束：KV 缓存把 decode 移到 roofline 的内存带宽受限区间。第 3 章引入了 roofline 本身——带宽斜率、算力天花板、脊点。两章都把“GPU”当作一个带有两个数字（带宽与峰值 FLOPs）的抽象盒子。实际上，GPU 不是盒子。它是一台分层的机器，而机器的每一层都至少触及推理工程师所做的一个决策。</p>
+<p>本章是对那台机器的一次简短而聚焦的巡礼。它有意不做完整的 GPU 架构参考书——整本的教科书是为此而存在的。它恰好覆盖那些映射到推理工程决策的部分：为什么推理要在 GPU 上跑、内存层级长什么样、流式多处理器内部有什么、张量核心与 CUDA 核心有何不同、warp 和 block 是什么、以及 GPU 之间如何连接。我们在这里引入的每一样东西，都会在后面的章节里作为某项技术背后的硬件约束再次出现。</p>
+<p>如果你已经懂这些内容，扫一眼即可。如果不懂，请仔细读，后续每一章都会假设你能在脑中想象 HBM、SRAM、张量核心和 NVLink 拓扑。</p>
+<hr>
+<h2>为什么我们需要一章硬件内容</h2>
+<h3>6.1：当你看见这台机器时，什么改变了</h3>
+<p>在第 3 章我们用符号计算了算术强度：FLOPs 除以字节。那足以判断一个核是内存带宽受限还是算力受限。但不足以推理<em>为什么</em>。为什么 HBM 带宽是 3.35 TB/sec 而不是 33 TB/sec？为什么 FlashAttention 把工作集放进 SRAM 而不是 HBM？为什么张量并行在节点内通过 NVLink 通信、跨节点却用 InfiniBand？为什么 FP8 计算在 Hopper 上是 FP16 的两倍快？</p>
+<p>这些问题中的每一个都有具体的硬件答案。你不需要记住答案，它们随每一代 GPU 而变。你确实需要<em>知道答案的形态</em>，这样当一块新 GPU 问世（H200、B200、B300、MI355）时，你就能读规格表并预测你的哪些推理技术会改善、改善多少。这就是本章的用途。</p>
+<p>这是你将带走的一段话总结。<strong>一块现代 GPU 是约 100 个计算引擎（流式多处理器）的集合，每个里面包含数千个小型算术单元和一小块快速暂存内存。它们共享一大池慢内存（HBM），并通过高带宽互联（NVLink）彼此通信。当你跑推理时，你真正在问的是：我如何让那数千个算术单元保持忙碌，鉴于它们中的大多数会把大部分时间花在等待数据从 HBM 到达上？</strong>本章的每个硬件细节都是这一幅图景的细化。</p>
+<hr>
+<h2>这台机器，从外到内</h2>
+<h3>6.2：为什么推理在 GPU 上跑，而不是 CPU</h3>
+<p>在我们打开盒子之前，先处理第一个设计问题：为什么要用 GPU？简短答案是：因为 transformer 推理几乎完全是矩阵乘法，而 GPU 把它的晶体管预算花在矩阵乘法硬件上，CPU 却把晶体管预算花在其他一切上。</p>
+<p><img alt="图 6.1：CPU vs GPU 晶体管预算" src="figures/ch06-fig1-cpu-vs-gpu-transistor-budget/final.png">
+<em>图 6.1.</em> 两块并排的芯片晶片。CPU 晶片显示四个大核心，被一块巨大的 L3 缓存环绕，配有专门的分支预测和乱序执行逻辑。GPU 晶片显示大约 40 个小块——流式多处理器——密集排布，每个小块包含自己的计算单元和寄存器，只有一层薄薄的 L2 缓存。</p>
+<p>图 6.1 是精髓。CPU 被优化为让一个线程尽可能快地跑。它把大部分硅片花在复杂的控制逻辑、分支预测、投机执行、乱序调度，以及用于隐藏主存延迟的大缓存上。这对于有不可预测分支、指针追逐或复杂数据依赖的工作负载是正确的设计。编译器、数据库、操作系统、Web 服务器都依赖它。</p>
+<p>GPU 被优化为在简单、统一的工作上并行运行数千个线程。它几乎不把硅片花在控制或缓存上，而是几乎全部花在计算单元、算术逻辑单元（ALU）、张量核心，以及喂给它们的寄存器上。这对于有大量统一并行工作和规则内存访问模式的工作负载是正确的设计。Transformer 推理正是这样的工作负载：每一层都是矩阵乘法，而每一次矩阵乘法都是数千个可同时运行的独立点积。</p>
+<p>把数字放上来。一块现代 Intel Xeon 大约有 32–64 个核心，也许 128–256 个总算术单元（算上向量宽度之后）。一块 H100 有 132 个流式多处理器，每个有 128 个 FP32 CUDA 核心加四个张量核心，大约 18,432 条算术通道，外加专门的 MAC 硬件。CPU 可以快速启动少量线程；GPU 可以启动十万个线程并让其中大多数保持活跃。</p>
+<p><img alt="图 6.2：CPU vs GPU 在一次 matmul 上" src="figures/ch06-fig2-cpu-vs-gpu-matmul/final.png">
+<em>图 6.2.</em> 一张条形图。在一个 4096×4096 FP16 矩阵上的矩阵乘法吞吐量。CPU（Intel Xeon，32 核心）：约 1 TFLOPS。GPU（H100 张量核心 FP16）：约 989 TFLOPS。GPU 条上方的括号写着“matmul 上约 1000× 加速”。</p>
+<p>对于一个具体工作负载，图 6.2 量化了这种不对称。一块现代 32 核 Xeon 在 4096×4096 矩阵上跑一个调优良好的 FP16 matmul 大约达到 1 TFLOPS。一块 H100 在其张量核心上跑同样的 matmul 达到 989 TFLOPS。同样的操作。三个数量级。这就是为什么一个装在 RAM 里的 CPU 托管 LLM（例如通过 <code>llama.cpp</code>）对一个 7B 模型只能跑大约每秒 5 个 token，而 GPU 托管的版本在数据中心 GPU 上每个用户能跑到每秒 200–500 个 token。</p>
+<p>这也是 CPU 选项的极限。你可以在 CPU 上跑 LLM，对于低流量或隐私敏感的工作负载，这是合理的选择（见第 20 章对 <code>llama.cpp</code> 和 Ollama 的覆盖）。但你无法<em>扩展</em>它。CPU 无法像 GPU 那样通过把 matmul 部署到许多核心上使它更快——没有足够的并行通道。对于任何超出微不足道规模的推理工作负载，GPU 是正确的答案，本书的每一项技术都假设如此。</p>
+<h3>6.3：设定 roofline 天花板的内存层级</h3>
+<p>GPU 不是一种内存而是好几种，每一种都用容量换取速度。理解这个层级是理解 FlashAttention、PagedAttention 以及每一个操纵数据驻留位置的技术的前提。</p>
+<p><img alt="图 6.3：GPU 内存层级" src="figures/ch06-memory-hierarchy/final.png">
+<em>图 6.3.</em> 一个竖直堆叠的四层存储，从底部（大而慢）到顶部（小而快）。HBM / VRAM：80 GB 容量，3.35 TB/s 带宽，约 600 周期延迟。L2 缓存：50 MB，5 TB/s。SRAM / 每 SM 共享内存：228 KB，约 20 TB/s。每 SM 寄存器文件：256 KB，最快访问。右侧箭头：“带宽增加，容量减少。”左侧标注把每一层绑到一个推理概念（KV 缓存在 HBM、FlashAttention 分块进 SRAM、量化减少 HBM 流量）。</p>
+<p>图 6.3 就是这个层级。四层，按容量递减、速度递增的顺序堆叠。</p>
+<p><strong>HBM（高带宽内存，有时叫 VRAM）。</strong>底部的大池子。在 H100 上是 80 GB；在 H200 上是 141 GB；在 B200 上是 192 GB。按任何历史标准，带宽都令人印象深刻——H100 上 3.35 TB/sec——但相对算力却慢得痛苦。回想第 3 章，H100 FP16 上的脊点是每字节 295 FLOPs，这意味着任何低于该算术强度的核都是 HBM 受限的。模型权重在这里。KV 缓存在这里。大多数激活张量在这里。每次你听到“内存带宽受限”，指的都是这一层。</p>
+<p><strong>L2 缓存。</strong>由整个 GPU 共享，H100 上 50 MB，H200 上 60 MB。它位于 HBM 与 SM 之间，自动缓存最近读取的数据。对于有良好局部性的核，一次 L2 命中大约比一次 HBM 访问快 10×。当正在处理的 K 和 V 块也正是相邻 warp 正在处理的块时，FlashAttention 受益于 L2 驻留。</p>
+<p><strong>SRAM / 共享内存（每 SM）。</strong>每个流式多处理器内部的快速暂存区。H100 上 228 KB。这是 FlashAttention 分块进入的内存——一个 64×64 的 FP16 数字块是 8 KB，远在预算之内，对它操作只需几纳秒，而从 HBM 取数要几百纳秒。SRAM 足够小，一个 SM 的核若想保持快，就必须让工作集装进这里。</p>
+<p><strong>寄存器文件（每 SM）。</strong>最快的一层。每 SM 256 KB，但被切分成每线程私有切片。一个线程通常能访问几十个 32 位寄存器。主导计算的融合乘加指令从寄存器读取操作数、乘加、再写回寄存器——整条指令在一个周期内执行完。寄存器是计算真正发生的地方。</p>
+<p>特别注意这些数值比例。带宽在层级每上一级就大约提高一个数量级：HBM 3.35 TB/s，L2 约 5 TB/s，SRAM 约 20 TB/s，寄存器在线程内实际上是无限带宽。容量以同样的方式下降：80 GB、50 MB、每 SM 228 KB、每 SM 约 256 KB（但按线程）。<strong>这种反比关系不容商量。</strong>你不能同时拥有又快又大；这是由信号传播、功耗和晶片面积强加的物理定律。</p>
+<p><img alt="图 6.4：带宽 vs 容量，双对数" src="figures/ch06-fig3-bandwidth-vs-capacity/final.png">
+<em>图 6.4.</em> 双对数散点图。X 轴：容量（字节）。Y 轴：带宽（TB/sec）。四个点——寄存器、SRAM、L2、HBM——大致沿一条下降对角线分布。一条虚线趋势线标注为“反比关系：越大越慢。”</p>
+<p>图 6.4 让这个比例可见。四个存储层落在一条清晰的下降对角线上。如果你想把一个核在 roofline 上从内存带宽受限移到算力受限，你通过把它的工作集<em>向上</em>移过这个层级——移出 HBM、进入 SRAM 或寄存器——来实现。这正是 FlashAttention 所做的。这正是整个第 10 章的内容。而当有人说“这个核是 L2 驻留的”或“这个核装得进 SRAM”时，他们的意思是：工作集装得进那一层的容量，核所经历的带宽是那一层的带宽，而非 HBM。</p>
+<p>这也是为什么<strong>上下文长度是硬件问题，而不只是算法问题</strong>。一个 70B 模型的 100K token KV 缓存是几十 GB。它装不进 SRAM；装不进 L2；勉强装进 HBM；它必须在每个 decode 步骤流经 HBM。那个流式传输主导了 ITL。本书中的每一项长上下文优化——MLA、滑动窗口、线性注意力、量化 KV 缓存——都是在尝试减少每个 decode 步骤流经 HBM 的字节数。</p>
+<h3>6.4：流式多处理器内部</h3>
+<p>流式多处理器（SM）是 GPU 的执行单元。当你启动一个 CUDA 核时，运行时会把它的工作分布在所有可用的 SM 上。一块 H100 有 132 个 SM。一块 B200 有 208 个。理解一个 SM 内部有什么，是理解为什么 warp、block 和张量核心按它们的方式行事的关键。</p>
+<p><img alt="图 6.5：一块 H100 SM 内部" src="figures/ch06-fig4-inside-an-sm/final.png">
+<em>图 6.5.</em> 一个代表一块 H100 SM 的大圆角矩形。内部有四个标为 Processing Block 0 到 3 的较小矩形，按 2×2 排列。每个处理块包含一个 warp 调度器、分发单元、FP32 CUDA 核心、FP16/BF16 张量核心、寄存器文件切片和加载/存储单元。四个块下方是一条标为“共享 L1 / SRAM（228 KB），由全部 4 个块共享”的宽条。</p>
+<p>看图 6.5。一个 SM 被分成四个相同的<strong>处理块（processing block）</strong>。每个处理块有：</p>
+<ul>
+<li><strong>一个 warp 调度器。</strong>每个周期，调度器从几个驻留的 warp（每块最多 16 个 warp，每 SM 64 个）中挑一个，发出它的下一条指令。因等待内存而停滞的 warp 会被跳过，优先选择操作数就绪的 warp。这就是 GPU 隐藏内存延迟的方式——它总有另一个 warp 准备好运行。</li>
+<li><strong>一个分发单元。</strong>取来被选中 warp 的指令，把它路由到合适的执行流水线：FP32 CUDA 核心、张量核心、加载/存储单元，或用于超越函数的特殊功能单元（SFU）。</li>
+<li><strong>FP32 CUDA 核心。</strong>每个处理块 32 个，每 SM 128 个。它们处理普通的标量浮点运算，是朴素核所运行指令的绝大多数。</li>
+<li><strong>一个张量核心。</strong>大型、密集的乘积累加硬件，每条指令对 16×16 矩阵块操作。一条张量核心指令执行数千次乘加。这就是 H100 上“989 TFLOPS FP16”这个数字成为可能的原因——没有张量核心，仅 FP32 CUDA 核心“只能”提供 67 TFLOPS。</li>
+<li><strong>一个寄存器文件切片。</strong>每个处理块 16,384 个 32 位寄存器，每 SM 65,536 个。寄存器在 SM 上当前驻留的 warp 之间划分。</li>
+<li><strong>加载/存储单元。</strong>发出内存操作，从 HBM/L2/SRAM 读取，写回 HBM。</li>
+</ul>
+<p>四个处理块下方是一个共享单元：<strong>228 KB 的 L1 / 共享内存</strong>，外加一个 L1 指令缓存。共享内存就是 FlashAttention 分块进入的地方。每个处理块中每个 warp 的每个线程都能访问它，为协作提供了一个公共暂存区。</p>
+<p>关于 SM 有几个事实对推理很重要：</p>
+<p><strong>warp 切换是免费的。</strong>当一个 warp 停滞（通常是等待一次 HBM 读取）时，调度器可以在<em>一个周期</em>内切换到另一个 warp。没有操作系统式的上下文保存/恢复，因为每个线程的状态永久驻留在寄存器文件里，什么都不需要保存。这就是 GPU 用来容忍 HBM 600 周期延迟的延迟隐藏机制：让许多 warp 保持驻留，并总是有一个准备好运行。</p>
+<p><strong>张量核心稀缺而巨大。</strong>每个处理块一个张量核心，每 SM 四个，H100 上总共 528 个。每一个能做约 2.5 TFLOPS 的 FP16 工作。对比每 SM 128 个 FP32 CUDA 核心总共约 10 TFLOPS 的吞吐——张量核心占主导。高效使用张量核心，正是一个核跑到峰值的 10% 与 80% 之间的区别。FlashAttention、TensorRT-LLM 和手工调优的 CUTLASS 核都做到了；朴素的 PyTorch 没有。</p>
+<p><strong>SRAM 由全部四个处理块共享。</strong>这就是为什么块 0 里的一个线程能读取块 3 里一个线程写下的数据。这也是 FlashAttention 的分块策略能跨单个线程块的 128 个线程协作的原因——它们都落在同一个 SM 上并共享同一片 SRAM 区域。</p>
+<p>给推理工程师的要点：当你读到“FlashAttention-3 把 H100 推到 FP16 峰值的大约 85%”时，“峰值的 85%”意味着张量核心可能进行的操作中有 85% 确实在每个周期发生。剩下的 15% 损失在 warp 停滞、SRAM 存储体冲突，以及计算/内存不平衡上。第 10 章会追踪 FlashAttention 如何做到这一点；现在，只要理解这个数字来自核如何高效地使用图 6.5 中描绘的四个处理块。</p>
+<h3>6.5：张量核心与两道分开的天花板</h3>
+<p>我们在第 3 章触及了这一点，但没有解释硬件原因。现在讲。</p>
+<p><img alt="图 6.6：张量核心 vs CUDA 核心峰值吞吐" src="figures/ch06-fig5-tensor-vs-cuda-ceilings/final.png">
+<em>图 6.6.</em> 四个高度递增的竖直条。FP32 CUDA 核心：67 TFLOPS（基线）。FP16 张量核心：989 TFLOPS（基线的 14×）。FP8 张量核心：1,979 TFLOPS（基线的 29×）。INT4 张量核心：3,958 TFLOPS（基线的 59×）。上方标注：“视精度而定的 4 道分开的天花板。”</p>
+<p>张量核心不是通用计算单元。它是一块非常专门的硬件，把一件特定的事情做得极快：取两个小矩阵块（FP16 通常是 16×16）和一个第三个累加器块，计算矩阵乘积并加到累加器上，然后写回。整件事只用一条指令。</p>
+<p>关键的是，<strong>张量核心对不同精度有不同的硬件路径</strong>，而且精度越低路径越快。一个 FP16 块占据一个 FP32 块一半的硅片面积，所以同一个张量核心里能塞下两倍的块槽位。FP8 能塞四倍。INT4 能塞八倍。每次精度降低都让张量核心的峰值吞吐翻倍，代价是数值范围或精度。</p>
+<p>这就是为什么图 6.6 显示四道阶梯式天花板而非一道。当一个核使用 FP16 张量核心时，天花板是 989 TFLOPS。当它使用 FP8 张量核心时，天花板是 1,979 TFLOPS——同一块物理芯片，重新组织以打包两倍的操作。当它使用 INT4 时，天花板是 3,958 TFLOPS。</p>
+<p>这也是为什么<strong>量化不只是为了省字节</strong>。第 13 章会深入处理量化，但关键点已经在这里了：把一个模型从 FP16 量化到 FP8，既让每个权重的字节减半（对内存带宽受限的 decode 更好），<em>又</em>让算力天花板翻倍（对算力受限的 prefill 更好）。量化是那种少见的、在 roofline 的两个区间都能赢的优化。</p>
+<p>一个提醒：达到更高的天花板需要 (a) 权重以更低精度存储，以及 (b) 一个真正为该精度使用张量核心路径的核实现。简单地跑一个 FP16 模型并告诉 PyTorch“用 FP8”，并不能给你 1,979 TFLOPS——你需要一个为 FP8 张量核心编写的核，这就是为什么 TransformerEngine、cuBLAS-Lt 和 TensorRT-LLM 这类库对实现量化收益如此重要。</p>
+<h3>6.6：HBM 就是 decode 瓶颈，明确地说</h3>
+<p>我们已经多次说过 decode 是内存带宽受限的。现在硬件图景把它变得字面化。</p>
+<p><img alt="图 6.7：HBM 是 decode 瓶颈" src="figures/ch06-fig6-hbm-decode-bottleneck/final.png">
+<em>图 6.7.</em> 一幅水平插图。顶部是一条非常宽的管道，标为“算力吞吐，989 TFLOPS（FP16 张量核心）。”底部是一条非常窄的管道，标为“HBM 内存带宽，3.35 TB/s。”小的数据块被显示为挤过窄管道进入宽管道。右侧一张卡片标注：“decode 步骤：每参数 2 字节 × 7B 参数 = 每个 token 加载 14 GB。以 3.35 TB/s 计，那是每个 token 4.2 ms 的纯 HBM 流量。算力大部分时间闲置。”</p>
+<p>这里是图 6.7 中的具体算术。一个以 FP16 存储的 7B 参数模型是 14 GB 权重。要产生一个 decode token，整个权重张量必须从 HBM 读一遍——没有办法绕开；每个权重在每次前向传播中都被用到。以 3.35 TB/sec 的 HBM 带宽：</p>
+<pre><code>time = 14 GB / 3.35 TB/s = 4.18 ms
+</code></pre>
+<p>这 4.18 毫秒是<strong>Llama-3-7B 在 H100 上批量大小 1 时单用户 ITL 的下限</strong>。没有任何算法能更快，因为不读权重就无法产生 token，而在 H100 上无法比 4.18 ms 更快地读 14 GB。FP8 量化把它减半到 2.09 ms。INT4 量化到 1.05 ms。MLA 帮不上忙，因为 MLA 针对的是 KV 缓存，不是权重。FlashAttention 也帮不上忙，因为 FlashAttention 针对的是注意力内存流量，不是权重加载。即使在原则上，这个下限也是硬件的最终裁决。</p>
+<p>要低于它，你需要把单次权重加载<em>摊薄</em>到多个 token 上。这就是连续批处理所做的——在同一次前向传播中服务 32 个用户，4.18 ms 被摊到 32 个 token 上，得到每个 token 0.13 ms 的有效值。这就是投机解码所做的——每次前向传播验证 K 个草稿 token，4.18 ms 覆盖 K 个被接受的 token。这些不是彼此独立的技巧；它们是图 6.7 中那条管道、以及“任何穿过它的东西都应被用于尽可能多的 token”这一认识的直接推论。</p>
+<p>那条更宽的管道——算力——在 4.18 ms 的大部分时间里闲置。算力能做 989 TFLOPS，但为一个 7B 模型的一次前向传播只需执行约 28 GFLOPS（每个 token 2 × 7B = 14 GFLOPs，加上注意力）。那是 28 / 989,000 = 墙钟时间里算力容量的 0.003% 被利用。周期剩余的时间都在等待字节。</p>
+<p>这种不对称是推理工程中最重要的一个事实，而第 3 章的每一张图（roofline）和图 6.7（管道隐喻）从不同角度说的是同一件事。</p>
+<h3>6.7：线程、warp、block 与 grid</h3>
+<p>我们一直在硬件层面谈论 SM 和张量核心。在软件层面，GPU 程序把工作组织成一个层级。你需要理解这个层级，因为那些名字会渗入每个 profiler、每个推理引擎配置和每份核描述。</p>
+<p><img alt="图 6.8：线程 → warp → block → grid" src="figures/ch06-fig7-thread-warp-block-grid/final.png">
+<em>图 6.8.</em> 四个嵌套的方框。最内层：一个标为“1 thread”的单点。围绕它，一个框住 32 个点的方框标为“1 warp = 32 threads（SIMT 组）。”再外层，一个更大的方框标为“1 block = 最多 1024 threads，一个 SM。”最外层：一个框住许多 block 的方框标为“1 grid = 一次核启动的所有 block，横跨整个 GPU。”右侧是一个具体的映射示例：一个 FlashAttention block 处理一个 Q 块；一个 grid = 总共 N/64 个 block；一次张量核心运算 = 1 warp × 16×16×16 MMA。</p>
+<p>图 6.8 是一张图里的层级。从内到外：</p>
+<p><strong>线程（Thread）。</strong>最小单元。一个线程有自己的程序计数器和自己的寄存器，执行一条指令流。把它想成一个工人。</p>
+<p><strong>Warp。</strong>一组 32 个以<strong>锁步（lockstep）</strong>执行的线程——同一指令、同一时间、作用于不同数据。这被称为 SIMT（单指令多线程），是 GPU 的核心并行原语。如果这 32 个线程想做不同的事（一个分支，有的走一条路、有的走另一条），warp 就会串行化：先让所有线程走路径 A（不该走的被屏蔽），再让所有线程走路径 B。这就是“warp 分歧（warp divergence）”，是性能损失的常见来源。写得好的核会避免它。</p>
+<p><strong>Block。</strong>一组最多 1,024 个线程（分成最多 32 个 warp），在单个 SM 上执行。同一个 block 里的线程可以通过 SM 的 SRAM 共享数据，并通过 block 屏障同步。当你写一个 CUDA 核时，你声明每 block 多少线程、总共多少 block；运行时把 block 分配给 SM。</p>
+<p><strong>Grid。</strong>一次核调用所启动的 block 的完整集合。一个 grid 可能有数千个 block；运行时把它们分布到 H100 的 132 个 SM 上。</p>
+<p>对推理工程师来说，到技术的映射才是重要的。FlashAttention 为每个查询块启动一个 block；该 block 使用它的共享 SRAM 顺序地处理那个 Q 块对全部 K/V 块。张量并行把权重分片到多块 GPU 上，使每块 GPU 在矩阵的不同切片上跑同一个核。Paged attention 使用一个自定义核，其 block 结构与页表布局相匹配。</p>
+<p>你很少会自己写这些核。但当你读到一个推理引擎配置标志如 <code>max_num_blocks_per_seq</code>（vLLM 的 PagedAttention）时，你会知道它的意思是“一个序列能占据多少个 16-token 的 KV 页”，这与注意力核的块级内存管理相关。当一个 profiler 说“warp 占用率 68%”时，它的意思是 SM 平均有约其理论最大 warp 数的 68% 驻留并准备好运行——这是判断一个核是否订阅不足的有用数字。</p>
+<h3>6.8：GPU 间带宽：NVLink 与 InfiniBand</h3>
+<p>以上一切都是关于一块 GPU 的。生产推理常常用很多块。它们之间的带宽决定哪些并行策略可行。</p>
+<p><img alt="图 6.9：NVLink vs InfiniBand 带宽" src="figures/ch06-fig8-nvlink-vs-infiniband/final.png">
+<em>图 6.9.</em> 一张水平条形图。上条（长，深薰衣草色）：“NVLink（节点内），900 GB/s。”下条（短得多，浅粉色）：“InfiniBand（跨节点），50 GB/s。”NVLink 条大约是 InfiniBand 条的 18× 长。下方标注：“张量并行必须留在节点内。流水线并行可以跨节点。”</p>
+<p>图 6.9 中的两个数字支配每一个多 GPU 部署。</p>
+<p><strong>NVLink</strong> 是 NVIDIA 在服务器节点内的点对点 GPU 到 GPU 互联。在 H100 系统上，NVLink 在同一节点的任意两块 GPU 之间提供高达 900 GB/sec（每节点通常 8 块 GPU）。这极快，接近 HBM 带宽本身。</p>
+<p><strong>InfiniBand</strong>（通常是 HDR 或 NDR，现代集群用每端口 400 Gb/sec 的 NDR，每节点多个端口）是集群中服务器节点之间的互联。扣除开销后，有效跨节点带宽大约是 50 GB/sec。</p>
+<p>比例大约是 18:1。这不是小差别。任何通信频率高的并行策略都会在 InfiniBand 上窒息，但在 NVLink 上跑得很干净。具体来说：</p>
+<p><strong>张量并行（TP）</strong>把每个 matmul 分到多块 GPU 上，并在每个 transformer block 之后需要一次 AllReduce。一个 70B 模型有 80 个 transformer block；TP 意味着每次前向传播 80 次 AllReduce，每次移动几十 MB。以 900 GB/sec 的 NVLink 计，一次 AllReduce 花几十微秒；微不足道。以 50 GB/sec 的 InfiniBand 计，同样的 AllReduce 花几百微秒，再乘以 80 层，就变成每步几毫秒，摧毁 ITL。<strong>TP 必须留在一个节点内。</strong></p>
+<p><strong>流水线并行（PP）</strong>把模型按层组分片，使 GPU 0 有 1-20 层、GPU 1 有 21-40 层，等等。通信只在激活从一个阶段跨到下一个阶段时发生，每次前向传播一次，负载几 MB。即使在 InfiniBand 上，这也足够快。<strong>PP 可以跨节点。</strong></p>
+<p><strong>专家并行（EP）</strong>把 MoE token 路由到持有其选中专家的 GPU 上。这是混合的：top-K 专家选择按 token 进行（高频率），但只有专家驻留在远程 GPU 上的 token 才产生跨节点通信。高效的 EP 设计让大多数专家与其分配的 GPU 同址。</p>
+<p>第 16 章会详细展开这些并行策略。对本章来说，要点是<strong>多 GPU 拓扑不是你能随意做的选择</strong>。互联决定了什么可行，而互联由节点和集群的物理布局所设定。</p>
+<h3>6.9：多 GPU 节点拓扑，可视化</h3>
+<p>最后，一个生产多 GPU 设置实际长什么样？</p>
+<p><img alt="图 6.10：多 GPU 节点拓扑" src="figures/ch06-fig9-multi-gpu-node-topology/final.png">
+<em>图 6.10.</em> 两个大圆角矩形，标为“Node 1”和“Node 2。”每个包含八个小 GPU 方框，按 2×4 网格排列，由标为“NVLink 网状，各 900 GB/s”的粗薰衣草色线完全互联。两个节点之间是一条细虚线，标为“InfiniBand，50 GB/s。”一个标注：“张量并行留在一个节点内；流水线并行横跨两者。”</p>
+<p>图 6.10 展示了标准的推理集群架构。每个<strong>节点</strong>包含 8 块 GPU（有时 4 块，有时 16 块），由完整的 NVLink 网状连接——节点内每块 GPU 都能以 900 GB/sec 与节点内其他每块 GPU 通信。节点之间，一条细但可靠的 InfiniBand 链路承载跨节点流量。</p>
+<p>这个拓扑解释了几条生产规则：</p>
+<ul>
+<li>一个用 4 路张量并行服务的 70B 模型装进单个节点的四块 GPU 上；没有跨节点流量。</li>
+<li>一个 405B 模型（Llama 3.1 405B）装不进 8 × 80 GB = 640 GB——实际上加一些量化它装得下——所以节点内 8 路 TP 可行。</li>
+<li>一个万亿参数的 MoE 模型横跨多个节点。张量并行必须留在节点内（在 8-GPU NVLink 网状内）；流水线并行跨过 InfiniBand 链路到达其他节点。这就是为什么生产中的 Llama-3.1 405B 和 DeepSeek-V3 部署是 16 块 GPU 跨两个节点的 8 路 TP × 2 路 PP（或等价配置）。</li>
+</ul>
+<p>当我们到第 16 章（并行）和第 17 章（解耦 P/D）时，请把图 6.10 记在心里。两章都会引用这里描绘的确切结构。</p>
+<hr>
+<h2>这台机器，总结</h2>
+<h3>6.10：你现在知道了什么</h3>
+<p>你现在能读任何 GPU 规格表并预测它在推理上的表现。清单如下：</p>
+<ol>
+<li><strong>HBM 带宽</strong>（字节/秒），设定 roofline 的斜率和 decode 的 ITL 下限。</li>
+<li><strong>FP16 / FP8 / INT4 张量核心 TFLOPS</strong>，设定算力天花板。每个更低精度是一道分开的天花板。</li>
+<li><strong>每 SM 的 SRAM</strong>（字节），设定 FlashAttention 这类分块核的工作集预算。</li>
+<li><strong>SM 数量</strong>，设定最大并行度和完全打满芯片的最小批量大小。</li>
+<li><strong>NVLink 带宽</strong>（节点内，字节/秒），设定节点内哪些并行策略可行。</li>
+<li><strong>InfiniBand 或 Ethernet 带宽</strong>（跨节点，字节/秒），设定跨节点哪些并行策略可行。</li>
+</ol>
+<p>对 H100 这些是：3.35 TB/s、989 / 1979 / 3958 TFLOPS、228 KB SRAM/SM、132 个 SM、900 GB/s NVLink、50 GB/s InfiniBand。对 B200 数字大约是：8 TB/s HBM（2.4×）、2250 / 4500 / 9000 TFLOPS（2.3×）、228 KB SRAM/SM（不变）、208 个 SM（1.6×）、1800 GB/s NVLink（2×）。跨世代，内存带宽与算力之间的比例相似，两者都上升，脊点大致留在原处。</p>
+<h3>6.11：为什么这是最后一章硬件内容</h3>
+<p>从这里起，本书假设你无需被一步步引导，就能在硬件与推理概念之间翻译。当我们说“K/V 缓存在 HBM 上受压”时，你知道意思是：字节大到足以压迫 80 GB 预算，它们的读取主导了 roofline 的内存带宽项。当我们说“FlashAttention 分块进 SRAM”时，你知道意思是：N×N 注意力分数矩阵驻留在单个 SM 的 228 KB SRAM 暂存区里，从不碰 HBM。当我们说“跨 4 块 GPU 的张量并行”时，你知道意思是：那 4 块 GPU 在同一个节点里，由 900 GB/sec NVLink 网状连接，在每个 transformer block 之后运行 AllReduce。</p>
+<p>这就是词汇表。第 7 章起会自由地使用它。</p>
+<hr>
+<h3>6.12：接下来去哪</h3>
+<p>我们有了这台机器。第 7 章回到第 5 章构建的 KV 缓存，提出下一个问题：既然我们有了缓存，它要花多少成本？在真实模型上它有多大？能装进 HBM 吗？装不下时会发生什么？答案，以及回应它的那些技术，就是接下来六章的内容。</p>
+</section>
+
+<section class="chapter-wrapper" id="ch07-good-and-evil-of-kv-cache">
+<h1>第 7 章：KV Cache 的善与恶</h1>
+<p>第 5 章从第一性原理推导了 KV 缓存。第 6 章给了我们 GPU 硬件来推理它的成本。本章闭合这个环：缓存究竟省下多少 FLOP 工作、缓存究竟消耗多少 HBM、以及省下来的部分究竟在哪里变成一个新问题——那个接下来六章被写出来要解决的问题。</p>
+<p>标题不是隐喻。KV 缓存是整本书中最大的单一推理加速，也是每一后续章节都在试图缓解的那项最大痛苦来源。这两个效应不可分割。你无法在拥有 FLOP 节省的同时不制造内存压力；消除二次计算的同一个数据结构，也正是那个在 HBM 里线性累积字节的数据结构。</p>
+<p>把本章读作两个互补的论证。前半（到 §7.6）是“善”——仔细核算缓存给你买来了什么、在什么规模上。后半（§7.7 到 §7.11）是“恶”——仔细核算缓存让你付出了什么，以及它交给后续章节的难题。</p>
+<hr>
+<h2>KV 缓存是什么，它存储什么</h2>
+<h3>7.1：数据结构</h3>
+<p>我们在第 5 章说缓存存储所有过去 token 的 K 和 V。让我们把这个数据结构说精确。</p>
+<p><img alt="图 7.1：KV 缓存实际存储什么" src="figures/ch07-fig1-what-kv-cache-stores/final.png">
+<em>图 7.1.</em> 一个把 KV 缓存可视化为形状 (N 个 token, H 个头, D 头维度) 的张量、在 L 个 transformer 层上复制、K 与 V 分开存储的堆叠图。堆叠周围的标注为每个维度命名：N 每个 decode 步骤加一；H 是 KV 头数（架构上固定）；D 是头维度（架构上固定）；L 是层数（架构上固定）；K 与 V 独立存储。</p>
+<p>图 7.1 就是那个数据结构。对每个 transformer 层，我们存储：</p>
+<ul>
+<li>形状为 <code>(N, H, D)</code> 的 K 张量——所有 N 个过去 token、跨 H 个头、每个维度 D 的键。</li>
+<li>形状为 <code>(N, H, D)</code> 的 V 张量——所有 N 个过去 token 的值。</li>
+</ul>
+<p>每个元素通常是 FP16 或 BF16，即 2 字节。跨 L 层相乘并计入 K 和 V 两者：</p>
+<pre><code>KV cache bytes per user  =  2 (K and V)  ×  N  ×  H  ×  D  ×  L  ×  2 (FP16 = 2 bytes)
+                         =  4  ×  N  ×  H  ×  D  ×  L
+</code></pre>
+<p>除了 N 之外每一项都是架构上固定的——它是模型的属性，在训练时选定。只有 N（序列长度）在推理时增长，而且每个 decode 步骤恰好加一。</p>
+<p>缓存是<strong>每用户、每会话</strong>的数据结构。每个并发用户有各自的 KV 缓存，因为每个用户有各自的对话。当用户会话结束时，它的缓存被释放。当新用户开始时，分配一个新缓存。这就是为什么 KV 缓存内存管理——我们将看到它支配 §7.7 中一块 GPU 的并发用户容量——成为生产推理服务的核心基础设施问题。</p>
+<h3>7.2：缓存 decode 循环，再说一遍</h3>
+<p>第 5 章从算法上走了一遍 KV 缓存 decode 循环。图 7.2 展示了单步的计算流。</p>
+<p><img alt="图 7.2：有 KV 缓存的一个 decode 步骤" src="figures/ch07-fig2-decode-with-kv-cache/final.png">
+<em>图 7.2.</em> 四个方框的水平流程。(1) 新输入 token 嵌入（一个向量）。(2) 只为新 token 计算 Q、K、V（各一行）。(3) 把新 K 和 V 追加到缓存；读取完整 K 缓存和 V 缓存。(4) 注意力：Q_new · K_cacheᵀ、softmax、乘以 V_cache，产生上下文向量。一个小插图显示 KV 缓存，其中新追加的一行被高亮。</p>
+<p>每个 decode 步骤的工作是：</p>
+<ol>
+<li>取最近生成 token 的嵌入（形状 <code>1 × d</code>）。</li>
+<li>计算 <code>q_new = x_new · W_Q</code>、<code>k_new = x_new · W_K</code>、<code>v_new = x_new · W_V</code>，各形状 <code>1 × d</code>。这些是仅有的全新 Q、K、V 计算。</li>
+<li>把 <code>k_new</code> 和 <code>v_new</code> 追加到缓存——K 和 V 矩阵从 N 行增长到 N+1 行。</li>
+<li>计算注意力：<code>q_new · K_cacheᵀ / √d = scores</code>（形状 <code>1 × (N+1)</code>），然后 softmax → 权重，然后 <code>weights · V_cache = context</code>（形状 <code>1 × d</code>）。</li>
+<li>应用输出投影、FFN、反嵌入。采样下一个 token。追加到输出序列。</li>
+<li>重复。</li>
+</ol>
+<p>缓存循环在最终答案的意义上做与朴素推理完全相同的数学，但<strong>每步的 FLOP 数从 O(N²·d) 塌缩到 O(N·d)</strong>，因为一切依赖于过去 Q 向量的东西现在都从缓存读取而非重新计算。</p>
+<hr>
+<h2>量化节省与成本</h2>
+<h3>7.3：每个 decode 步骤省下的 FLOPs</h3>
+<p>图 7.3 比较了朴素与缓存 decode 的每步 FLOP 成本，跨现实的序列长度。</p>
+<p><img alt="图 7.3：每个 decode 步骤的 FLOPs：无缓存 vs 有缓存" src="figures/ch07-fig3-flops-without-vs-with-cache/final.png">
+<em>图 7.3.</em> 一张分组条形图。X 轴：序列长度 N = 128、512、2048、8192。Y 轴：每步 FLOPs（对数刻度）。每组两根条：朴素（O(N²·d)，二次增长）和有 KV 缓存（O(N·d)，线性增长）。在 N=8192 处一个括号标注“每步少约 8000× FLOPs。”</p>
+<p>对比很鲜明。在 N = 128，缓存版本比朴素版本省下大约 100× 的计算。在 N = 2048，省约 2,000×。在 N = 8192，省约 8,000×。<strong>节省比例与 N 本身成正比。</strong></p>
+<p>这正是长上下文根本可行的核心。一个 32K token 的对话在缓存 decode 下每步 FLOPs 比朴素少约 32,000×。没有缓存，长上下文下的每次交互都要每 token 花好几秒；有了缓存，只要几毫秒。服务长上下文 LLM 的整个实践都建立在这个加速之上。</p>
+<p><img alt="图 7.4：KV 缓存加速因子 vs 序列长度" src="figures/ch07-fig4-speedup-curve-vs-sequence-length/final.png">
+<em>图 7.4.</em> 一张折线图。X 轴：序列长度 N，0 到 32,000（线性）。Y 轴：加速因子（朴素 FLOPs / 缓存 FLOPs），对数刻度从 1 到 100,000。一条直线线性上升，在 N = 128（128× 加速）、N = 1,024（1,024×）、N = 8,192（8,192×）、N = 32,000（32,000×）处标注。线上标注：“加速因子 = N。上下文每翻倍一次就翻倍。”</p>
+<p>图 7.4 让这个线性关系变得明确。加速因子<em>就是</em> N。上下文翻倍，加速翻倍。这是你记在脑中的公式：<strong>KV 缓存比朴素 decode 快约 N 倍，其中 N 是当前序列长度</strong>。在我们过于庆祝之前，应记住这是每步 FLOP 节省，不是墙钟节省。墙钟也取决于内存带宽，而这正是后续几节要拆解的那一半故事。</p>
+<h3>7.4：大小公式，仔细推导</h3>
+<p>现在我们转向成本一侧。公式在 §7.1 已经陈述，但值得一步步推导。</p>
+<p><img alt="图 7.5：每层 KV 缓存大小，推导" src="figures/ch07-fig5-kv-cache-formula-derivation/final.png">
+<em>图 7.5.</em> 一个有五个标注步骤的竖直推导。步骤 1：“对每个 token，我们存储 K 和 V 两者。”步骤 2：“每个 K 和 V 有形状 [H 个头, 每头 D 维] = H·D 个条目。”步骤 3：“跨 N 个 token，大小各为 N·H·D 个条目。”步骤 4：“跨 L 个 transformer 层，乘以 L。”步骤 5：“K 和 V 两者，每条目 2 字节（FP16）。”公式框：“KV cache bytes = 2 × 2 × N × H × D × L。”下方一个已计算示例卡片：“Llama-3-70B：N=32,768、H=8、D=128、L=80、FP16 → 约 43 GB。”</p>
+<p>公式中的每一项都来自一个不同的架构维度，值得逐一命名。</p>
+<ul>
+<li><strong>K 和 V 的因子 2。</strong>我们存储 K 和 V 两者，它们是独立的张量。</li>
+<li><strong>N，序列长度。</strong>唯一在推理时增长的项。每个 decode 步骤一个新行。</li>
+<li><strong>H，K/V 头数。</strong>架构上固定。对 MHA，H 等于注意力头数。对 GQA，H 是组数（小得多）。对 MLA，H 被一个不同的压缩维度替代（第 8 章）。</li>
+<li><strong>D，头维度。</strong>通常是 64 或 128。架构上固定。</li>
+<li><strong>L，transformer 层数。</strong>Llama-3-8B 是 32，Llama-3-70B 是 80，DeepSeek-V3 是 61。架构上固定。</li>
+<li><strong>FP16 的因子 2。</strong>每元素两字节。量化 KV 缓存（第 13 章）把它降到 1 字节（FP8）或 0.5 字节（INT4）。</li>
+</ul>
+<p>相乘得到最终公式：</p>
+<pre><code>KV cache bytes per user session  =  4 · N · H · D · L
+</code></pre>
+<p>对 N = 32,768 的 Llama-3-70B：<code>4 × 32,768 × 8 × 128 × 80 = 43 GB</code>。那是每个用户。对一个用户、32K 上下文，光 KV 缓存就超过一块 H100 全部 HBM 的一半还多。</p>
+<p>这就是压垮朴素生产部署的那个数字。一个工程师拿起 Llama-3-70B，看到它装进 2 × H100（140 GB 的 FP16 权重放进 160 GB HBM），就以为部署可行。然后第一个用户发来一个长提示，KV 缓存分配 43 GB，部署在第二个用户能连上之前就倒了。</p>
+<h3>7.5：真实模型缩放：会糟到什么程度？</h3>
+<p>图 7.6 在主要现代开源模型上画出这个公式。</p>
+<p><img alt="图 7.6：真实规模下的 KV 缓存，N = 4096 FP16" src="figures/ch07-fig6-kv-cache-real-scale/final.png">
+<em>图 7.6.</em> 一张水平条形图，对数刻度。五根条，从上到下。GPT-2（124M）：12 MB。GPT-3（175B）：2.4 GB。Llama-3 70B：5.4 GB（N=4K 时）。带 MLA 的 DeepSeek-V3：0.6 GB。假设用 MHA 的 DeepSeek-V3：15 GB（虚线轮廓）。</p>
+<p>图 7.6 讲述了这个随模型增长而增长的问题的故事。GPT-2（2019 年的模型）的 KV 缓存是个舍入误差，4,096 token 才 12 MB。GPT-3（2020）已经到每用户会话 2.4 GB，在当时 40 GB 的 GPU 上可见但可容忍。Llama-3-70B（2024）在 N = 4,096 是 5.4 GB；在长上下文（N = 32K）是 43 GB。</p>
+<p>看底下两根条。<strong>带 MLA（多头潜在注意力，Multi-head Latent Attention）的 DeepSeek-V3 在同样规模是 0.6 GB。</strong>同一个模型<em>若不用</em> MLA——如果他们用了标准 MHA——会是 15 GB。MLA 给出约 25× 的减少。这就是一个 671B 参数模型如何在一个可行的 GPU 预算上变得可长上下文服务：缓存在被分配之前就被架构压缩了。</p>
+<p>我们将在第 8 章花时间理解 MLA 和其他头部压缩技术。现在，注意图 7.6 框定了问题：<strong>KV 缓存增长已经超过了模型增长</strong>。2019 年，缓存是个脚注。2026 年，缓存是大多数生产 LLM 部署里的主导成本，而缩小它的架构技术（尤其是 MLA）正是前沿长上下文模型在经济上可行的原因。</p>
+<h3>7.6：一块 H100 上装得下多少用户？</h3>
+<p>让我们回答一个推理工程师在第一周就会被问到的问题：我在一块 H100 上能服务多少个并发用户？</p>
+<p><img alt="图 7.7：Llama-3-70B 推理的 H100 内存预算" src="figures/ch07-fig7-h100-memory-budget/final.png">
+<em>图 7.7.</em> 一根代表 H100 80 GB HBM 的水平堆叠条，分段标为模型权重（70 GB，脚注说明 Llama-3-70B 在 FP16 实际是 140 GB 并需要 2× H100 TP）、激活/工作区（5 GB）、可用 KV 缓存（约 5 GB）。一个注释箭头指向 KV 缓存段：“约 5 GB / 每用户 43 GB = 一撮并发会话！”一张问题卡：“问：如何用更少的每用户 KV 缓存服务更多用户？”</p>
+<p>图 7.7 做了核算。Llama-3-70B 在 FP16 有 140 GB 权重，一块 H100 装不下，所以生产系统用 2 路张量并行：每 GPU 70 GB。前向传播需要几 GB 激活工作区。这样每 GPU 剩下约 5 GB 给 KV 缓存存储。</p>
+<p>如果每个用户在 N = 32K 的缓存花 43 GB，而我们每 GPU 只有 5 GB 可用，那就是<strong>每 GPU 不到一个用户</strong>。部署对长上下文不可行。即使在中等上下文（N = 4K，每用户 5.4 GB），单块 GPU 也勉强装下一个并发用户。</p>
+<p>这就是后续章节里每一项优化存在的原因。不量化权重（第 13 章）或更激进地分片（第 16 章），每 GPU 5 GB 就没得商量。每用户 43 GB 正是 MLA、GQA、滑动窗口和量化 KV 缓存要攻击的。<strong>每用户每省下一字节，就多装进一个新并发用户。</strong>如果我们能把每用户缓存从 43 GB 降到 5 GB（9× 减少），就从 1 个用户到 9 个用户。如果降到 1 GB，就是 45 个用户。生产推理的经济学就悬在这些比例上。</p>
+<p>这也解释了为什么 DeepSeek-V3 作为架构参考如此重要。它由 MLA 驱动的约 8–10× KV 缓存减少（相对 MHA）不只是一个聪明的技巧；它是可行生产部署与不可行部署之间的差别。</p>
+<hr>
+<h3>7.7：带宽问题：缓存如何让 decode <em>更</em>内存带宽受限</h3>
+<p>到目前为止我们在数静止的字节。那运动的字节呢？缓存如何影响每个 decode 步骤的 HBM 流量？</p>
+<p><img alt="图 7.8：带宽问题：每 FLOP 字节数随 N 增长" src="figures/ch07-fig8-bandwidth-problem-bytes-per-flop/final.png">
+<em>图 7.8.</em> 一张折线图。X 轴：序列长度 N，0 到 32,768。Y 轴：每 FLOP 传输的字节数（越低越好，是算术强度的倒数）。一条上升曲线标为“有 KV 缓存时，每 FLOP 字节数随 N 线性增长。”一条水平虚线标为“H100 内存带宽极限。”曲线在大约 N = 4K 处穿过这条线，此后保持在上方。N = 16K 处标注：“深度内存带宽受限。每个新 token 都需要把整个 KV 缓存再读一遍。”</p>
+<p>这里有一个多数工程师第一次算它时都会吃惊的微妙事实。</p>
+<p>每个 decode 步骤，我们从 HBM 读取整个 K 缓存和整个 V 缓存——每一行、每一个头、每一层。对 N = 32K 的 Llama-3-70B，那是每个 decode 步骤 43 GB 的缓存流量，外加 140 GB 的权重流量。以 H100 的 3.35 TB/sec，那是每个 token 纯缓存读取时间 <code>43 / 3350 = 12.8 ms</code>，加上每个 token 权重读取时间 <code>140 / 3350 / 2 (TP) = 21 ms</code>。<strong>在任何优化之前，单用户 ITL 下限是约 34 ms</strong>，而在长上下文下，其中大部分是缓存流量，不是权重流量。</p>
+<p>更糟：<strong>随着 N 增长，字节增长，但每字节的 FLOPs 不成比例增长</strong>。注意力核的 FLOPs 按 N 缩放（一个新查询对 N 个键点积，乘以 d），而读取的字节也按 N 缩放（读取长度 N 的 K 和 V 缓存）。比例：FLOPs/字节大致恒定且很小，算术强度保持在 1–2 左右，无论上下文多长。</p>
+<p>图 7.8 把它表达为“每 FLOP 字节数”，即算术强度的倒数。在短上下文，每 FLOP 字节数比率可控。在长上下文，比率线性攀升，越过一个阈值（H100 上约 N = 4K）后，它超过 HBM 带宽在算力速率下能提供的量。核变得深度内存带宽受限，算力单元大部分周期闲置。</p>
+<p>这就是 KV 缓存<strong>让 decode 更内存带宽受限、而非更少</strong>的那个意义。缓存消除了二次 FLOPs（好），但幸存下来的线性 FLOPs 仍须由线性增长缓存的读取来喂（坏）。后续章节里的每一项缓存压缩技术都恰好攻击这一点：每步读取更少字节，使算术强度能保持更高。</p>
+<h3>7.8：权衡，一张表</h3>
+<p>图 7.9 总结故事的两面。</p>
+<p><img alt="图 7.9：KV 缓存权衡总结" src="figures/ch07-fig9-tradeoff-summary-table/final.png">
+<em>图 7.9.</em> 一张两列表格。左列“善（我们赢得的）。”右列“恶（我们失去的）。”五行：(1) FLOPs 从 O(N²·d) 降到 O(N·d) | 内存字节按 N·H·D·L 增长。(2) decode 延迟降约 N× | 每用户内存占用线性增长。(3) 支持更长上下文 | 更少并发用户装进 HBM。(4) 消除冗余计算 | 增加带宽压力；decode 更内存带宽受限。(5) 让大规模交互式聊天可行 | 催生缓存压缩需求（MQA、GQA、MLA、滑动窗口、量化 KV）。</p>
+<p>图 7.9 是资产负债表。每一条“善”都配着相应的“恶”——它们不是独立的清单，而是同一个工程对象的两面。值得注意的单元：</p>
+<ul>
+<li>
+<p>第 1 行。我们通过缓存原本会被重新计算的东西来省 FLOPs。但我们创建的缓存必须活在内存里，而既然我们每层每 token 缓存两个完整张量（K 和 V），字节就随序列长度线性缩放——这是 FLOP 节省的代价。</p>
+</li>
+<li>
+<p>第 3 行。从计算角度看，更长上下文变得可行（每步 O(N) 即使在 100K token 也可负担）。但固定的 80 GB HBM 预算被缓存吃掉，留下更少并发用户槽位。一个在短上下文能服务 100 个并发用户的系统，在长上下文也许只能服务 4–5 个——同样的硬件、同样的模型。</p>
+</li>
+<li>
+<p>第 4 行。我们消除了冗余计算（O(N²) 的朴素成本被塌缩）。但节省把我们向左移上 roofline：算术强度下降，带宽成为绑定约束，此后每一次 ITL 改善都需要直接攻击每 token 字节数。</p>
+</li>
+</ul>
+<h3>7.9：这把 decode 放到 roofline 的哪里</h3>
+<p><img alt="图 7.10：KV 缓存在 roofline 上" src="figures/ch07-fig10-kv-cache-on-roofline/final.png">
+<em>图 7.10.</em> 标准 roofline 图。两个标注的工作点。“朴素 decode，无缓存”放在中等算术强度，已内存带宽受限但更靠近脊点。“有 KV 缓存（大 N）”放在内存带宽受限区间更深处，更靠左。一条干净箭头从第一个点到第二个点，标为“KV 缓存把你向左移。”一个侧边图例：“更少 FLOPs（好），同样的字节（坏）→ 更低 AI → 更内存带宽受限。”</p>
+<p>图 7.10 把前后放到 roofline 上。朴素 decode 坐在中等算术强度，它做 O(N²) FLOPs 并读 O(N) 字节，给出 N 量级的 AI，对大的 N 实际是算力受限的（如果我们负担得起算力的话——但我们负担不起）。</p>
+<p>缓存 decode 坐在 1 量级的 AI，它做 O(N) FLOPs 并读 O(N) 字节，给出不随上下文长度而变的恒定 AI。深在内存带宽受限区间。</p>
+<p>这是本书中最重要的 roofline 移动。后续每一章都以某种方式是对它的回应。</p>
+<p><strong>第 8 章</strong>跨注意力头压缩缓存。MLA、MQA 和 GQA 都降低每 token 字节数中的 H 因子，提高算术强度，把点向右移。</p>
+<p><strong>第 9 章</strong>跨 token 压缩。滑动窗口注意力、线性注意力和状态空间模型降低每 token 字节数中的 N 因子，同样提高 AI。</p>
+<p><strong>第 10 章</strong>通过 FlashAttention 把注意力移进 SRAM。N×N 注意力矩阵不再碰 HBM，于是一大股字节流量来源完全消失。</p>
+<p><strong>第 11 章</strong>把缓存虚拟化成页（PagedAttention），消除否则会限制缓存能在 GPU 上打包多密的外部碎片。</p>
+<p><strong>第 12 章</strong>跨用户共享缓存（前缀缓存）并分块长 prefill 以避免 decode 停滞。</p>
+<p><strong>第 13 章</strong>量化缓存本身。一个 FP8 或 INT4 KV 缓存有 FP16 缓存一半或四分之一的字节。</p>
+<p><strong>第 14 章</strong>批量处理并发用户 decode，使单次缓存读取服务多个 token，把点沿斜率向右上移。</p>
+<p>这些技术中的每一个都是对图 7.10 中那个左移的直接回应。本书的其余部分就是那一连串的反击。</p>
+<hr>
+<h2>每个后续章节回答的问题</h2>
+<h3>7.10：“我们能否只要 FLOP 节省、不要带宽成本？”</h3>
+<p>把整章放进一个问题：<strong>有没有办法既拿到 KV 缓存的 FLOP 节省，又不付出每步带宽成本？</strong></p>
+<p>直白的答案是没有，至少不完全。任何让下一个 token 以过去 token 为条件的架构，都必须以某种形式读取与过去 token 状态成正比的东西。缓存的字节是模型所用信息强加的一个下界。</p>
+<p>但我们可以减小那个比例常数。更少的头。更小的维度。压缩的潜变量。量化的精度。滑动窗口。每一项都用一点模型质量换取每步缓存字节的成比例减少。把它们叠加够多，你就能以近乎相等的质量从每用户 43 GB 走到每用户 1 GB。</p>
+<p>这就是接下来六章的计划，也是为什么第 7 章以这个问题收尾。我们从这里开始研究的每一项技术，都用两条标准来评估：它把缓存缩小多少，以及它在模型质量上花多大代价。</p>
+<h3>7.11：关于何时<em>不</em>压缩缓存的说明</h3>
+<p>不是每个部署都需要 MLA 或滑动窗口。如果你的上下文短（4K 以下）、并发用户负载适中（每 GPU 20 个以下）、模型小（13B 以下），H100 上的普通 MHA 缓存就很好用。只有当上下文长、模型大、或并发负载高时，带宽压力才变成真正的约束。</p>
+<p>这很重要，因为每一项压缩技术都有质量成本，无论多小。如果你的部署不需要压缩，你就是在为一个不存在的问题付出质量。一个好的推理工程师不会默认应用每一项优化；他们测量当前工作点、识别绑定约束、并应用能缓解它的最小技术集合。</p>
+<h3>7.12：接下来去哪</h3>
+<p>第 8 章是对缓存带宽成本的第一次直接攻击：<strong>跨注意力头压缩缓存</strong>。我们将看到多头注意力（Multi-Query Attention，所有头共享一个 K/V）、分组查询注意力（Grouped-Query Attention，头按组共享）和多头潜在注意力（DeepSeek-V3 的创新，以缓存大小的一小部分给出接近 MHA 的质量）。到第 8 章末尾，我们将根据所选变体把缓存公式中的 H 因子削减 4× 到 32×，并精确看到哪些现代模型用哪个变体以及为什么。</p>
+</section>
+
+<section class="chapter-wrapper" id="ch08-compress-across-heads">
+<h1>第 8 章：跨头压缩</h1>
+<p>第 7 章以一个提问收尾。KV 缓存让 decode 可行却压迫 HBM，而 HBM 压力正是现在限制每用户上下文长度和并发用户密度的东西。<strong>我们能缩小缓存吗？</strong></p>
+<p>能。第一次直接攻击是架构性的：改变注意力的头如何共享键和值，使每个 token 需要存储的 K/V 向量更少。今天使用中有四种主要设计，按历史顺序引入：多头注意力（MHA，原始）、多查询注意力（MQA，2019）、分组查询注意力（GQA，2023）和多头潜在注意力（MLA，2024）。每一个都在压缩缓存的同时，尽力保留多头设计的模型质量收益。</p>
+<p>本章走完这四种。每一个都配一张图、一个数值例子，以及它的每 token 缓存大小的推导。到结尾你会知道哪个现代模型用哪个变体、为什么 Llama-3 对 32 个查询头用 8 个 KV 头的 GQA、以及为什么 DeepSeek-V3 的 MLA 是当前生产中最精妙的压缩技术。</p>
+<hr>
+<h2>为什么头部共享是第一根杠杆</h2>
+<h3>8.1：缓存公式，重排</h3>
+<p>回想第 7 章，每 token 每用户 KV 缓存字节是：</p>
+<pre><code>KV bytes per token per user  =  4 · H · D · L
+</code></pre>
+<p>四个因子。两字节 × 2（K + V）。H（KV 头数）。D（头维度）。L（层数）。乘以序列长度 N 得到完整的每用户缓存。</p>
+<p>其中，<strong>H 是最容易缩小的因子</strong>。L 由架构固定。D 由架构固定。4 字节除非量化（第 13 章）否则固定。但 H——不同 K/V 头对的数量——是一个设计选择。在原始 MHA 中，H 等于注意力头数。在 MQA 中，H = 1。在 GQA 中，H 是 1 到完整头数之间的一个选定组数。在 MLA 中，H 被一个更小的潜变量维度替代。</p>
+<p>本章的每个变体都降低第一个因子，其余保持不变。H 降低 4×（比如通过 GQA 从 32 个查询头到 8 个 KV 头）就带来每 token 缓存字节 4× 的减少，意味着同样上下文长度下同一块 GPU 能多装 4× 的用户。这就是经济学上的理由。</p>
+<h3>8.2：为什么不一开始就用更少的头？</h3>
+<p>在我们开始削减之前，一个合理的问题：为什么 MHA 一开始要有多个头？为什么不用一个带有全维 K 和 V 的大头？</p>
+<p>因为多个头让模型能同时关注不同<em>种类</em>的关系。想想句子“the artist painted the portrait of a woman with a brush.”一个头可能在学习“‘with’修饰哪个名词”（句法）；另一个可能在学习“哪个物体是工具”（语义）；第三个可能在学习“语法主语是什么”（结构）。拥有 32 个头（如 Llama-3-8B）意味着 32 个独立的注意力子空间，各自专精。这种视角的多样性正是 transformer 有效的原因。</p>
+<p>完全移除头会毁掉这一点。激进地合并头会降低模型的表达能力，而在检索密集任务上（比如回答一个需要从 10K token 上下文中检索某个特定事实的问题），这会显现为可测量的质量回退。</p>
+<p>所以本章的计划不是“消除头”。而是：<strong>保留 Q 头（使查询保留其多样性），但共享或压缩 K/V 投影，使缓存缩小</strong>。四种变体在共享的激进程度上不同。</p>
+<p><img alt="图 8.1：跨头压缩 KV 缓存的四种方式" src="figures/ch08-fig1-four-variants-side-by-side/final.png">
+<em>图 8.1.</em> 四张并排象形图。MHA：8 个 Q 圆，每个与自己的独有 K/V 配对。MQA：8 个 Q 圆全部指向一个共享 K 和一个共享 V。GQA：8 个 Q 圆分成 2 组各 4 个，每组共享一个 K/V。MLA：8 个 Q 圆指向一个小“潜变量”块，按需扩展到 K/V。每个面板下方：每 token 缓存大小公式。</p>
+<p>图 8.1 是一张图里的本章。四种架构，同样数量的 Q 头，截然不同的 KV 缓存大小。</p>
+<hr>
+<h2>一次一种架构</h2>
+<h3>8.3：MHA：多头注意力，基线</h3>
+<p>MHA 是原始设计。H 个注意力头中的每一个都有自己的全维 K 和 V 投影。一个 H = 32 头、每头 D = 128 的模型有 32 个独立的 (K, V) 对，每个形状 <code>(N, 128)</code>，每层每用户存储。</p>
+<p><img alt="图 8.2：MHA 基线：每个头有自己的 K 和 V" src="figures/ch08-fig2-mha-baseline/final.png">
+<em>图 8.2.</em> 一张标准注意力图。形状 (B, N, d) 的输入 X 通过 W_Q、W_K、W_V 投影成形状 (N, H, D) 的 Q、K、V。画了 8 条头通道，每条都有自己的独有 Q、K、V 切片。最终输出是所有头输出的拼接，再投影回模型维度。</p>
+<p>图 8.2 为清晰起见展示了批量 B = 1 的 MHA。参数是：</p>
+<ul>
+<li><code>W_Q</code>、<code>W_K</code>、<code>W_V</code>，各形状 <code>(d, d)</code>，所以注意力输入投影总共 <code>3d²</code> 个参数。</li>
+<li>每个产生形状 <code>(N, H, D)</code> 的输出，其中 <code>d = H × D</code>。</li>
+</ul>
+<p>每 token 缓存是：</p>
+<pre><code>cache_MHA  =  2 (K,V) × H × D × L × 2 bytes
+            =  4 · H · D · L
+</code></pre>
+<p>对 Llama-3-70B（如果它用 MHA 而非 GQA）：H = 64 头，D = 128，L = 80。每 token：<code>4 × 64 × 128 × 80 = 2.6 MB</code>。在 N = 32K：<code>2.6 × 32,000 = 84 GB 每用户会话</code>。完全不实用，这正是 Llama-3 改用 GQA 的部分原因。</p>
+<p>MHA 是参考设计。它以最大的内存成本给出多头注意力最大的质量收益。本章的每个其他变体都是对那个成本的回应。</p>
+<h3>8.4：MQA：所有头共享一个 K 和 V</h3>
+<p>MQA 是最激进的压缩。所有 H 个查询头都关注一个共享的 K 矩阵和一个共享的 V 矩阵。K 和 V 矩阵形状是 <code>(N, D)</code> 而非 <code>(N, H, D)</code>。</p>
+<p><img alt="图 8.3：MQA：所有头共享一个 K 和一个 V" src="figures/ch08-fig3-mqa/final.png">
+<em>图 8.3.</em> 与 MHA 相同布局，但 8 条 Q 头通道全部汇聚进单个 K 向量和单个 V 向量。粗线显示所有 Q 喂进一个共享 K/V。</p>
+<p>图 8.3 让共享变得可视化。参数数下降：<code>W_K</code> 和 <code>W_V</code> 从 <code>(d, d)</code> 缩到 <code>(d, D)</code>（一个头的输出维度）。输入投影变成 <code>d² + 2dD</code> 而非 <code>3d²</code>。</p>
+<p>每 token 缓存缩小 H 倍：</p>
+<pre><code>cache_MQA  =  2 (K,V) × 1 × D × L × 2 bytes
+            =  4 · D · L
+</code></pre>
+<p>对 Llama-3-70B 规模的架构（若用了 MQA）：每 token <code>4 × 128 × 80 = 40 KB</code>。在 32K：每用户 <code>40 × 32,000 = 1.3 GB</code>。相对 MHA 的<strong>32× 减少</strong>。</p>
+<p>这很极端。它应该让人觉得好得不像真的。它就是。</p>
+<p>问题是质量。只有一对 K/V，所有头都必须关注跨上下文的同一种重要性模式。为多头注意力辩护的那个“不同视角”故事塌缩了。经验上，MQA 在检索密集基准上造成可测量但非灾难性的下降——标准评估上大约 0.5–2 个困惑度点，而在需要从长上下文检索特定 token 的 needle-in-haystack 任务上回退更大。</p>
+<p>MQA 由 Noam Shazeer 在 2019 年提出，用于一些早期部署（PaLM、StarCoder），但很少用于现代前沿模型。它以太多质量换太多内存节省。下一个变体 GQA 给你大部分内存节省而不给大部分质量损失。</p>
+<h3>8.5：GQA：分组查询注意力，务实的中庸</h3>
+<p>GQA 是 MQA 更谨慎的表亲。不是为全部 H 个 Q 头共享 1 个 K/V，而是有 <code>G</code> 个 K/V 组，每组服务 <code>H/G</code> 个查询头。G 是可调旋钮——G = 1 给出 MQA，G = H 给出 MHA，而有趣的区间在两者之间。</p>
+<p><img alt="图 8.4：GQA：头分组，每组共享 K 和 V" src="figures/ch08-fig4-gqa/final.png">
+<em>图 8.4.</em> 8 条 Q 头通道分成 2 簇各 4 个。每簇汇聚进一个共享 K 和一个共享 V。一组内的 4 个 Q 头各自关注同一对 K/V，但不同组有不同的 K/V。</p>
+<p>图 8.4 展示 H = 8 时的 G = 2，每组四个 Q 头，总共两组。每 token 缓存公式调整为：</p>
+<pre><code>cache_GQA  =  2 (K,V) × G × D × L × 2 bytes
+            =  4 · G · D · L
+</code></pre>
+<p>对真实架构的 Llama-3-70B（H = 64 个 Q 头，G = 8 组）：每 token <code>4 × 8 × 128 × 80 = 320 KB</code>。在 32K：每用户 <code>320 × 32,000 = 10 GB</code>。那是相对 MHA（84 GB → 10 GB）的<strong>8× 减少</strong>。</p>
+<p>GQA 是几乎每一个 2024–2026 前沿开源模型的默认选择：Llama-3（所有尺寸，G = 8）、Qwen-2 和 3（G = 4）、Mistral-Large（G = 8）、Command-R（G = 4）。原因是 GQA 落在质量-内存帕累托前沿的一个极好点上：保留 MHA 的大部分质量，却只付内存的一小部分。</p>
+<p><img alt="图 8.5：各变体每 token KV 缓存字节（H=32, D=128）" src="figures/ch08-fig6-kv-bytes-per-token-bar/final.png">
+<em>图 8.5.</em> 一张水平条形图，线性刻度。四根条：MHA 每 token 16,384 字节，GQA（G=8）4,096 字节，MQA（G=1）512 字节，MLA（R=512）1,024 字节。MLA 条标注“字节低且质量保留。”</p>
+<p>图 8.5 在共同架构（H = 32、D = 128）上给四种变体标了数字。MHA 是基线，每 token 16 KB。GQA（G = 8）是 4 KB，少 4×。MQA 是 512 字节，少 32×。MLA（我们会看到）约 1 KB，少 16×，<strong>但没有 MQA 招致的质量回退</strong>。</p>
+<h3>8.6：为什么 Llama 选了 G = 8</h3>
+<p>Llama-3 的具体选择（32 个查询头配 8 个 KV 头，比例 4:1）不是偶然。图 8.6 展示它从何而来。</p>
+<p><img alt="图 8.6：为什么 Llama 对 32 个查询头选了 8 个 KV 头的 GQA" src="figures/ch08-fig8-llama-gqa-choice/final.png">
+<em>图 8.6.</em> 两个并排面板。左：“困惑度 vs KV 头数”，一条下降曲线显示困惑度从 1 个 KV 头到 4 个 KV 头陡降，然后从 8 到 32 变平。右：“KV 缓存字节 vs KV 头数”，一条从 1 到 32 线性上升的线。两个面板都在 G = 8 处有一条竖直虚线，标为“Llama-3 选择：G = 8 → 4× 缓存减少，可忽略的困惑度损失。”</p>
+<p>图 8.6 报告了经验消融（为清晰而简化，但匹配 Llama-2 论文及后续 GQA 基准记录的模式）。困惑度从 G = 1 到 G = 4 快速下降，然后变平。到 G = 8，相对完整 MHA 的困惑度差距在噪声之内——实践中你测不出质量差异。同时，缓存大小随 G 线性增长，所以更大的 G 花内存却买不到质量。</p>
+<p>甜点区是困惑度平台的左边缘。对 32 头架构，G = 8 恰好就在那里：质量基本等同于 MHA，缓存小 4×。对不同架构，甜点区略微移动——Qwen-2 对较小模型选了 G = 4——但原则不变。你在找困惑度已平台化的最小 G。</p>
+<p>这是嵌在模型架构里的一个推理工程决策。每个推理工程师都应能看一个模型报告的 <code>num_key_value_heads</code> 和 <code>num_attention_heads</code>、算出比例、并知道这个模型把它的缓存压缩得多激进。</p>
+<h3>8.7：MLA：两全其美</h3>
+<p>多头潜在注意力是四种里最新也最精妙的。它由 DeepSeek 在 2024 年引入（首次在 DeepSeek-V2，V3 中精炼）。与 GQA 通过跨头共享来减小缓存不同，MLA 通过在存储前<strong>把 K 和 V 压缩进一个更低维的潜空间</strong>来减小缓存。</p>
+<p><img alt="图 8.7：MLA：带吸收技巧的潜变量压缩" src="figures/ch08-fig5-mla-absorption-trick/final.png">
+<em>图 8.7.</em> 一个三阶段水平流水线。阶段 1：形状 (1, d_model) 的输入 token x。阶段 2：潜投影 c_KV = x · W_DKV，形状 (1, R)，其中 R &lt;&lt; d。阶段 3：在注意力时，上投影 K = c_KV · W_UK 和 V = c_KV · W_UV 重建每头 K 和 V。一个单独的公式框展示吸收技巧：Q · K^T = (x · W_Q) · (c_KV · W_UK)^T 可被重写，使 K 在 decode 时从不被物化，只有潜变量 c_KV 被缓存。</p>
+<p>图 8.7 就是 MLA。序列是：</p>
+<ol>
+<li>
+<p><strong>下投影。</strong>对每个 token，把输入 x 乘以一个更小的权重矩阵 W_DKV（形状 <code>d × R</code>，其中 R 是潜变量秩，通常 512），产生形状 <code>(1, R)</code> 的潜向量 c_KV。缓存这个潜向量而非完整 K 和 V。</p>
+</li>
+<li>
+<p><strong>上投影（惰性）。</strong>当我们需要 K 和 V 做注意力时，把 c_KV 乘以上投影矩阵 W_UK 和 W_UV（形状 <code>R × d</code>）重建每头 K 和 V。原则上这会增加计算开销。</p>
+</li>
+<li>
+<p><strong>吸收技巧。</strong>我们可以在数学上把上投影 W_UK 合并进查询投影 W_Q，使 K 在 decode 时从不真正重建。注意力分数计算变成：</p>
+</li>
+</ol>
+<pre><code>scores = Q · K^T = (x · W_Q) · (c_KV · W_UK)^T = x · (W_Q · W_UK^T) · c_KV^T
+</code></pre>
+<p>项 <code>W_Q · W_UK^T</code> 是一个常量矩阵，可在模型加载时预计算一次。叫它 <code>W_Q_absorbed</code>。那么：</p>
+<pre><code>scores = x · W_Q_absorbed · c_KV^T
+</code></pre>
+<p>被缓存的量只有 <code>c_KV</code>（小），从不缓存完整 K（大）。同样的技巧对 V 在最后加权求和步骤中奏效。</p>
+<p>每 token 缓存是：</p>
+<pre><code>cache_MLA  =  R × L × 2 bytes  (only c_KV, not full K and V)
+            =  2 · R · L
+</code></pre>
+<p>对 DeepSeek-V3（R = 512、L = 61）：每 token <code>2 × 512 × 61 = 62 KB</code>。对同一架构假设的 MHA（H = 128、D = 128）：每 token <code>4 × 128 × 128 × 61 = 4 MB</code>。<strong>MLA 相对 MHA 把缓存减少约 64×</strong>，却不丢失每头多样性（上投影 W_UK 在分数计算时仍产生不同的每头 K 向量，只是不存储它们）。</p>
+<p><img alt="图 8.8：DeepSeek-V3 MLA vs MHA 压缩对比" src="figures/ch08-fig9-mla-compression-ratio/final.png">
+<em>图 8.8.</em> 同一模型容量的两根水平条。上：假设的 MHA，32K 上下文 80 GB KV 缓存。下：实际 MLA，10 GB KV 缓存。第二根条是 1/8 长。标注：“约 8× 减少，下游评估质量无损失。”</p>
+<p>图 8.8 展示生产影响。DeepSeek-V3 在其完整参数规模（总共 671B，激活 37B）下，经济上可服务，恰恰因为 MLA 把它的 32K 上下文缓存从每用户约 80 GB 降到约 10 GB。没有 MLA，该模型在长上下文下实际不可访问。</p>
+<p>质量故事是另一半。在标准基准（MMLU、HumanEval、长上下文检索测试）上，配备 MLA 的模型匹配或超过同参数规模的配备 MHA 的模型。每头多样性由上投影保留；缓存压缩几乎零质量成本。这就是 MLA 帕累托最优的那个意义——它在两条轴上都支配 MQA，在质量上匹配 GQA 而在内存上显著击败它。</p>
+<h3>8.8：帕累托前沿</h3>
+<p>图 8.9 在一个质量对内存的散点里画出四种变体。</p>
+<p><img alt="图 8.9：质量 vs KV 内存，帕累托前沿" src="figures/ch08-fig10-quality-vs-memory-scatter/final.png">
+<em>图 8.9.</em> 一张散点图。X 轴：KV 缓存内存（相对 MHA），对数刻度 0.03 到 1.0。Y 轴：下游任务质量（如 MMLU 分数）60 到 80。四个标注点：MHA 右上（完整内存、完整质量）。GQA（G=8）中间，小惩罚。MQA（G=1）左下（极小内存、可见质量下降）。MLA 左上，用星号高亮，接近 MHA 质量却只花一小部分内存。一条虚线帕累托前沿曲线穿过 MHA、MLA 和 GQA，但不穿 MQA。</p>
+<p>图 8.9 总结选择。如果你只能为你的服务栈挑一个变体：</p>
+<ul>
+<li><strong>小模型（7B–13B）、中等上下文（到 8K）和适中并发需求：</strong>MHA 就很好；缓存还不是绑定约束。</li>
+<li><strong>标准部署（约 70B 模型、约 32K 上下文、单节点几十个并发用户）：</strong>G = 8 的 GQA 是默认。最小质量成本，4–8× 缓存减少。这是 Llama-3-70B 所用的。</li>
+<li><strong>极长上下文、高并发或极端效率：</strong>如果你有用它训练的模型（DeepSeek-V3，或任何采用该架构的人），MLA 是赢家。它给你与 MQA 相当的缓存节省、与 MHA 无法区分的质量。</li>
+<li><strong>MQA 只在内存严重受限的边缘部署中可辩护</strong>，那里质量不是最高优先级。</li>
+</ul>
+<h3>8.9：关于参数数量的说明</h3>
+<p>缓存字节不等于参数数量。图 8.10 展示四种变体的参数故事。</p>
+<p><img alt="图 8.10：参数数量对比：仅注意力块" src="figures/ch08-fig7-parameter-count-comparison/final.png">
+<em>图 8.10.</em> 一张竖直条形图。四根条展示 d = 4096、H = 32 时单个注意力块的参数数量。MHA：3 × d² = 4.2B 参数（若缩放到完整模型）。MQA：2.3B。GQA（G = 8）：3.0B。MLA：2.5B。</p>
+<p>图 8.10 显示 GQA/MQA/MLA 的参数节省远小于缓存节省（约 30–45% 的减少 vs 4–64× 的减少）。原因是 Q 投影（W_Q，形状 <code>d × d</code>）在所有变体中不变，只有 K 和 V 投影缩小。既然 W_Q 是三者中最大的，总参数数量不会大幅下降。</p>
+<p>要点：<strong>这些变体的成本在训练时支付，而非在参数数量时支付</strong>。收益是推理时的缓存减少。不要为总参数数量优化你的变体选择；要为每 token 缓存字节优化，那正是图 8.5 所追踪的。</p>
+<hr>
+<h2>头部压缩把我们放到 roofline 的哪里</h2>
+<h3>8.10：GQA 或 MLA 之后的工作点</h3>
+<p>回想第 7 章，KV 缓存把 decode 向左推上 roofline、进入更深的内存带宽受限区域，因为字节随 N 缩放而 FLOPs 停留在 O(N·d)。</p>
+<p>头部压缩攻击字节公式中的一项。因子 H（或 MLA 的 R）被减少 4×（GQA）、32×（MQA）或约 64×（MLA）。每步字节成比例下降。算术强度——FLOPs 除以字节——成比例<strong>上升</strong>，因为 FLOPs 大致不变（注意力核在前向传播中仍对同形状的中间张量操作，只是来自压缩的缓存来源）。</p>
+<p>用 roofline 的话说：<strong>每个变体都把 decode 点向右移</strong>，移回脊点。压缩越激进，点移得越右。</p>
+<p>它到达脊点了吗？没有，单靠它不够。即使 MLA 的 64× 压缩也把算术强度留在个位数，仍内存带宽受限，只是没那么深。要到达脊点，头部压缩必须与第 9–14 章的其他技术（滑动窗口、flash attention、连续批处理、投机解码）结合。每一项都是加性的；合起来它们塌缩带宽差距。</p>
+<h3>8.11：头部压缩不解决什么</h3>
+<p>头部压缩之后仍剩两项成本。</p>
+<p>第一，<strong>缓存仍随 N 线性增长</strong>。我们降低了每 token 字节数但没有消除 N 因子。一个 100K token 会话仍比 4K 会话更压迫 HBM，只是绝对量少些。第 9 章通过滑动窗口、线性注意力和状态空间模型直接攻击 N 项。</p>
+<p>第二，<strong>缓存仍活在 HBM 里</strong>。即使是压缩的缓存也必须在每个 decode 步骤从 HBM 读取。FlashAttention（第 10 章）不缩小缓存，而是重新安排它在注意力核期间<em>住哪里</em>——把部分留在 SRAM 以避免重复 HBM 读取。这与压缩正交，并与它相乘地结合。</p>
+<h3>8.12：接下来去哪</h3>
+<p>第 9 章是对缓存大小的第二次直接攻击：<strong>跨 token 压缩，而非跨头</strong>。我们将看到滑动窗口注意力（每个 token 只关注过去固定的 W 个 token 窗口）、线性注意力（恒定大小的运行状态而非 N 线性增长）、状态空间模型（可并行化的循环表述）和 Mamba（让循环与注意力竞争的选择性 SSM）。每一项都攻击缓存公式中的 N 因子，有些情况下完全消除它。</p>
+<p>第 8 章缩小头数。第 9 章缩小序列数。合起来它们把 KV 缓存从“不可管理”带到“可管理”，此时剩余章节（flash attention、paged attention、前缀缓存、量化、批处理）能让缓存使用真正高效。</p>
+</section>
+
+<section class="chapter-wrapper" id="ch09-compress-across-tokens">
+<h1>第 9 章：跨 token 压缩</h1>
+<p>第 8 章通过跨头压缩把 KV 缓存削减了 4 到 64 倍。那是大胜利，但它留下一个因子未动：<strong>缓存仍随序列长度 N 线性增长</strong>。一个 100K token 会话仍有 4K token 会话 25× 的缓存字节，无论你选哪种头共享策略。GQA 和 MLA 本身并不帮助长上下文；它们<em>借着</em>减少每 token 字节来帮助长上下文，但 N 的线性增长仍在。</p>
+<p>本章攻击 N 本身。四个架构家族，每个用不同机制消除或约束缓存中的 N 因子。</p>
+<ul>
+<li><strong>滑动窗口注意力（sliding window attention）</strong>把缓存封顶在恒定 W，无论总序列长度。</li>
+<li><strong>线性注意力（linear attention）</strong>把缓存塌缩成恒定大小的 D×D 状态矩阵，根本不随 N 增长。</li>
+<li><strong>状态空间模型（state space model，SSM）</strong>把注意力重新表述为带固定大小隐状态的线性循环。</li>
+<li><strong>Mamba</strong>是一个选择性 SSM，让循环依赖输入，弥合大部分与完整注意力的质量差距。</li>
+</ul>
+<p>每个家族都带有一个内存节省与检索质量之间的特定权衡。本章走完四个，推导它们为何有效，并以对各自在哪赢、在哪失败的诚实讨论收尾。它很长，因为这里的数学确实有趣，而且每种架构都要求仔细解释——不只是“滑动窗口关注最后 W 个 token”，而是<em>为什么</em>那对大多数任务足够、感受野去了哪里、以及层堆叠如何恢复有效的长程依赖。</p>
+<hr>
+<h2>token 长度问题</h2>
+<h3>9.1：为什么跨 token 压缩根本更难</h3>
+<p>头部压缩（第 8 章）在数学上安全。特别是 MLA 证明了：你可以压缩 K/V 存储而不丢失为注意力辩护的多头多样性。每头投影被保留；只有存储表示被压缩。模型质量基本不变。</p>
+<p>token 压缩是另一回事。一个序列的 N 个 token 各自携带不同信息；模型无法关注它没有存储的信息。如果我们把缓存封顶在 W 个过去 token（滑动窗口），我们就抹去了 W 个位置之外 token 的信息。如果我们把过去 token 塌缩成恒定大小的状态（线性注意力或 SSM），我们就对它们做了有损压缩——不同的过去 token 序列可能碰撞成同一状态，而模型无法恢复它失去的东西。</p>
+<p>每种技术都必须回答的问题是：<strong>对于我们关心的任务，这种信息损失有多疼？</strong>经验答案因任务差异极大。对大多数语言建模（我们训练所针对的损失），从很久以前上下文做 token 级检索并不是驱动困惑度的东西。对某些下游任务——读一篇长文档并回答一个事实型问题——从旧上下文检索恰恰是要紧的事。</p>
+<p>这就是为什么本章四种架构共存而非一个取代其他。每一个都落在质量-内存权衡的不同点，正确选择取决于下游工作负载实际需要什么。</p>
+<p><img alt="图 9.1：跨 token 压缩注意力的四种范式" src="figures/ch09-fig1-four-paradigms-at-a-glance/final.png">
+<em>图 9.1.</em> 一个 2×2 网格。左上：完整注意力，N×N 矩阵，O(N²) 成本。右上：滑动窗口，窄对角带，O(N·W) 成本。左下：线性注意力，恒定 D×D 状态。右下：SSM/Mamba，带固定大小隐状态的循环图。</p>
+<p>图 9.1 是迷你版本章。完整注意力（左上）是参考：每个 token 关注每个过去 token。滑动窗口（右上）把每个 token 限制到最后 W 个。线性注意力（左下）重排矩阵代数，使过去信息塌缩进固定 D×D 状态。SSM 和 Mamba（右下）用循环把所有过去信息折叠进一个每步更新的小隐状态。</p>
+<p>四种都通过攻击 N 因子来减少缓存字节。它们的不同在于如何近似完整注意力本会计算出的注意力，因此也在于它们保留或丢失哪种信息。</p>
+<hr>
+<h2>四种架构，按压缩激进程度排序</h2>
+<h3>9.2：滑动窗口注意力</h3>
+<p>四种里最简单的。每个 token 只关注过去固定的 W 个 token 窗口（加它自己）。超过位置 <code>i - W</code>，过去不可见。</p>
+<p><img alt="图 9.2：滑动窗口注意力，W = 4" src="figures/ch09-fig2-sliding-window-attention/final.png">
+<em>图 9.2.</em> 一个 8×8 注意力掩码矩阵。宽度 W = 4 的对角带内的单元被填充（位置 i 的 token 关注位置 i-3、i-2、i-1、i）；其他所有单元为空。行和列标签 1–8。标注：“位置 i 的 token 只关注位置 [i-3, i, i-1, i]。”</p>
+<p>图 9.2 展示结构。注意力掩码——在完整注意力里是下三角矩阵（因果掩码，token 只见它们的过去）——变成一条窄对角带。带外注意力为零；token 与更老位置没有信息流。</p>
+<p>这是<em>层</em>级的一个硬约束。单个滑动窗口层无法看超过 W 个 token。但深层架构堆叠很多层，而层堆叠以乘法方式扩展有效感受野。</p>
+<h4>9.2.1：KV 缓存节省</h4>
+<p>对窗口 W 的滑动窗口注意力，每用户缓存是：</p>
+<pre><code>cache_SW  =  4 · W · H · D · L
+</code></pre>
+<p>把公式中的 N 替换成 W，它在用户会话中是恒定的（通常 4K）。在 W = 4K 的模型上 N = 100K，缓存比完整 MHA 小 25×：</p>
+<pre><code>reduction  =  N / W  =  100,000 / 4,000  =  25×
+</code></pre>
+<p><img alt="图 9.3：滑动窗口 KV 缓存作为环形缓冲区" src="figures/ch09-fig3-sliding-window-kv-cache/final.png">
+<em>图 9.3.</em> 一个有 8 个缓存槽的环，一个指针显示当前写入位置。当序列增长超过 8，最老的槽被最新的覆盖。右侧标注卡：“缓冲区大小 W。无论总序列长度，内存恒定。”</p>
+<p>图 9.3 让节省可视化。KV 缓存变成固定大小 W 的<strong>环形缓冲区（circular buffer）</strong>。新 token 到达时，最老 token 的 K 和 V 槽被覆盖。缓存从不增长超过 W 个槽。这是关键性质：你可以跑无限长的会话，缓存从不超出 W-token 预算。</p>
+<h4>9.2.2：层堆叠带来的感受野</h4>
+<p>那个表面限制——每层只见 W 个 token——乍看之下并不像那么严重。深层模型堆叠很多层，而每层的注意力作用于前一层的输出。第 2 层的 token 受第 1 层它们的 W 个邻居影响，通过那种影响它们携带更靠后 W 个额外 token 的痕迹。</p>
+<p><img alt="图 9.4：通过层堆叠的感受野（W = 4, L = 3）" src="figures/ch09-fig4-receptive-field-via-layer-stacking/final.png">
+<em>图 9.4.</em> 三个堆叠的层。每层的 token 见上一层最后 4 个 token。在第 3 层位置 12，回溯穿过各层显示第 3 层间接接触 token 9–12（直接），它们接触 token 5–12（第 2 层），它们接触 token 1–12（第 1 层）。深度 L 处的有效感受野：约 W × L。</p>
+<p>图 9.4 让数学具体。第 3 层位置 12 的一个 token，关注第 2 层位置 9–12。那些第 2 层 token 各自关注第 1 层更早的 4 个位置（位置 9 回溯到位置 5，它关注第 1 层的 5–8；位置 10 关注第 1 层的 6–9；等等）。所以第 1 层位置 5 到 12 在第 3 层位置 12 的有效感受野内。再往下一层，位置回溯到 1 都可达。</p>
+<p>层堆叠的有效感受野约为 <code>W × L</code>。对 Mistral-7B（W = 4K、L = 32），有效感受野是 <code>4K × 32 = 128K tokens</code>。这比 W 单独大得多。一个够深的滑动窗口模型<em>能</em>看得很远，只是用间接影响而非直接注意力。</p>
+<p>实践中，直接注意力仍严格强于经层间接注意力。信息流经 L 层被每一层的注意力核过滤，关于某个特定老 token 的信息被各层衰减。在检索密集基准（needle-in-a-haystack 任务）上，W = 4K 的滑动窗口模型在约 10K 上下文以上就挣扎，即使在理论上能给出 128K 感受野的层数下。</p>
+<h4>9.2.3：谁用滑动窗口</h4>
+<p>Mistral-7B（2023）是第一个普及滑动窗口的生产模型，W = 4,096。Google 的 Gemma-2 和 Gemma-3 带着一个变化采用它：它们<strong>把滑动窗口层与完整注意力层混合</strong>（例如每第 5 层是完整注意力）。这种混合模式在大多数时候拿到滑动窗口的内存节省，同时保留一些直接的长程通路。</p>
+<p>Mistral-Large 为其 123B 模型放弃了滑动窗口、改用 GQA，部分因为长上下文检索是产品需求。这是滑动窗口所处位置的诚实总结：对上下文适中的聊天式应用很好，当长上下文检索要紧时，越来越被 GQA+MLA 或混合架构取代。</p>
+<h3>9.3：线性注意力</h3>
+<p>滑动窗口把感受野硬剪在 W 个 token。线性注意力是另一种做法：继续看所有过去 token，但把它们压缩进一个<strong>恒定大小状态</strong>，不随 N 增长。在线性注意力里，缓存不是 N 行，而是一个固定的 D × D 矩阵，与序列长度无关。</p>
+<p>机制依赖一种代数重排，它只有当你从注意力里移除 softmax 时才成立。</p>
+<p><img alt="图 9.5：线性注意力：核技巧" src="figures/ch09-fig5-linear-attention-kernel-trick/final.png">
+<em>图 9.5.</em> 左：标准注意力公式 <code>softmax(Q·K^T) · V</code>，展示物化 N×N 注意力矩阵的 O(N²·d) 成本。一条标为“移除 softmax，使用核特征映射 φ(·)”的箭头指向右。右：线性注意力公式 <code>φ(Q) · (φ(K)^T · V)</code>，展示结合律如何让我们先算 D×D 内积，把成本降到 O(N·D²)。</p>
+<p>图 9.5 是关键代数洞见。在标准注意力里：</p>
+<pre><code>output  =  softmax(Q · K^T / √d) · V
+        =  A_weights · V            where A_weights is (N, N)
+</code></pre>
+<p>我们先算 Q · K^T（一个 N×N 矩阵），按行做 softmax，再乘 V。N×N 矩阵不可避免，因为 softmax 是逐行非线性——它混合每行所有条目，禁止我们重排 matmul。</p>
+<p>线性注意力用核特征映射 φ 替代 softmax，选它使注意力能写成：</p>
+<pre><code>output  =  φ(Q) · (φ(K)^T · V)         [by associativity]
+        =  φ(Q) · S                     where S = φ(K)^T · V is (D, D)
+</code></pre>
+<p>技巧：因为没有 softmax，我们可以先算 <code>φ(K)^T · V</code>——一个 D×D 矩阵——再把 <code>φ(Q)</code> 乘上去。N×N 矩阵从不物化。每个 decode 步骤，我们只需要 D×D 矩阵 S，它就是这一机制的整个“缓存”。</p>
+<h4>9.3.1：运行状态</h4>
+<p>对因果（自回归）解码，状态 S 被增量累积。在每个新 token t，我们更新：</p>
+<pre><code>S_t  =  S_{t-1}  +  φ(K_t)^T · V_t      (outer product, shape D×D)
+z_t  =  z_{t-1}  +  φ(K_t)              (running normalizer, shape D)
+</code></pre>
+<p>然后 token t 的注意力输出是：</p>
+<pre><code>attention_t  =  (φ(Q_t) · S_t)  /  (φ(Q_t) · z_t)
+</code></pre>
+<p>两个运行量：S（一个 D×D 矩阵）和 z（一个 D 向量）。两者大小恒定，无论上下文延伸多远。</p>
+<p><img alt="图 9.6：线性注意力运行状态" src="figures/ch09-fig6-linear-attention-running-state/final.png">
+<em>图 9.6.</em> 一条 6 个 token 的水平时间线。每个 token 上方是一个增量更新的 D×D“状态”框。token t 的状态是 t-1 的状态加上一个外积 <code>φ(K_t) · V_t^T</code>。一张侧卡：“状态大小 = D²。不随 t 增长。这就是压缩。”</p>
+<p>图 9.6 可视化状态更新。与随 N 线性增长的 KV 缓存不同，线性注意力状态是一个就地更新的固定大小矩阵。字节是每层 <code>D × D × 2 (FP16) = D²·2</code> 字节。对 D = 128、L = 32：<code>128 × 128 × 2 × 32 = 每个用户会话总共 1 MB，对任意长度的整个序列</code>。这比长上下文上的完整 MHA 缓存小约 10,000×。</p>
+<h4>9.3.2：上下文瓶颈</h4>
+<p>那种压缩是深刻的，代价同样深刻。状态 S 是所有过去 token 的有损固定大小摘要。不同过去序列能产生同样的 S，所以模型无法精确恢复特定过去 token。注意力实际变成一种<strong>上下文平均化</strong>的检索——状态把所有过去（键，值）对求和，只按核映射和 token 自身身份加权。</p>
+<p>两个直接后果：</p>
+<p><strong>第一，所有过去 token 同等贡献。</strong>没有“更关注故事里最后提到的角色”这回事。每个过去 token 对 S 的贡献是同一外积；模型无法给重要的加权重、给噪声降权。</p>
+<p><strong>第二，信息可被抹除。</strong>如果两个近期 token 的键向量指向相反方向，它们在 S 里的外积部分抵消。老 token 的信息被新 token 的遮蔽。在 softmax 注意力里，这种抵消不会发生——softmax 在行内归一化，保持所有过去 token 的贡献彼此区分。</p>
+<p>实践中的后果：<strong>线性注意力在检索密集任务上明显比 softmax 注意力差</strong>，尤其是那些要求模型记住某条只提过一次、远在上下文里的具体信息的任务。在困惑度和一般语言建模上，差距较小。在 needle-in-a-haystack 基准上，差距可以很戏剧化。</p>
+<p>已有人做各种尝试修复它——RetNet 加一个给近期 token 更高权重的衰减因子；GLA（门控线性注意力）加一个学到的门控控制什么写进 S。这些部分缓解软化了上下文瓶颈问题但不消除它。恒定大小状态与无限过去之间的根本张力，是这个方法固有的。</p>
+<h4>9.3.3：线性注意力何时赢</h4>
+<p>当你在极长上下文需要每用户恒定内存推理、且工作负载不要求精确检索旧的具体 token 时，线性注意力是正确选择。流式应用（语音转写、实时字幕）能受益，因为状态小且有界。对聊天或代码生成——用户可能引用 30 轮前说过的东西——线性注意力就挣扎。</p>
+<p>现代生产 LLM 大多不用纯线性注意力。但它的数学结构——运行状态而非增长缓存——是 SSM 和 Mamba 的基础，我们接下来看。</p>
+<h3>9.4：状态空间模型</h3>
+<p>线性注意力和状态空间模型在代数上非常接近。主要区别是 (a) SSM 明确把状态更新表述为循环，借用控制论的术语；(b) SSM 用时间不变转移矩阵 A，给近期 token 比老 token 更高权重，这解决线性注意力的一个弱点；(c) SSM 可被表述为卷积，使它们能像 transformer 一样并行训练。</p>
+<p>SSM 循环是：</p>
+<pre><code>h_t  =  A · h_{t-1}  +  B · x_t
+y_t  =  C · h_t  +  D · x_t
+</code></pre>
+<p>其中：
+- <code>x_t</code> 是输入 token（维度 d 的向量）。
+- <code>h_t</code> 是隐状态（维度 <code>d_state</code> 的向量，通常 16–128）。
+- <code>A</code> 是状态转移矩阵 <code>(d_state, d_state)</code>，通常参数化使特征值小于 1，让旧状态信息衰减。
+- <code>B</code> 把输入映射进状态；<code>C</code> 把状态映射成输出；<code>D</code> 是直接的输入到输出跳跃。</p>
+<p><img alt="图 9.7：SSM 表述" src="figures/ch09-fig7-ssm-formulation/final.png">
+<em>图 9.7.</em> 同一机制的两个等价视图。左：循环图，隐状态 h_1、h_2、h_3、…… 由实线 A 箭头连接，输入 x_t 经 B 喂入，输出 y_t 经 C 出来。右：卷积核视图，<code>y = x * K</code> 其中 <code>K = [C·B, C·A·B, C·A²·B, ...]</code>，显示 SSM 可被表达为对输入序列的 1D 卷积。</p>
+<p>图 9.7 展示 SSM 的两个等价视图。循环视图（左）让它看起来像传统循环神经网络——顺序状态更新。卷积视图（右）说出一件有力的事：因为循环是线性的，输出 <code>y</code> 是输入 <code>x</code> 与固定核 <code>K = [C·B, C·A·B, C·A²·B, ...]</code> 的卷积。这个卷积可通过 FFT 并行计算，使训练快速。</p>
+<p>这种双重性质——推理时循环、训练时卷积——正是 SSM 区别于 RNN 的地方。训练时，你用 FFT 并行。推理时，你一步步跑循环，用恒定大小的隐状态 <code>h</code>。没有随 N 增长的 KV 缓存。</p>
+<p><img alt="图 9.7.0：同一 SSM 的循环视图 vs 卷积视图" src="figures/ch09-fig12-ssm-as-convolution/final.png">
+<em>图 9.7.0.</em> 左面板：循环视图——隐状态框 h_0、h_1、h_2、h_3 的竖直链，A 乘法向下流动，输入 x_t 经 B 喂入，输出 y_t 经 C 出来。右面板：卷积视图——核 K = [C·B, C·A·B, C·A²·B, …] 滑过输入序列，所有 N 个输出经 FFT 并行计算。两面板中间箭头：“同样的数学，两种计算顺序。线性使两者都可能。”侧注：“RNN 做不到——tanh(a+b) ≠ tanh(a) + tanh(b)，所以循环从不展开成固定核。”</p>
+<h4>9.4.1：衰减项</h4>
+<p>因为 A 的特征值小于 1，应用 <code>h_t = A · h_{t-1} + B · x_t</code> 指数衰减旧信息。<code>t - 20</code> 步前的 token 以权重 <code>A^20 · x_{t-20}</code> 贡献，很小。<code>t - 2</code> 的 token 以权重 <code>A^2 · x_{t-2}</code> 贡献，更大。这恰与线性注意力相反——后者把所有 token 同等对待。</p>
+<p>这既是强项也是弱项。强项：模型自然聚焦近期上下文，这往往是重要的。弱项：真正有用的远期信息在衰减中丢失。</p>
+<h4>9.4.2：KV 缓存大小</h4>
+<p>SSM 的“缓存”是每层每用户大小 <code>d_state</code> 的隐状态 <code>h</code>。在 <code>d_state = 64</code> 和 L = 32 层：</p>
+<pre><code>cache_SSM  =  d_state × L × 2 bytes  =  64 × 32 × 2  =  每个用户会话总共 4 KB。
+</code></pre>
+<p>四 KB。任意序列长度。对比起来，N = 32K 时 Llama-3-70B 的完整 MHA 是每用户约 43 GB。SSM 以大约<strong>10,000×</strong>的因子压缩。</p>
+<p>不出所料，这种压缩是有损的。<code>d_state = 64</code> 的 SSM 无法保留 32K token 序列的完整上下文信息。但对许多任务，近期聚焦偏差和小状态摘要是足够的。</p>
+<h4>9.4.3：手推一个四 token SSM 循环</h4>
+<p>公式是抽象的。要<em>感受</em>隐状态在做什么，唯一方法是在具体数字上跑循环。我们用玩具 SSM，<code>d = 4</code>、<code>d_state = 4</code>，以及一个对角转移矩阵 A（S4 和 Mamba 用的标准参数化）。</p>
+<p><strong>设定。</strong></p>
+<pre><code>A (diagonal)  = diag(0.9, 0.8, 0.7, 0.6)          ← four different decay rates
+B (4×4)       = [[ 0.3, -0.1,  0.2,  0.4],
+                 [ 0.1,  0.5, -0.2,  0.3],
+                 [-0.2,  0.3,  0.4,  0.1],
+                 [ 0.4, -0.3,  0.1,  0.2]]
+C (4×4)       = [[ 0.5,  0.2, -0.3,  0.1],
+                 [-0.1,  0.4,  0.6, -0.2],
+                 [ 0.3, -0.2,  0.1,  0.5],
+                 [ 0.2,  0.3, -0.1,  0.4]]
+D (scalar)    = 0.1                                ← input skip
+
+Inputs (d = 4 each):
+  x_0 = [1.0, 0.0, 0.5, 0.2]
+  x_1 = [0.3, 0.8, 0.1, 0.4]
+  x_2 = [0.7, 0.2, 0.3, 0.6]
+  x_3 = [0.2, 0.5, 0.8, 0.1]
+
+Initial state: h_{-1} = [0, 0, 0, 0]
+</code></pre>
+<p><img alt="图 9.7.1：跨四个 token 追踪 SSM 循环" src="figures/ch09-fig7-1-ssm-four-token-trace/final.png">
+<em>图 9.7.1.</em> 一个展示四个时间步的水平流。每一步 t，可视化四个矩阵-向量运算：<code>A·h_{t-1}</code>（对角乘法，显示为四个彩色标量乘法）、<code>B·x_t</code>（4×4 matmul）、它们的和形成 <code>h_t</code>，然后 <code>C·h_t + D·x_t</code> 产生 <code>y_t</code>。流下方运行：每步的状态向量 <code>h_t</code>，按哪个维度有哪个衰减率彩色编码。从左到右的箭头显示信息按每维度指数衰减在状态中传播。</p>
+<p><strong>步骤 t = 0</strong>（状态从零开始，所以 <code>A·h_{-1} = 0</code>）：</p>
+<pre><code>B · x_0 = ?
+Row 0: 0.3·1.0 + (-0.1)·0.0 + 0.2·0.5 + 0.4·0.2 = 0.30 + 0 + 0.10 + 0.08 = 0.48
+Row 1: 0.1·1.0 +  0.5·0.0 + (-0.2)·0.5 + 0.3·0.2 = 0.10 + 0 - 0.10 + 0.06 = 0.06
+Row 2:-0.2·1.0 + 0.3·0.0 + 0.4·0.5 + 0.1·0.2    =-0.20 + 0 + 0.20 + 0.02 = 0.02
+Row 3: 0.4·1.0 + (-0.3)·0.0 + 0.1·0.5 + 0.2·0.2  = 0.40 + 0 + 0.05 + 0.04 = 0.49
+
+h_0 = [0.48, 0.06, 0.02, 0.49]
+</code></pre>
+<p>应用 <code>C·h_0 + D·x_0</code> 得到输出 <code>y_0</code>：</p>
+<pre><code>C·h_0 row 0: 0.5·0.48 + 0.2·0.06 + (-0.3)·0.02 + 0.1·0.49 = 0.295
+        row 1: -0.1·0.48 + 0.4·0.06 + 0.6·0.02 + (-0.2)·0.49 = -0.110
+        row 2: 0.3·0.48 + (-0.2)·0.06 + 0.1·0.02 + 0.5·0.49  = 0.379
+        row 3: 0.2·0.48 + 0.3·0.06 + (-0.1)·0.02 + 0.4·0.49  = 0.308
+D·x_0    = 0.1·[1.0, 0.0, 0.5, 0.2] = [0.100, 0.000, 0.050, 0.020]
+
+y_0 = [0.395, -0.110, 0.429, 0.328]
+</code></pre>
+<p><strong>步骤 t = 1。</strong>对角 A 用各自的衰减因子缩放前一状态每个维度：</p>
+<pre><code>A·h_0 = [0.9·0.48, 0.8·0.06, 0.7·0.02, 0.6·0.49] = [0.432, 0.048, 0.014, 0.294]
+B·x_1 = [0.19, 0.53, 0.26, −0.03]          (same pattern as step 0)
+h_1   = A·h_0 + B·x_1 = [0.622, 0.578, 0.274, 0.264]
+</code></pre>
+<p>注意 <code>h_1</code> 的 dim 0 携带 0.432 的早期状态加 0.19 的新输入。状态是一个加权混合。</p>
+<p><strong>步骤 t = 2 和 t = 3</strong>（同样机制，压缩）：</p>
+<pre><code>h_2 = [1.050, 0.752, 0.292, 0.528]
+h_3 = [1.155, 0.742, 0.644, 0.347]
+y_3 = [0.588, 0.548, 0.517, 0.539]
+</code></pre>
+<p><strong>信息衰减表。</strong>追踪每步之后，<em>原始</em> <code>x_0</code> 信号有多少残留在状态里。因为 A 是对角的，<code>x_0</code> 对 <code>h_t</code> 的贡献就是 <code>A^t · (B·x_0)</code>：</p>
+<table>
+<thead>
+<tr>
+<th>Step</th>
+<th>dim 0 (A=0.9)</th>
+<th>dim 1 (A=0.8)</th>
+<th>dim 2 (A=0.7)</th>
+<th>dim 3 (A=0.6)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>t=0</td>
+<td>0.480 (100%)</td>
+<td>0.060 (100%)</td>
+<td>0.020 (100%)</td>
+<td>0.490 (100%)</td>
+</tr>
+<tr>
+<td>t=1</td>
+<td>0.432 ( 90%)</td>
+<td>0.048 ( 80%)</td>
+<td>0.014 ( 70%)</td>
+<td>0.294 ( 60%)</td>
+</tr>
+<tr>
+<td>t=2</td>
+<td>0.389 ( 81%)</td>
+<td>0.038 ( 64%)</td>
+<td>0.010 ( 49%)</td>
+<td>0.176 ( 36%)</td>
+</tr>
+<tr>
+<td>t=3</td>
+<td>0.350 ( 73%)</td>
+<td>0.031 ( 51%)</td>
+<td>0.007 ( 34%)</td>
+<td>0.106 ( 22%)</td>
+</tr>
+<tr>
+<td>t=7</td>
+<td>0.229 ( 48%)</td>
+<td>0.013 ( 21%)</td>
+<td>0.002 (  8%)</td>
+<td>0.017 (  3%)</td>
+</tr>
+</tbody>
+</table>
+<p><img alt="图 9.7.2：x_0 信号跨四个状态维度的指数衰减" src="figures/ch09-fig7-2-ssm-decay-per-dim/final.png">
+<em>图 9.7.2.</em> 一张四条曲线的折线图，每状态维度一条。X 轴：时间步 t 从 0 到 7。Y 轴：x_0 原始贡献剩余比例（0–1）。曲线以不同速率衰减：dim 0（A=0.9）缓慢下降，t=7 时仍在 48%；dim 3（A=0.6）快速下降，t=7 时到 3%。标注：“每个状态维度专精于不同的记忆时间尺度。”</p>
+<p>表里得出两个观察。</p>
+<p>第一：SSM 用<em>不同状态维度对应不同记忆时间尺度</em>。Dim 0（A = 0.9）是长程记忆；七步后仍保留 48% 的 <code>x_0</code>。Dim 3（A = 0.6）是短程；只剩 3%。一个训练良好的 SSM 聪明地跨这些时间尺度分配信息——长期要紧的事实落到慢衰减维度。</p>
+<p>第二：卷积核 <code>K_t = C·A^t·B</code> 直接从这段追踪得出。跨所有输入 token 求和：</p>
+<pre><code>y_t  =  K_t · x_0  +  K_{t-1} · x_1  +  ...  +  K_0 · x_t
+</code></pre>
+<p>这是普通 1D 卷积。训练时，所有 N 个输出可经 FFT 在 <code>O(N log N)</code> 内并行计算。推理时，循环以每步 <code>O(1)</code>、固定大小状态运行。<strong>同一模型，两种计算顺序</strong>——RNN 从不曾有过的强项（因为 <code>tanh</code> 打破线性，<code>tanh(a + b) ≠ tanh(a) + tanh(b)</code>，所以 RNN 无法展开成卷积）。</p>
+<h3>9.5：Mamba：选择性 SSM</h3>
+<p>Mamba（Gu &amp; Dao, 2024）是采用最广的 SSM 变体。它的贡献：让 SSM <strong>依赖输入</strong>。</p>
+<p>在标准 SSM 里，转移矩阵 A、B、C、D 是<em>固定的</em>，训练时学一次并对每个输入同样应用。Mamba 让它们成为当前输入的函数：</p>
+<pre><code>h_t  =  A_t · h_{t-1}  +  B_t · x_t    where A_t, B_t depend on x_t
+y_t  =  C_t · h_t
+</code></pre>
+<p>循环的参数现在按 token 变化，意味着模型能按输入所指示<strong>选择性地</strong>记住或遗忘。</p>
+<p><img alt="图 9.8：Mamba：选择性 SSM，A、B、C 依赖输入" src="figures/ch09-fig8-mamba-selective-ssm/final.png">
+<em>图 9.8.</em> 两个并排面板。左：固定 A、B、C 的标准 SSM，画作静态框。右：A_t、B_t、C_t 画作 x_t 的函数的 Mamba，用依赖输入的箭头显示。一个中央标注：“转移矩阵现在是当前输入的函数。这让模型能按内容选择性遗忘或记住。”</p>
+<p>图 9.8 展示转变。在标准 SSM 里，如果模型想在新句子开始时“重置”状态，它做不到——A 是固定的。在 Mamba 里，如果当前 token 看起来像句尾句号，A_t 可被选为把状态近零化，有效清空记忆。如果当前 token 信息量大，B_t 可放大它的贡献。</p>
+<p><img alt="图 9.8.0：完整 Mamba 块，逐步" src="figures/ch09-fig11-mamba-block-architecture/final.png">
+<em>图 9.8.0.</em> 一个展示完整 Mamba 块的八阶段竖直流水线：(1) 线性投影分成 x' 和 z 分支，(2) 对 x' 做 Conv1D 获取局部上下文，(3) SiLU 激活，(4) 选择性参数头从 x' 按 token 计算 Δ_t、B_t、C_t，(5) 离散化 (A, Δ_t) → A_bar_t 和 (Δ_t, B_t) → B_bar_t，(6) 选择性 SSM 循环本身 h_t = A_bar_t · h_{t-1} + B_bar_t · x'_t, y_t = C_t · h_t，(7) 门控——y_t 与 SiLU(z) 逐元素相乘，(8) 输出投影 + 残差。阶段 4–6 高亮为“选择性核心”；阶段 1–3 和 7–8 是标准神经网络机制。这个八阶段块替代 transformer 层的注意力和 FFN。</p>
+<p>这种选择性是 Mamba 弥合大部分与完整注意力检索差距的原因。在 needle-in-a-haystack 任务上，Mamba 比固定 SSM 或线性注意力好得多——不如完整注意力，但对基于循环的机制来说惊人地接近。</p>
+<p>实现细节要紧。Mamba 不再能表达为固定卷积（因为 A_t 随 t 变），所以基于卷积的并行训练技巧不直接适用。相反，Mamba 用<strong>并行扫描（parallel scan）</strong>——一种分治算法，在训练时以 <code>O(log N)</code> 并行深度计算循环。推理仍是 O(N) 顺序的，与标准 SSM 完全相同。</p>
+<h4>9.5.1：Mamba 的内存占用</h4>
+<p>Mamba 的状态大小通常比标准 SSM 大（<code>d_state = 16</code> × 扩展因子 2 × d，给出每层有效状态约 128–256 维）。对 d = 4096、状态扩展 = 128 的 Mamba-2，每用户缓存：</p>
+<pre><code>cache_Mamba  ≈  d_state · L · 2 bytes  ≈  128 × 64 × 2  =  16 KB per user
+</code></pre>
+<p>仍远小于完整 MHA。大到足以做有意义的检索。</p>
+<h4>9.5.2：在真实句子上追踪选择性</h4>
+<p>要看到为什么依赖输入的动力学要紧，在句子 <code>"The capital of France is"</code> 上跑 Mamba 的循环。我们用 1 维状态（<code>n = 1</code>）和连续时间 <code>A = -1.0</code>。每个 token <code>x_t</code> 投影到一个学到的 <strong>Δ_t</strong>（“时间步”，控制遗忘多少过去、接纳多少输入）：</p>
+<pre><code>Token          Δ_t    meaning
+&quot;The&quot;          0.5    common word, moderate writing
+&quot;capital&quot;      1.0    content word, write more
+&quot;of&quot;           0.05   function word, nearly skip
+&quot;France&quot;       2.0    key entity, heavy reset
+&quot;is&quot;           0.3    structural, moderate
+</code></pre>
+<p>离散化把 Δ_t 转成每 token 状态转移因子：</p>
+<pre><code>A_bar_t = exp(A · Δ_t) = exp(-Δ_t)     (fraction of old state retained)
+B_bar_t = 1 - A_bar_t                   (fraction of new input admitted)
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Token</th>
+<th>Δ</th>
+<th>A_bar</th>
+<th>B_bar</th>
+<th>Interpretation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>"The"</td>
+<td>0.5</td>
+<td>0.607</td>
+<td>0.393</td>
+<td>61% keep, 39% write</td>
+</tr>
+<tr>
+<td>"capital"</td>
+<td>1.0</td>
+<td>0.368</td>
+<td>0.632</td>
+<td>37% keep, 63% write (push)</td>
+</tr>
+<tr>
+<td>"of"</td>
+<td>0.05</td>
+<td>0.951</td>
+<td>0.049</td>
+<td>95% keep, 5% write (skip)</td>
+</tr>
+<tr>
+<td>"France"</td>
+<td>2.0</td>
+<td>0.135</td>
+<td>0.865</td>
+<td>14% keep, 87% write (reset)</td>
+</tr>
+<tr>
+<td>"is"</td>
+<td>0.3</td>
+<td>0.741</td>
+<td>0.259</td>
+<td>74% keep, 26% write</td>
+</tr>
+</tbody>
+</table>
+<p><img alt="图 9.8.1：Mamba 在一个句子上依赖输入的 A_bar 和 B_bar" src="figures/ch09-fig8-1-mamba-delta-trace/final.png">
+<em>图 9.8.1.</em> 一条 5 个 token 框的水平条，对应“The capital of France is.”每个框下方是两根堆叠条：A_bar（保留比例，蓝）和 B_bar（写入比例，橙）。“of”几乎全蓝（几乎不写）；“France”几乎全橙（状态重置）。右侧一个单独面板：与使用恒定 A_bar = 0.8 的<strong>固定</strong> SSM 的对比，显示每个 token 无论内容如何都得到同样的堆叠条。标注：“Mamba 的动力学依赖 token；固定 SSM 不。”</p>
+<p><strong>逐步状态演化</strong>（所有 token 的 <code>val(·) = 1.0</code>——所有内容都编码在 Δ、B、C 里，不在输入值里）：</p>
+<pre><code>h_init = 0
+
+&quot;The&quot;:     h_0 = 0.607·0 + 0.393·1 = 0.393
+&quot;capital&quot;: h_1 = 0.368·0.393 + 0.632·1 = 0.145 + 0.632 = 0.777
+&quot;of&quot;:      h_2 = 0.951·0.777 + 0.049·1 = 0.739 + 0.049 = 0.788   ← barely moved
+&quot;France&quot;:  h_3 = 0.135·0.788 + 0.865·1 = 0.106 + 0.865 = 0.971   ← reset!
+&quot;is&quot;:      h_4 = 0.741·0.971 + 0.259·1 = 0.720 + 0.259 = 0.979
+</code></pre>
+<p>“of”以 4.9% 强度进入状态并让旧状态 95.1% 保持完好——模型实际忽略了它。“France”把旧状态压到自身的 10.6% 并以 86.5% 写入自己的信号——一次由内容词触发的近乎完全重置。</p>
+<p><strong>最终状态 h_4 的构成。</strong>我们用链 <code>B_bar_t · val_t · ∏_{s&gt;t} A_bar_s</code> 分解 <code>h_4</code>，看哪个 token 贡献了什么：</p>
+<pre><code>&quot;The&quot;:     0.393 · (0.368·0.951·0.135·0.741) = 0.393 · 0.035 = 0.014    ( 1.4%)
+&quot;capital&quot;: 0.632 · (0.951·0.135·0.741)       = 0.632 · 0.095 = 0.060    ( 6.1%)
+&quot;of&quot;:      0.049 · (0.135·0.741)             = 0.049 · 0.100 = 0.005    ( 0.5%)
+&quot;France&quot;:  0.865 · (0.741)                   = 0.865 · 0.741 = 0.641    (65.5%)
+&quot;is&quot;:      0.259 · (1.0)                     = 0.259 · 1.000 = 0.259    (26.5%)
+                                                              ───────
+                                                              sum = 0.979 ✓
+</code></pre>
+<p><strong>对比固定 SSM</strong>，恒定 A_bar = 0.8（无基于内容的门控）：</p>
+<pre><code>&quot;The&quot;:     0.012 (12.8%)
+&quot;capital&quot;: 0.016 (16.0%)
+&quot;of&quot;:      0.020 (20.0%)   ← &quot;of&quot; outweighs &quot;capital&quot; purely because of recency
+&quot;France&quot;:  0.025 (25.0%)
+&quot;is&quot;:      0.031 (31.2%)   ← newest token always wins
+</code></pre>
+<p>在固定 SSM 里，重要性等于新近度。一个无意义的功能词（“of”）最终比它之前的内容词（“capital”）占有更大状态份额。模型无法区分它们——它们得到同样的衰减。这正是让固定 SSM 在检索任务上输给 transformer 的那个失败模式。</p>
+<p>Mamba 修复了它：<strong>内容决定重要性，而不只是位置</strong>。“France”虽在两位之前，却持有最终状态的 65.5%；“of”虽比“capital”（6.1%）更新，却只持有 0.5%。学到的 Δ 头看着“of”，判定它无需进入长期存储，让前一状态几乎冻结。同一个头看着“France”，判定它是句子的主语，覆写状态腾出空间。</p>
+<p>这一个技巧——每 token、依赖输入的离散化——正是把 Mamba 的检索质量从约 40%（线性注意力 / 固定 SSM 水平）提升到 needle-in-a-haystack 基准上约 78% 的原因。代价，如 §9.5 所注：A_t 不再恒定，所以固定 SSM 用的基于 FFT 的并行卷积不适用。Mamba 用<strong>并行扫描</strong>算法替代训练，保持 <code>O(log N)</code> 并行深度但更难高效实现。这就是 Mamba 的生产支持落后于 Llama 风格 transformer 的原因。</p>
+<h3>9.6：四种的内存对比</h3>
+<p>图 9.9 把四种范式的每 token 内存放到一张图里。</p>
+<p><img alt="图 9.9：跨范式每 token 内存" src="figures/ch09-fig9-memory-per-token-bar-chart/final.png">
+<em>图 9.9.</em> 一张水平条形图，对数刻度。对一个 d = 4096、N = 32,000 的模型的五根条。MHA（完整）：每层每 token 约 256 KB。滑动窗口（W = 4096）：约 32 KB（约少 8×）。线性注意力：约 32 KB，与 N 无关。SSM/Mamba（d_state = 64–128）：整个序列总共约 2 KB。普通 RNN：总共约 2 KB。Mamba 在长上下文上每序列比完整注意力小约 128×。</p>
+<p>图 9.9 讲述故事。完整 MHA 的每 token 成本随 <code>H·D·L</code> 缩放。滑动窗口在序列维把它封顶在 <code>W</code>。线性注意力和 SSM/Mamba 都减少到不随 N 增长的固定大小，SSM 的大小尤其小，因为 <code>d_state</code> 通常远小于 <code>D × H</code>。</p>
+<p>权衡轴是质量。图 9.10 展示一个假设但具代表性的排序。</p>
+<p><img alt="图 9.10：needle-in-haystack 上的检索质量" src="figures/ch09-fig10-needle-in-haystack-retrieval/final.png">
+<em>图 9.10.</em> 一张展示五种架构在 32K 上下文 needle-in-haystack 基准上检索准确率（0–100%）的条形图。完整注意力：95%。滑动窗口 W=4K：45%（窗口外急剧下降）。线性注意力：40%（上下文瓶颈）。Mamba：78%（选择性有帮助）。混合（Mamba + 注意力层）：92%（两全其美）。</p>
+<p>图 9.10 报告一个来自 SSM 文献的风格化但经验上有依据的模式。完整注意力是 95% 的金标准。滑动窗口在窗口外急剧退化（45%）。线性注意力受上下文瓶颈之苦（40%）。Mamba 的选择性恢复大部分差距（78%）。<strong>混合架构——把 Mamba 层与完整注意力层混合——达到 92%，以低得多的内存几乎匹配完整注意力</strong>。</p>
+<p>这就是为什么现代研究越来越指向混合架构。Jamba（AI21）、Zamba 和研究级 Mamba-Attention 混合都采用这一模式：大多数层是 Mamba 或 SSM（为内存和吞吐），少数层是完整注意力（为检索）。那少数注意力层通常放在特定位置——中间层，模型需要全局综合信息的地方——而非均匀分布。</p>
+<h3>9.7：实现复杂度</h3>
+<p>一句常被省略的警告。完整注意力在推理库里有深度支持：FlashAttention 存在，PagedAttention 存在，每个生产引擎都有调优的核。滑动窗口也支持良好（Mistral 的核被广泛采用）。</p>
+<p>线性注意力、SSM 和 Mamba 截至 2026 年在生产栈里的支持少得多。SSM 的 FlashAttention 存在（FlashSSM）但更新、更少实战检验。SSM 的 PagedAttention 等价技术在萌芽。Mamba 的连续批处理在特定引擎里实现（Tri Dao 的 Mamba 代码库、最近的 llama.cpp）但非普遍。</p>
+<p>对 2026 年的生产部署，架构选择受你的推理引擎支持什么约束。如果你在跑 vLLM，GQA 或 MLA 是稳妥赌注。如果你愿意用实验引擎，Mamba 变体提供戏剧性的内存节省。混合模型（Jamba、Zamba、未来混合的 Llamas）可能成为默认——如果且当服务支持跟上时。</p>
+<hr>
+<h2>token 压缩把我们放到 roofline 的哪里</h2>
+<h3>9.8：roofline 上什么变了</h3>
+<p>滑动窗口、线性注意力、SSM 和 Mamba 都攻击缓存的字节维。通过减少每 decode 步骤的字节，每一个都<strong>提高算术强度</strong>，工作点在 roofline 上向右移。</p>
+<p>幅度各异。W = 4K 的滑动窗口缓存，对比 N = 32K 的完整 MHA，小 8×。算术强度上升约 8×。仍内存带宽受限，但没那么深。</p>
+<p>线性注意力和 SSM：缓存是<strong>恒定大小</strong>的。AI 戏剧性上升——在极长上下文，相对完整 MHA 约 N×。对 N = 32K 的 SSM，那是每字节比 MHA 多约 32× 的 FLOPs。实践中，长上下文的 SSM 是算力受限而非内存带宽受限——与本书其他每一项技术相反的区间。</p>
+<p>Mamba 在内存和质量上都坐于完整注意力与线性注意力之间。</p>
+<h3>9.9：什么不变</h3>
+<p>token 压缩不帮助缓存公式中的其他项。头部压缩（第 8 章）仍正交地适用——你可以把 GQA 与滑动窗口结合（如 Mistral 所做），或把 MLA 与 SSM 层结合。这些是加性的。</p>
+<p>token 压缩也不消除对高效注意力核的需求。即使有恒定大小状态，你仍要高效计算 <code>φ(Q) · S</code>，这受益于分块和量化。第 10–15 章的技术仍适用。</p>
+<h3>9.10：现代图景</h3>
+<p>截至 2026 年，长上下文推理的主导生产模式是：</p>
+<ol>
+<li>GQA 或 MLA 做头部压缩（第 8 章）。</li>
+<li>大多数层用完整注意力，可能在某些层用滑动窗口。</li>
+<li>FlashAttention 核（第 10 章）做高效注意力计算。</li>
+<li>PagedAttention（第 11 章）做 KV 缓存内存管理。</li>
+<li>前缀缓存和分块 prefill（第 12 章）做服务效率。</li>
+<li>量化（第 13 章）同时用于权重和 KV 缓存。</li>
+<li>连续批处理（第 14 章）做吞吐。</li>
+</ol>
+<p>Mamba 风格架构正在流式和极长上下文应用中出现，但尚未取代注意力成为默认。研究到生产的差距是真实的，且正在缩小。</p>
+<h3>9.11：接下来去哪</h3>
+<p>第 8 章和第 9 章给了我们两种缩小缓存字节的方法。第 10 章给我们一种完全避免让那些字节流经 HBM 的方法——通过把注意力计算局部地留在 SRAM 里：<strong>FlashAttention</strong>。与头部和 token 压缩结合，FlashAttention 补全注意力自身的内存流量故事。之后，第 11 章处理另一个主要内存关切——缓存如何铺在 GPU HBM 上，第 12 章处理如何跨用户共享缓存状态。</p>
+</section>

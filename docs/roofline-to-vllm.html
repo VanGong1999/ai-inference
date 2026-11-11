@@ -1,0 +1,1632 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>从 Roofline 模型到 vLLM —— 一段可视化叙事</title>
+<meta name="description" content="推理工程学的完整脉络，浓缩于一页：Roofline 模型上的预填充（prefill）与解码（decode）、KV 缓存及其内存成本、跨头压缩（MHA、MQA、GQA、MLA）与跨 token 压缩（滑窗、线性注意力、Mamba），以及作为这一切底层内核的 FlashAttention —— 最终汇入 vLLM 引擎。" />
+<link rel="icon" type="image/png" href="vizlogo.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=JetBrains+Mono:wght@400;500;700&family=Inter+Tight:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper:        #f4ecd8;
+    --paper-deep:   #ebe1c7;
+    --ink:          #1a1815;
+    --ink-soft:     #3d3833;
+    --ink-faint:    #6b6359;
+    --rule:         #2a2622;
+    --accent:       #c8351b;
+    --accent-soft:  #e08a76;
+    --gold:         #b8862f;
+    --teal:         #2f5e5a;
+    --blue:         #2e4a7b;
+    --green:        #4a6b3a;
+    --hot:          #c8351b;
+    --cool:         #2e4a7b;
+    --margin:       max(2rem, calc(50vw - 38rem));
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'Fraunces', 'PingFang SC', 'Microsoft YaHei', 'Times New Roman', serif;
+    font-feature-settings: "ss01" on, "ss02" on, "onum" on;
+    background: var(--paper);
+    color: var(--ink);
+    line-height: 1.55;
+    font-size: 18px;
+    overflow-x: hidden;
+    position: relative;
+  }
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      radial-gradient(circle at 20% 30%, rgba(120,90,40,0.04) 0%, transparent 40%),
+      radial-gradient(circle at 80% 70%, rgba(60,40,20,0.035) 0%, transparent 40%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  body::after {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.15 0 0 0 0 0.12 0 0 0 0 0.08 0 0 0 0.18 0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
+    opacity: 0.35;
+    mix-blend-mode: multiply;
+    pointer-events: none;
+    z-index: 1;
+  }
+  main { position: relative; z-index: 2; }
+
+  h1, h2, h3, h4 {
+    font-family: 'Fraunces', 'PingFang SC', 'Microsoft YaHei', serif;
+    font-variation-settings: "opsz" 144;
+    color: var(--ink);
+    letter-spacing: -0.02em;
+    line-height: 1.05;
+    font-weight: 500;
+  }
+  h2 { font-size: clamp(2.2rem, 5vw, 3.6rem); margin-bottom: 1.5rem; font-weight: 400; }
+  h3 { font-size: clamp(1.5rem, 3vw, 2.1rem); margin: 2.5rem 0 1rem; font-weight: 500; }
+  h4 { font-size: 1.25rem; margin: 1.5rem 0 0.6rem; font-weight: 600; font-variation-settings: "opsz" 14; }
+
+  p { font-size: 1.125rem; margin-bottom: 1.25rem; max-width: 65ch; }
+  p.lede {
+    font-size: 1.45rem;
+    line-height: 1.5;
+    color: var(--ink-soft);
+    font-style: italic;
+    font-weight: 300;
+    max-width: 60ch;
+  }
+  .small-caps {
+    font-family: 'Inter Tight', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--ink-faint);
+  }
+  .drop::first-letter {
+    font-family: 'Fraunces', serif;
+    font-weight: 600;
+    font-size: 4.5rem;
+    float: left;
+    line-height: 0.85;
+    margin: 0.4rem 0.5rem 0 0;
+    color: var(--accent);
+  }
+
+  code, .mono {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.9em;
+    background: rgba(40,30,20,0.06);
+    padding: 0.1em 0.35em;
+    border-radius: 3px;
+    color: var(--ink);
+  }
+
+  section {
+    padding: 6rem var(--margin);
+    position: relative;
+    border-bottom: 1px solid rgba(40,30,20,0.08);
+  }
+  section:last-child { border-bottom: none; }
+
+  .section-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    letter-spacing: 0.05em;
+    color: var(--accent);
+    margin-bottom: 1rem;
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border: 1px solid var(--accent);
+    border-radius: 2px;
+  }
+
+  .hero {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 4rem var(--margin) 2rem;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    border-bottom: 2px solid var(--ink);
+    padding-bottom: 0.75rem;
+    margin-bottom: 3rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+  .hero-meta .vol {
+    font-family: 'Fraunces', 'PingFang SC', 'Microsoft YaHei', serif;
+    font-style: italic;
+    font-size: 1rem;
+    color: var(--ink-soft);
+  }
+  .hero h1 {
+    font-size: clamp(3rem, 9.5vw, 8rem);
+    font-weight: 300;
+    line-height: 0.92;
+    margin: 1rem 0 2rem;
+    font-variation-settings: "opsz" 144, "wght" 300;
+  }
+  .hero h1 em {
+    font-style: italic;
+    color: var(--accent);
+    font-variation-settings: "opsz" 144, "wght" 400;
+  }
+  .hero-sub {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3rem;
+    margin-top: 3rem;
+    border-top: 1px solid rgba(40,30,20,0.2);
+    padding-top: 1.5rem;
+  }
+  .hero-sub p { font-size: 1rem; color: var(--ink-soft); }
+
+  .hero-formula {
+    margin: 2rem 0;
+    padding: 2rem;
+    background: var(--ink);
+    color: var(--paper);
+    font-family: 'JetBrains Mono', monospace;
+    text-align: center;
+    border-radius: 2px;
+    position: relative;
+  }
+  .hero-formula .label {
+    position: absolute;
+    top: -0.7rem; left: 1rem;
+    background: var(--paper);
+    color: var(--ink);
+    padding: 0 0.5rem;
+    font-size: 0.7rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
+  .hero-formula .eq {
+    font-size: 1.4rem;
+    letter-spacing: 0.05em;
+    line-height: 1.5;
+  }
+  .hero-formula .eq .var { color: var(--accent-soft); }
+  .hero-formula .eq .same { color: #9bd1a8; }
+
+  .toc {
+    background: var(--paper-deep);
+    padding: 4rem var(--margin);
+    border-top: 1px solid rgba(40,30,20,0.15);
+    border-bottom: 1px solid rgba(40,30,20,0.15);
+  }
+  .toc h2 {
+    font-size: 1.2rem;
+    font-family: 'Inter Tight', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: 2rem;
+    font-weight: 600;
+  }
+  .toc-list { list-style: none; }
+  .toc-list li {
+    border-top: 1px solid rgba(40,30,20,0.15);
+    padding: 1rem 0;
+    display: flex;
+    align-items: baseline;
+    gap: 1.5rem;
+  }
+  .toc-list li:last-child { border-bottom: 1px solid rgba(40,30,20,0.15); }
+  .toc-list .num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85rem;
+    color: var(--accent);
+    width: 3rem;
+    flex-shrink: 0;
+  }
+  .toc-list a {
+    color: var(--ink);
+    text-decoration: none;
+    font-family: 'Fraunces', 'PingFang SC', 'Microsoft YaHei', serif;
+    font-size: 1.4rem;
+    flex-grow: 1;
+    transition: color 0.2s;
+  }
+  .toc-list a:hover { color: var(--accent); font-style: italic; }
+  .toc-list .pg {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--ink-faint);
+  }
+
+  figure {
+    margin: 3rem auto;
+    padding: 0;
+    text-align: center;
+    max-width: 100%;
+  }
+  figure svg {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 0 auto;
+    background: var(--paper);
+  }
+  figcaption {
+    font-family: 'Inter Tight', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    font-size: 0.85rem;
+    color: var(--ink-faint);
+    margin-top: 1rem;
+    line-height: 1.4;
+    max-width: 56ch;
+    margin-left: auto;
+    margin-right: auto;
+    text-align: center;
+  }
+  figcaption .fig-label {
+    font-weight: 700;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-size: 0.72rem;
+    margin-right: 0.5rem;
+  }
+
+  .pull-quote {
+    font-family: 'Fraunces', 'PingFang SC', 'Microsoft YaHei', serif;
+    font-style: italic;
+    font-weight: 300;
+    font-size: clamp(1.6rem, 3.8vw, 2.6rem);
+    line-height: 1.25;
+    color: var(--ink);
+    margin: 4rem auto;
+    padding: 2.5rem 0;
+    max-width: 50ch;
+    text-align: center;
+    border-top: 1px solid var(--ink);
+    border-bottom: 1px solid var(--ink);
+    position: relative;
+  }
+  .pull-quote::before {
+    content: '"';
+    position: absolute;
+    top: -1.5rem; left: 50%;
+    transform: translateX(-50%);
+    background: var(--paper);
+    padding: 0 1rem;
+    font-size: 4rem;
+    color: var(--accent);
+    line-height: 1;
+    font-style: normal;
+  }
+
+  .marginalia {
+    font-family: 'Inter Tight', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    font-size: 0.85rem;
+    color: var(--ink-faint);
+    line-height: 1.4;
+    border-left: 2px solid var(--accent);
+    padding-left: 1rem;
+    margin: 1.5rem 0;
+    font-style: italic;
+  }
+
+  .formula {
+    background: var(--paper-deep);
+    border: 1px solid rgba(40,30,20,0.15);
+    padding: 1.5rem 2rem;
+    margin: 2rem 0;
+    text-align: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1.1rem;
+    border-radius: 3px;
+    overflow-x: auto;
+  }
+  .formula em { color: var(--accent); font-style: normal; font-weight: 700; }
+
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 0;
+    margin: 2.5rem 0;
+    border-top: 1px solid var(--ink);
+    border-bottom: 1px solid var(--ink);
+  }
+  .stat {
+    padding: 1.5rem;
+    border-right: 1px solid rgba(40,30,20,0.15);
+    text-align: center;
+  }
+  .stat:last-child { border-right: none; }
+  .stat .num {
+    font-family: 'Fraunces', serif;
+    font-variation-settings: "opsz" 144, "wght" 400;
+    font-size: 2.6rem;
+    color: var(--accent);
+    line-height: 1;
+    display: block;
+  }
+  .stat .lbl {
+    font-family: 'Inter Tight', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--ink-faint);
+    margin-top: 0.5rem;
+    display: block;
+  }
+
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3rem;
+    margin: 2rem 0;
+  }
+  @media (max-width: 768px) {
+    .two-col { grid-template-columns: 1fr; gap: 1.5rem; }
+    .hero-sub { grid-template-columns: 1fr; }
+    .stat-grid { grid-template-columns: 1fr 1fr; }
+    .stat { border-right: 1px solid rgba(40,30,20,0.15); border-bottom: 1px solid rgba(40,30,20,0.15); }
+  }
+
+  .ornament {
+    text-align: center;
+    margin: 3rem 0;
+    color: var(--ink-faint);
+    font-size: 1.5rem;
+    letter-spacing: 1rem;
+  }
+
+  .hl { background: linear-gradient(180deg, transparent 60%, rgba(200,53,27,0.25) 60%); padding: 0 0.1em; }
+  .hl-gold { background: linear-gradient(180deg, transparent 60%, rgba(184,134,47,0.3) 60%); padding: 0 0.1em; }
+  .hl-green { background: linear-gradient(180deg, transparent 60%, rgba(74,107,58,0.3) 60%); padding: 0 0.1em; }
+
+  /* Cliffhanger card for the vLLM teaser */
+  .teaser {
+    background: var(--ink);
+    color: var(--paper);
+    padding: 3.5rem 2.5rem;
+    margin: 3rem 0;
+    border-radius: 3px;
+    position: relative;
+    text-align: center;
+  }
+  .teaser .small-caps { color: var(--accent-soft); }
+  .teaser h3 {
+    font-family: 'Fraunces', 'PingFang SC', 'Microsoft YaHei', serif;
+    font-style: italic;
+    color: var(--paper);
+    margin: 1rem auto 1.5rem;
+    font-size: clamp(2rem, 4vw, 3rem);
+    font-weight: 300;
+    max-width: 24ch;
+  }
+  .teaser p { color: #d8c8a8; margin: 0 auto; max-width: 50ch; font-size: 1.05rem; }
+  .teaser ul {
+    list-style: none;
+    margin: 2rem auto 0;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.6rem;
+    max-width: 60ch;
+  }
+  .teaser li {
+    border: 1px solid rgba(244,236,216,0.3);
+    padding: 0.45rem 0.9rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    color: var(--accent-soft);
+    border-radius: 999px;
+  }
+
+  footer {
+    padding: 4rem var(--margin) 3rem;
+    background: var(--ink);
+    color: var(--paper);
+    text-align: center;
+  }
+  footer p { color: var(--paper); margin: 0 auto 0.5rem; max-width: none; }
+  footer .small-caps { color: var(--accent-soft); }
+
+  .svg-text {
+    font-family: 'Inter Tight', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    font-size: 13px;
+    fill: var(--ink);
+  }
+  .svg-mono { font-family: 'JetBrains Mono', monospace; }
+  .svg-serif { font-family: 'Fraunces', serif; font-style: italic; }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .anim { animation: fadeUp 0.8s ease-out backwards; }
+</style>
+</head>
+<body>
+<main>
+
+<!-- ================== HERO ================== -->
+<section class="hero">
+  <div class="hero-meta">
+    <span class="small-caps" style="display:flex;align-items:center;gap:0.6rem"><img src="vizlogo.png" alt="Vizuara" style="width:26px;height:26px;border-radius:5px;border:1px solid rgba(40,30,20,0.25);background:#fff"> Vizuara · 推理工程</span>
+    <span class="vol">卷 V · 一页尽览全貌</span>
+    <span class="small-caps">第 3 → 19 章</span>
+  </div>
+
+  <p class="small-caps anim" style="animation-delay:.05s">从第一次推理，到内核，再到引擎</p>
+  <h1 class="anim" style="animation-delay:.15s">
+    从<br>
+    <em>Roofline 模型</em><br>
+    到 <em>vLLM</em>。
+  </h1>
+  <p class="lede anim" style="animation-delay:.35s">
+    推理工程学的完整脉络，被讲述为一个连贯的故事。为什么朴素的解码（decode）很慢。KV 缓存如何拯救它。为什么缓存随后又成了新的反派。我们如何跨头、跨 token 地压缩它。FlashAttention 位居这一切的底层何处。以及，最终，那个把所有东西包裹起来的引擎 —— vLLM。
+  </p>
+
+  <div class="hero-formula anim" style="animation-delay:.55s">
+    <span class="label">这趟旅程的轮廓</span>
+    <div class="eq">
+      朴素解码&nbsp;<span class="var">→</span>&nbsp;KV 缓存&nbsp;<span class="var">→</span>&nbsp;压缩（头 · token）&nbsp;<span class="var">→</span>&nbsp;FlashAttention&nbsp;<span class="var">→</span>&nbsp;<span class="same">vLLM</span>
+      <br>
+      <span style="font-size:0.9rem;color:#bda88f">每一支箭都是一章 —— 每一章都把 roofline 图上的那个点抬高一点。</span>
+    </div>
+  </div>
+
+  <div class="hero-sub anim" style="animation-delay:.75s">
+    <p>大多数推理教材把这些技术当成一份清单来讲解。但它们不是清单，而是一条序列 —— 每一项都修复了前一项制造的问题，每一项都把 roofline 图上的那个点向它本该在的位置再推近一点。</p>
+    <p style="text-align:right">向下滚动，看着那个点攀升。<br><span style="font-size:1.5rem">↓</span></p>
+  </div>
+</section>
+
+<!-- ================== TOC ================== -->
+<nav class="toc">
+  <h2>目录</h2>
+  <ol class="toc-list">
+    <li><span class="num">I</span><a href="#s1">一张 Roofline 模型图，与第一次推理</a><span class="pg">p. 01</span></li>
+    <li><span class="num">II</span><a href="#s2">KV 缓存，拯救者</a><span class="pg">p. 02</span></li>
+    <li><span class="num">III</span><a href="#s3">同一个英雄，新的反派</a><span class="pg">p. 03</span></li>
+    <li><span class="num">IV</span><a href="#s4">通过压缩字节来抬高 roofline</a><span class="pg">p. 04</span></li>
+    <li><span class="num">V</span><a href="#s5">跨头压缩 —— MHA、MQA、GQA、MLA</a><span class="pg">p. 05</span></li>
+    <li><span class="num">VI</span><a href="#s6">跨 token 压缩 —— 滑窗、线性、Mamba</a><span class="pg">p. 06</span></li>
+    <li><span class="num">VII</span><a href="#s7">三个维度</a><span class="pg">p. 07</span></li>
+    <li><span class="num">VIII</span><a href="#s8">现实中，模型什么都混用</a><span class="pg">p. 08</span></li>
+    <li><span class="num">IX</span><a href="#s9">FlashAttention —— 位于一切之下的那一层</a><span class="pg">p. 09</span></li>
+    <li><span class="num">X</span><a href="#s10">为什么 N²·d²/M 才是关键结果</a><span class="pg">p. 10</span></li>
+    <li><span class="num">XI</span><a href="#s11">今日课程 —— vLLM 内部</a><span class="pg">p. 11</span></li>
+  </ol>
+</nav>
+
+<!-- ================== § I ROOFLINE ================== -->
+<section id="s1">
+  <span class="section-num">§ I</span>
+  <h2>一张 Roofline 模型图，与第一次推理。</h2>
+  <p class="lede">每一个推理工作负载都位于 Roofline 模型图上的某个位置。它位于哪里，是关于它最重要的一件事。</p>
+
+  <p class="drop">Roofline 模型是一张简单的图。横轴是<em>算术强度</em> —— 内核每读取一字节内存所执行的 FLOPs 数。纵轴是达到的性能，以每秒 FLOPs 计。这张图有两条上限：右侧一条平坦的天花板（峰值算力），左侧一条倾斜的天花板（峰值内存带宽）。它们交汇之处是<em>脊点</em>。脊点之左，内核受限于内存；脊点之右，则受限于算力。</p>
+
+  <figure>
+    <svg viewBox="0 0 820 380" xmlns="http://www.w3.org/2000/svg">
+      <!-- Title -->
+      <text class="svg-text" x="40" y="22" font-size="11" letter-spacing="0.15em" fill="#6b6359">ROOFLINE 模型 —— H100 SXM，FP16</text>
+
+      <!-- Axes -->
+      <g transform="translate(60,40)">
+        <!-- y axis -->
+        <line x1="0" y1="0" x2="0" y2="280" stroke="#1a1815" stroke-width="1.2"/>
+        <!-- x axis -->
+        <line x1="0" y1="280" x2="700" y2="280" stroke="#1a1815" stroke-width="1.2"/>
+
+        <!-- y labels -->
+        <text class="svg-text" x="-10" y="20" text-anchor="end" font-size="11" fill="#1a1815">峰值 FLOPs</text>
+        <text class="svg-text svg-mono" x="-10" y="38" text-anchor="end" font-size="9" fill="#6b6359">~989 TFLOPs</text>
+        <text class="svg-text" x="-10" y="280" text-anchor="end" font-size="11" fill="#1a1815">0</text>
+
+        <!-- x labels -->
+        <text class="svg-text" x="350" y="312" text-anchor="middle" font-size="12" fill="#6b6359">算术强度（FLOPs / byte）</text>
+        <text class="svg-text svg-mono" x="0" y="296" text-anchor="middle" font-size="10" fill="#6b6359">0</text>
+        <text class="svg-text svg-mono" x="700" y="296" text-anchor="middle" font-size="10" fill="#6b6359">→</text>
+
+        <!-- ramp (memory ceiling) -->
+        <line x1="0" y1="280" x2="280" y2="20" stroke="#1a1815" stroke-width="2"/>
+        <text class="svg-text svg-serif" x="60" y="200" font-size="13" fill="#1a1815" font-style="italic" transform="rotate(-43 60 200)">峰值 HBM 带宽斜坡</text>
+
+        <!-- flat ceiling -->
+        <line x1="280" y1="20" x2="700" y2="20" stroke="#1a1815" stroke-width="2"/>
+        <text class="svg-text svg-serif" x="500" y="14" font-size="13" fill="#1a1815" font-style="italic">峰值算力天花板</text>
+
+        <!-- ridge marker -->
+        <circle cx="280" cy="20" r="5" fill="#1a1815"/>
+        <line x1="280" y1="20" x2="280" y2="280" stroke="#6b6359" stroke-width="0.6" stroke-dasharray="3,3"/>
+        <text class="svg-text svg-mono" x="280" y="296" text-anchor="middle" font-size="10" fill="#6b6359">脊点</text>
+
+        <!-- regions -->
+        <text class="svg-text" x="135" y="145" text-anchor="middle" font-size="11" letter-spacing="0.12em" fill="#c8351b" font-weight="700">内存受限</text>
+        <text class="svg-text" x="490" y="145" text-anchor="middle" font-size="11" letter-spacing="0.12em" fill="#4a6b3a" font-weight="700">算力受限</text>
+
+        <!-- Decode dot -->
+        <g>
+          <circle cx="60" cy="225" r="8" fill="#c8351b"/>
+          <text class="svg-text svg-serif" x="74" y="222" font-size="14" fill="#c8351b" font-style="italic">解码（decode）</text>
+          <text class="svg-text" x="74" y="240" font-size="11" fill="#6b6359">约 1 个 token，深度内存受限</text>
+        </g>
+
+        <!-- Prefill dot -->
+        <g>
+          <circle cx="400" cy="20" r="8" fill="#4a6b3a"/>
+          <text class="svg-text svg-serif" x="395" y="44" font-size="14" fill="#4a6b3a" font-style="italic">预填充（prefill）</text>
+          <text class="svg-text" x="395" y="60" font-size="11" fill="#6b6359">一次性处理整个 prompt，贴近天花板</text>
+        </g>
+      </g>
+    </svg>
+    <figcaption><span class="fig-label">Fig. 1.1</span>每个推理工程师都应当能蒙着眼睛画出的那一张图。预填充贴着算力天花板；解码则困在带宽斜坡的深处。在这个故事里我们要做的每一件事，都是把解码那个点向右推进。</figcaption>
+  </figure>
+
+  <p>为什么解码会落在这么靠左的位置？因为它是自回归的。生成一个新 token，需要把模型的参数读一遍，用单个 token 的激活与之相乘，再写出一个新 token。读入的字节很多，用它们完成的 FLOPs 却很少。<hl>算术强度微乎其微。</hl></p>
+
+  <p>预填充恰恰相反。整个 prompt 被一次性处理，因此同一组参数在多个 token 间被反复复用。每字节的 FLOPs 很多，这个点落在脊点附近。</p>
+
+  <p>这种不对称正是推理之所以困难的根源。训练看起来像预填充：大规模并行，点贴近脊点，GPU 很满足。推理看起来像解码：一股细弱的工作流，GPU 处于饥饿状态。从这里往后的每一章，都是让解码在 roofline 图上看起来更像预填充的一种方法。</p>
+
+  <p class="marginalia">Roofline 模型出自 Williams、Waterman 与 Patterson（2009）。它最初讲的是经典科学计算内核。结果它却比我们此后发明的几乎任何模型都更干净利落地描述了 LLM 推理。</p>
+</section>
+
+<!-- ================== § II KV CACHE RESCUER ================== -->
+<section id="s2">
+  <span class="section-num">§ II</span>
+  <h2>KV 缓存，拯救者。</h2>
+  <p class="lede">朴素的自回归解码做了大量重复工作。KV 缓存的意义在于：你其实可以不做这些重复。</p>
+
+  <p>没有缓存时，生成 token <span class="mono">t</span> 需要为<em>所有</em>先前的 token 重新计算键和值 —— <span class="mono">t-1, t-2, … 1</span> 中的每一个 —— 尽管这些 K 和 V 向量自上一步以来根本没有变化。在长度为 N 的序列上，总工作量为 <span class="mono">O(N²)</span> 次矩阵乘法，其中大部分是冗余的。</p>
+
+  <p>缓存是显然的修复。每计算一个新 token 的 K 和 V，就存下来。在第 <span class="mono">t</span> 步，只需计算<em>一个新</em> token 的 K 和 V，其余都从缓存读取。每步的工作量从 <span class="mono">O(N)</span> 降到 <span class="mono">O(1)</span>，整个序列的总工作量从 <span class="mono">O(N²)</span> 降到 <span class="mono">O(N)</span>。</p>
+
+  <figure>
+    <svg viewBox="0 0 820 480" xmlns="http://www.w3.org/2000/svg">
+      <!-- ===== NAIVE TIMELINE ===== -->
+      <g transform="translate(40,30)">
+        <text class="svg-text" x="0" y="0" font-size="11" letter-spacing="0.15em" fill="#6b6359">朴素方法 —— 每一步都重新计算一切</text>
+        <text class="svg-text svg-serif" x="0" y="20" font-size="13" fill="#c8351b" font-style="italic">每步工作量线性增长 · 总计：O(N²)</text>
+
+        <!-- bars baseline at y=170; bars grow upward -->
+        <g>
+          <line x1="0" y1="170" x2="380" y2="170" stroke="#1a1815" stroke-width="0.8"/>
+
+          <rect x="0"   y="150" width="40" height="20"  fill="#c8351b" opacity="0.7"/>
+          <text class="svg-mono svg-text" x="20"  y="190" text-anchor="middle" font-size="10" fill="#1a1815">t=1</text>
+
+          <rect x="60"  y="130" width="40" height="40"  fill="#c8351b" opacity="0.7"/>
+          <text class="svg-mono svg-text" x="80"  y="190" text-anchor="middle" font-size="10" fill="#1a1815">t=2</text>
+
+          <rect x="120" y="110" width="40" height="60"  fill="#c8351b" opacity="0.7"/>
+          <text class="svg-mono svg-text" x="140" y="190" text-anchor="middle" font-size="10" fill="#1a1815">t=3</text>
+
+          <rect x="180" y="90"  width="40" height="80"  fill="#c8351b" opacity="0.7"/>
+          <text class="svg-mono svg-text" x="200" y="190" text-anchor="middle" font-size="10" fill="#1a1815">t=4</text>
+
+          <rect x="240" y="70"  width="40" height="100" fill="#c8351b" opacity="0.7"/>
+          <text class="svg-mono svg-text" x="260" y="190" text-anchor="middle" font-size="10" fill="#1a1815">t=5</text>
+
+          <rect x="300" y="50"  width="40" height="120" fill="#c8351b" opacity="0.7"/>
+          <text class="svg-mono svg-text" x="320" y="190" text-anchor="middle" font-size="10" fill="#1a1815">t=6</text>
+        </g>
+
+        <!-- clock at right -->
+        <g transform="translate(440,110)">
+          <circle cx="0" cy="0" r="34" fill="none" stroke="#1a1815" stroke-width="2"/>
+          <line x1="0" y1="0" x2="0" y2="-24" stroke="#c8351b" stroke-width="2.5"/>
+          <line x1="0" y1="0" x2="22" y2="6" stroke="#c8351b" stroke-width="2.5"/>
+          <circle cx="0" cy="0" r="2.5" fill="#1a1815"/>
+          <text class="svg-mono svg-text" x="0" y="60" text-anchor="middle" font-size="11" fill="#c8351b" font-weight="700">慢约 32 倍</text>
+        </g>
+      </g>
+
+      <!-- ===== WITH KV CACHE TIMELINE ===== -->
+      <g transform="translate(40,260)">
+        <text class="svg-text" x="0" y="0" font-size="11" letter-spacing="0.15em" fill="#6b6359">使用 KV 缓存 —— 复用过去的 K、V</text>
+        <text class="svg-text svg-serif" x="0" y="20" font-size="13" fill="#4a6b3a" font-style="italic">平坦：每步工作量恒定 · 总计：O(N)</text>
+
+        <g>
+          <line x1="0" y1="170" x2="380" y2="170" stroke="#1a1815" stroke-width="0.8"/>
+
+          <rect x="0"   y="150" width="40" height="20" fill="#4a6b3a" opacity="0.78"/>
+          <text class="svg-mono svg-text" x="20"  y="190" text-anchor="middle" font-size="10" fill="#1a1815">t=1</text>
+
+          <rect x="60"  y="150" width="40" height="20" fill="#4a6b3a" opacity="0.78"/>
+          <text class="svg-mono svg-text" x="80"  y="190" text-anchor="middle" font-size="10" fill="#1a1815">t=2</text>
+
+          <rect x="120" y="150" width="40" height="20" fill="#4a6b3a" opacity="0.78"/>
+          <text class="svg-mono svg-text" x="140" y="190" text-anchor="middle" font-size="10" fill="#1a1815">t=3</text>
+
+          <rect x="180" y="150" width="40" height="20" fill="#4a6b3a" opacity="0.78"/>
+          <text class="svg-mono svg-text" x="200" y="190" text-anchor="middle" font-size="10" fill="#1a1815">t=4</text>
+
+          <rect x="240" y="150" width="40" height="20" fill="#4a6b3a" opacity="0.78"/>
+          <text class="svg-mono svg-text" x="260" y="190" text-anchor="middle" font-size="10" fill="#1a1815">t=5</text>
+
+          <rect x="300" y="150" width="40" height="20" fill="#4a6b3a" opacity="0.78"/>
+          <text class="svg-mono svg-text" x="320" y="190" text-anchor="middle" font-size="10" fill="#1a1815">t=6</text>
+        </g>
+
+        <g transform="translate(440,110)">
+          <circle cx="0" cy="0" r="34" fill="none" stroke="#1a1815" stroke-width="2"/>
+          <line x1="0" y1="0" x2="0" y2="-24" stroke="#4a6b3a" stroke-width="2.5"/>
+          <line x1="0" y1="0" x2="-13" y2="-13" stroke="#4a6b3a" stroke-width="2.5"/>
+          <circle cx="0" cy="0" r="2.5" fill="#1a1815"/>
+          <text class="svg-mono svg-text" x="0" y="60" text-anchor="middle" font-size="11" fill="#4a6b3a" font-weight="700">基线 = 1×</text>
+        </g>
+      </g>
+
+      <!-- ===== SIDE PANEL: FLOPS ===== -->
+      <g transform="translate(560,30)">
+        <rect x="0" y="0" width="220" height="430" fill="#ebe1c7" stroke="#3d3833" stroke-width="1"/>
+        <text class="svg-text" x="110" y="26" text-anchor="middle" font-size="11" letter-spacing="0.15em" fill="#6b6359">每步 FLOPs</text>
+
+        <text class="svg-text svg-mono" x="20" y="74"  font-size="13" fill="#c8351b">朴素：</text>
+        <text class="svg-text svg-mono" x="20" y="96"  font-size="13" fill="#1a1815">  ≈ 2·N·d²·L</text>
+
+        <line x1="20" y1="120" x2="200" y2="120" stroke="#3d3833" stroke-width="0.6" opacity="0.4"/>
+
+        <text class="svg-text svg-mono" x="20" y="148" font-size="13" fill="#4a6b3a">缓存：</text>
+        <text class="svg-text svg-mono" x="20" y="170" font-size="13" fill="#1a1815">  ≈ 2·d²·L</text>
+
+        <line x1="20" y1="200" x2="200" y2="200" stroke="#3d3833" stroke-width="0.6" opacity="0.4"/>
+
+        <text class="svg-text svg-serif" x="20" y="240" font-size="13" fill="#1a1815" font-style="italic">当 N = 1000 时：</text>
+        <text class="svg-text svg-mono"  x="20" y="280" font-size="14" fill="#c8351b">  1000× FLOPs</text>
+        <text class="svg-text svg-mono"  x="20" y="310" font-size="14" fill="#1a1815">      ↓</text>
+        <text class="svg-text svg-mono"  x="20" y="340" font-size="14" fill="#4a6b3a">    1× FLOPs</text>
+      </g>
+    </svg>
+    <figcaption><span class="fig-label">Fig. 2.1</span>KV 缓存把每个序列的二次方成本变成了线性成本。朴素情形的时钟需要走 32 格才画完；缓存情形的时钟只走一格。这是推理中最大的一顿免费午餐。</figcaption>
+  </figure>
+
+  <div class="formula">
+    朴素总量 &nbsp;∝&nbsp; <em>N²</em> · d² · L &nbsp;&nbsp;&nbsp;→&nbsp;&nbsp;&nbsp; 缓存总量 &nbsp;∝&nbsp; <em>N</em> · d² · L
+  </div>
+
+  <p>在 roofline 图上，缓存把解码那个点向脊点实实在在地推进了一步。每个 token 的 FLOPs 更少了，同时读入的字节也少了很多 —— 我们不再重读所有过去的 token，只读那一小片 KV 缓存。净结果：算术强度攀升，那个点抬升。</p>
+
+  <div class="pull-quote">KV 缓存是 GPU 不再挨饿的第一章，也是它变得幽闭恐惧的那一章。</div>
+</section>
+
+<!-- ================== § III THE EVIL ================== -->
+<section id="s3">
+  <span class="section-num">§ III</span>
+  <h2>同一个英雄，新的反派。</h2>
+  <p class="lede">KV 缓存解决了一个问题，又制造了另一个。速度上来了，但现在内存会随着每个活跃会话中的每个 token 线性增长。</p>
+
+  <p>每个 token 的缓存大小正如书中第 7 章所推导：</p>
+
+  <div class="formula">
+    每个 token 的缓存字节数 &nbsp;=&nbsp; <em>4 · H · D · L</em>
+  </div>
+
+  <p>K 两个字节、V 两个字节（FP16），乘以 <span class="mono">H</span> 个头、<span class="mono">D</span> 维头维度、<span class="mono">L</span> 层。代入 Llama-3-70B 式的数字 —— H = 64，D = 128，L = 80 —— 你会得到 <span class="hl">每个 token 约 2.6 MB</span>。在 32K token 的上下文下：<span class="hl">每个用户约 84 GB</span>。一张 H100 总共才 80 GB。<em>在发生任何计算之前，一个用户就已经把 GPU 塞满了。</em></p>
+
+  <figure>
+    <svg viewBox="0 0 820 320" xmlns="http://www.w3.org/2000/svg">
+      <!-- Memory budget bar -->
+      <text class="svg-text" x="40" y="22" font-size="11" letter-spacing="0.15em" fill="#6b6359">H100 SXM · 80 GB 内存预算</text>
+
+      <!-- Total bar -->
+      <g transform="translate(40,40)">
+        <!-- background slab -->
+        <rect x="0" y="0" width="720" height="50" fill="#ebe1c7" stroke="#1a1815" stroke-width="1.2"/>
+
+        <!-- Weights ~140 GB? actually Llama-3-70B = 140GB FP16; let's use Llama-3 70B at FP8 = 70GB (Or assume model fits) -->
+        <!-- Show: weights 35%, KV cache for 1 user = 65% (showing 84GB doesn't fit; we'll cap visually) -->
+        <rect x="0" y="0" width="160" height="50" fill="#2e4a7b" opacity="0.75"/>
+        <text class="svg-text svg-mono" x="80" y="30" text-anchor="middle" font-size="13" fill="#fff">权重 · 18 GB</text>
+
+        <rect x="160" y="0" width="20" height="50" fill="#4a6b3a" opacity="0.75"/>
+        <text class="svg-text svg-mono" x="170" y="30" text-anchor="middle" font-size="9" fill="#fff" transform="rotate(-90 170 30)">激活</text>
+
+        <!-- KV cache for 1 user, 32K -->
+        <rect x="180" y="0" width="540" height="50" fill="#c8351b" opacity="0.85"/>
+        <text class="svg-text svg-mono" x="450" y="30" text-anchor="middle" font-size="13" fill="#fff">KV 缓存 · 约 62 GB &nbsp;&nbsp;（一个用户 @ 32K 上下文）</text>
+      </g>
+
+      <text class="svg-text svg-serif" x="400" y="120" text-anchor="middle" font-size="14" fill="#1a1815" font-style="italic">一场 32K 上下文的对话已经吃掉了 GPU。</text>
+
+      <!-- Cache growth curve -->
+      <g transform="translate(40,160)">
+        <text class="svg-text" x="0" y="0" font-size="11" letter-spacing="0.15em" fill="#6b6359">缓存字节数随 N 线性增长</text>
+        <line x1="0" y1="120" x2="700" y2="120" stroke="#1a1815" stroke-width="1.2"/>
+        <line x1="0" y1="120" x2="0" y2="20" stroke="#1a1815" stroke-width="1.2"/>
+
+        <!-- diagonal line -->
+        <line x1="0" y1="120" x2="700" y2="30" stroke="#c8351b" stroke-width="2.5"/>
+
+        <!-- 80GB ceiling -->
+        <line x1="0" y1="50" x2="700" y2="50" stroke="#1a1815" stroke-width="1" stroke-dasharray="6,4"/>
+        <text class="svg-text svg-mono" x="700" y="44" text-anchor="end" font-size="11" fill="#1a1815">80 GB 上限</text>
+
+        <!-- intersection -->
+        <circle cx="544" cy="50" r="5" fill="#1a1815"/>
+        <text class="svg-text svg-serif" x="540" y="74" text-anchor="middle" font-size="12" fill="#1a1815" font-style="italic">约 30K token</text>
+
+        <!-- axis labels -->
+        <text class="svg-text" x="350" y="142" text-anchor="middle" font-size="11" fill="#6b6359">序列长度 N</text>
+        <text class="svg-text" x="-35" y="70" text-anchor="middle" font-size="11" fill="#6b6359" transform="rotate(-90 -35 70)">缓存 GB</text>
+
+        <!-- annotation -->
+        <text class="svg-text svg-serif" x="240" y="105" font-size="13" fill="#c8351b" font-style="italic">斜率 = 4·H·D·L 字节/token</text>
+      </g>
+    </svg>
+    <figcaption><span class="fig-label">Fig. 3.1</span>KV 缓存让解码变快，但它也无限增长 —— 每来一个新 token，都要再占一块固定的 HBM。在 H100 上，一场 32K 的对话就能把其他一切都挤出去。</figcaption>
+  </figure>
+
+  <p>在 roofline 图上，缓存又把解码那个点往左拉回。现在每一步都要读更多字节 —— 整个缓存，全部，每一次。算术强度下降。计算很小，字节却很大，这个点再次深陷于带宽斜坡。</p>
+
+  <p>现在有两个瓶颈。<strong>内存容量</strong>（你确实会用光空间）和<strong>内存带宽</strong>（缓存每步都要读一次，主导了字节预算）。两者是同一个反派换了两身戏服，都是上面那个「每 token 字节数」公式。</p>
+
+  <p class="marginalia">缓存公式有四个因子。其中三个由模型架构固定：H、D、L。有趣的是 N —— 每当有人发送更长的 prompt，N 就会增长。这正是长上下文推理如此困难的原因。</p>
+</section>
+
+<!-- ================== § IV THE PLAN ================== -->
+<section id="s4">
+  <span class="section-num">§ IV</span>
+  <h2>通过压缩字节来抬高 roofline。</h2>
+  <p class="lede">如果字节是问题所在，那么字节就是杠杆。压缩它们，算术强度就会以完全相同的倍数攀升。</p>
+
+  <p>解码那个点在 roofline 图上的水平位置是</p>
+
+  <div class="formula">
+    算术强度 &nbsp;=&nbsp; FLOPs &nbsp;/&nbsp; <em>读取的字节数</em>
+  </div>
+
+  <p>FLOPs 大多由模型固定。我们能动的只有分母。把字节砍掉 4 倍，那个点就向右移 4 倍。砍掉 64 倍，那个点就能抵达脊点。</p>
+
+  <p>在每 token 缓存公式 <span class="mono">4·H·D·L</span> 中，只有两项我们能在架构上动刀。<strong>H</strong>，即 K/V 头的数量，以及那个把每 token 成本放大为每会话成本的隐式 <strong>N</strong> 因子。书中把这两种攻击分别称为<em>跨头压缩</em>（第 8 章）与<em>跨 token 压缩</em>（第 9 章）。合在一起，它们是把缓存剪到合适大小的两把剪刀。</p>
+
+  <figure>
+    <svg viewBox="0 0 820 320" xmlns="http://www.w3.org/2000/svg">
+      <!-- two arrows and a target (the ridge) -->
+      <text class="svg-text" x="40" y="22" font-size="11" letter-spacing="0.15em" fill="#6b6359">两个杠杆，一个目标</text>
+
+      <!-- main roofline silhouette -->
+      <g transform="translate(60,60)">
+        <line x1="0" y1="0" x2="0" y2="220" stroke="#1a1815" stroke-width="1.2"/>
+        <line x1="0" y1="220" x2="700" y2="220" stroke="#1a1815" stroke-width="1.2"/>
+        <line x1="0" y1="220" x2="280" y2="20" stroke="#1a1815" stroke-width="2"/>
+        <line x1="280" y1="20" x2="700" y2="20" stroke="#1a1815" stroke-width="2"/>
+
+        <!-- dot start -->
+        <circle cx="40" cy="190" r="7" fill="#c8351b"/>
+        <text class="svg-text svg-serif" x="55" y="194" font-size="12" fill="#c8351b" font-style="italic">解码（今天）</text>
+
+        <!-- arrow up the ramp -->
+        <path d="M 40 188 Q 130 140 200 65" stroke="#b8862f" stroke-width="2" stroke-dasharray="4,4" fill="none"/>
+        <polygon points="200,65 195,72 205,76" fill="#b8862f"/>
+
+        <!-- midway dot -->
+        <circle cx="170" cy="100" r="6" fill="#b8862f"/>
+        <text class="svg-text svg-serif" x="175" y="92" font-size="12" fill="#b8862f" font-style="italic">缓存被压缩</text>
+
+        <!-- target dot near ridge -->
+        <circle cx="270" cy="25" r="7" fill="#4a6b3a"/>
+        <text class="svg-text svg-serif" x="285" y="20" font-size="12" fill="#4a6b3a" font-style="italic">目标：脊点</text>
+      </g>
+
+      <!-- two side annotations -->
+      <g transform="translate(60,290)">
+        <text class="svg-text svg-mono" x="0" y="0" font-size="13" fill="#1a1815">↑ 跨头压缩（第 8 章）：&nbsp; H → 更小</text>
+        <text class="svg-text svg-mono" x="380" y="0" font-size="13" fill="#1a1815">↑ 跨 token 压缩（第 9 章）：&nbsp; N → 有界</text>
+      </g>
+    </svg>
+    <figcaption><span class="fig-label">Fig. 4.1</span>一张图看懂计划。每一步压缩都是同一个动作：每步解码的字节更少，那个点便向脊点抬升。</figcaption>
+  </figure>
+</section>
+
+<!-- ================== § V ACROSS HEADS ================== -->
+<section id="s5">
+  <span class="section-num">§ V</span>
+  <h2>跨头压缩 —— MHA、MQA、GQA、MLA。</h2>
+  <p class="lede">第一个杠杆。本节中的每一种变体都保留了全序列上的 softmax 注意力，但每个 token 存储的 K/V 投影更少。</p>
+
+  <p>在缓存公式中减小 <span class="mono">H</span> 是架构层面的操作。你要么从头预训练一个小 K/V 设计，要么用原始 token 的百分之几对 MHA 检查点做 uptrain。在推理侧，收益是直接的：缓存字节数恰好按你压缩的倍数下降。</p>
+
+  <figure>
+    <svg viewBox="0 0 880 380" xmlns="http://www.w3.org/2000/svg">
+      <!-- 4-panel: MHA, GQA, MQA, MLA -->
+      <text class="svg-text" x="440" y="22" text-anchor="middle" font-size="11" letter-spacing="0.15em" fill="#6b6359">存储 K 和 V 的四种方式</text>
+
+      <!-- MHA -->
+      <g transform="translate(20,50)">
+        <text class="svg-text svg-mono" x="100" y="0" text-anchor="middle" font-size="12" fill="#1a1815">MHA</text>
+        <!-- Q heads -->
+        <text class="svg-text" x="100" y="22" text-anchor="middle" font-size="9" fill="#6b6359">Q (8) · K (8) · V (8)</text>
+        <g transform="translate(0,32)">
+          <!-- Q row -->
+          <g>
+            <rect x="0" y="0" width="22" height="24" fill="#2e4a7b" opacity="0.7"/>
+            <rect x="24" y="0" width="22" height="24" fill="#2e4a7b" opacity="0.7"/>
+            <rect x="48" y="0" width="22" height="24" fill="#2e4a7b" opacity="0.7"/>
+            <rect x="72" y="0" width="22" height="24" fill="#2e4a7b" opacity="0.7"/>
+            <rect x="106" y="0" width="22" height="24" fill="#2e4a7b" opacity="0.7"/>
+            <rect x="130" y="0" width="22" height="24" fill="#2e4a7b" opacity="0.7"/>
+            <rect x="154" y="0" width="22" height="24" fill="#2e4a7b" opacity="0.7"/>
+            <rect x="178" y="0" width="22" height="24" fill="#2e4a7b" opacity="0.7"/>
+          </g>
+          <!-- K row -->
+          <g transform="translate(0,40)">
+            <rect x="0" y="0" width="22" height="24" fill="#c8351b" opacity="0.65"/>
+            <rect x="24" y="0" width="22" height="24" fill="#c8351b" opacity="0.65"/>
+            <rect x="48" y="0" width="22" height="24" fill="#c8351b" opacity="0.65"/>
+            <rect x="72" y="0" width="22" height="24" fill="#c8351b" opacity="0.65"/>
+            <rect x="106" y="0" width="22" height="24" fill="#c8351b" opacity="0.65"/>
+            <rect x="130" y="0" width="22" height="24" fill="#c8351b" opacity="0.65"/>
+            <rect x="154" y="0" width="22" height="24" fill="#c8351b" opacity="0.65"/>
+            <rect x="178" y="0" width="22" height="24" fill="#c8351b" opacity="0.65"/>
+          </g>
+          <!-- V row -->
+          <g transform="translate(0,72)">
+            <rect x="0" y="0" width="22" height="24" fill="#b8862f" opacity="0.7"/>
+            <rect x="24" y="0" width="22" height="24" fill="#b8862f" opacity="0.7"/>
+            <rect x="48" y="0" width="22" height="24" fill="#b8862f" opacity="0.7"/>
+            <rect x="72" y="0" width="22" height="24" fill="#b8862f" opacity="0.7"/>
+            <rect x="106" y="0" width="22" height="24" fill="#b8862f" opacity="0.7"/>
+            <rect x="130" y="0" width="22" height="24" fill="#b8862f" opacity="0.7"/>
+            <rect x="154" y="0" width="22" height="24" fill="#b8862f" opacity="0.7"/>
+            <rect x="178" y="0" width="22" height="24" fill="#b8862f" opacity="0.7"/>
+          </g>
+        </g>
+        <text class="svg-text svg-mono" x="100" y="200" text-anchor="middle" font-size="11" fill="#1a1815">cache: 4·H·D·L</text>
+        <text class="svg-text svg-serif" x="100" y="220" text-anchor="middle" font-size="12" fill="#c8351b" font-style="italic">基线，全量内存</text>
+      </g>
+
+      <!-- GQA -->
+      <g transform="translate(240,50)">
+        <text class="svg-text svg-mono" x="100" y="0" text-anchor="middle" font-size="12" fill="#1a1815">GQA · G=2</text>
+        <text class="svg-text" x="100" y="22" text-anchor="middle" font-size="9" fill="#6b6359">Q (8) · K (2) · V (2)</text>
+        <g transform="translate(0,32)">
+          <g>
+            <rect x="0" y="0" width="22" height="24" fill="#2e4a7b" opacity="0.7"/>
+            <rect x="24" y="0" width="22" height="24" fill="#2e4a7b" opacity="0.7"/>
+            <rect x="48" y="0" width="22" height="24" fill="#2e4a7b" opacity="0.7"/>
+            <rect x="72" y="0" width="22" height="24" fill="#2e4a7b" opacity="0.7"/>
+            <rect x="106" y="0" width="22" height="24" fill="#2e4a7b" opacity="0.7"/>
+            <rect x="130" y="0" width="22" height="24" fill="#2e4a7b" opacity="0.7"/>
+            <rect x="154" y="0" width="22" height="24" fill="#2e4a7b" opacity="0.7"/>
+            <rect x="178" y="0" width="22" height="24" fill="#2e4a7b" opacity="0.7"/>
+          </g>
+          <g transform="translate(0,40)">
+            <rect x="36" y="0" width="46" height="24" fill="#c8351b" opacity="0.65" stroke="#c8351b" stroke-width="1.2"/>
+            <rect x="142" y="0" width="46" height="24" fill="#c8351b" opacity="0.65" stroke="#c8351b" stroke-width="1.2"/>
+          </g>
+          <g transform="translate(0,72)">
+            <rect x="36" y="0" width="46" height="24" fill="#b8862f" opacity="0.7" stroke="#b8862f" stroke-width="1.2"/>
+            <rect x="142" y="0" width="46" height="24" fill="#b8862f" opacity="0.7" stroke="#b8862f" stroke-width="1.2"/>
+          </g>
+        </g>
+        <text class="svg-text svg-mono" x="100" y="200" text-anchor="middle" font-size="11" fill="#1a1815">cache: 4·G·D·L</text>
+        <text class="svg-text svg-serif" x="100" y="220" text-anchor="middle" font-size="12" fill="#b8862f" font-style="italic">小 4 倍 · Llama-3</text>
+      </g>
+
+      <!-- MQA -->
+      <g transform="translate(460,50)">
+        <text class="svg-text svg-mono" x="100" y="0" text-anchor="middle" font-size="12" fill="#1a1815">MQA</text>
+        <text class="svg-text" x="100" y="22" text-anchor="middle" font-size="9" fill="#6b6359">Q (8) · K (1) · V (1)</text>
+        <g transform="translate(0,32)">
+          <g>
+            <rect x="0" y="0" width="22" height="24" fill="#2e4a7b" opacity="0.7"/>
+            <rect x="24" y="0" width="22" height="24" fill="#2e4a7b" opacity="0.7"/>
+            <rect x="48" y="0" width="22" height="24" fill="#2e4a7b" opacity="0.7"/>
+            <rect x="72" y="0" width="22" height="24" fill="#2e4a7b" opacity="0.7"/>
+            <rect x="106" y="0" width="22" height="24" fill="#2e4a7b" opacity="0.7"/>
+            <rect x="130" y="0" width="22" height="24" fill="#2e4a7b" opacity="0.7"/>
+            <rect x="154" y="0" width="22" height="24" fill="#2e4a7b" opacity="0.7"/>
+            <rect x="178" y="0" width="22" height="24" fill="#2e4a7b" opacity="0.7"/>
+          </g>
+          <g transform="translate(0,40)">
+            <rect x="78" y="0" width="44" height="24" fill="#c8351b" opacity="0.65" stroke="#c8351b" stroke-width="1.2"/>
+          </g>
+          <g transform="translate(0,72)">
+            <rect x="78" y="0" width="44" height="24" fill="#b8862f" opacity="0.7" stroke="#b8862f" stroke-width="1.2"/>
+          </g>
+        </g>
+        <text class="svg-text svg-mono" x="100" y="200" text-anchor="middle" font-size="11" fill="#1a1815">cache: 4·D·L</text>
+        <text class="svg-text svg-serif" x="100" y="220" text-anchor="middle" font-size="12" fill="#4a6b3a" font-style="italic">小 8 倍 · 质量下降</text>
+      </g>
+
+      <!-- MLA -->
+      <g transform="translate(680,50)">
+        <text class="svg-text svg-mono" x="100" y="0" text-anchor="middle" font-size="12" fill="#1a1815">MLA · R=512</text>
+        <text class="svg-text" x="100" y="22" text-anchor="middle" font-size="9" fill="#6b6359">Q (8) · 隐变量 c_KV</text>
+        <!-- Q row -->
+        <g transform="translate(0,32)">
+          <rect x="0"   y="0" width="22" height="24" fill="#2e4a7b" opacity="0.7"/>
+          <rect x="24"  y="0" width="22" height="24" fill="#2e4a7b" opacity="0.7"/>
+          <rect x="48"  y="0" width="22" height="24" fill="#2e4a7b" opacity="0.7"/>
+          <rect x="72"  y="0" width="22" height="24" fill="#2e4a7b" opacity="0.7"/>
+          <rect x="106" y="0" width="22" height="24" fill="#2e4a7b" opacity="0.7"/>
+          <rect x="130" y="0" width="22" height="24" fill="#2e4a7b" opacity="0.7"/>
+          <rect x="154" y="0" width="22" height="24" fill="#2e4a7b" opacity="0.7"/>
+          <rect x="178" y="0" width="22" height="24" fill="#2e4a7b" opacity="0.7"/>
+        </g>
+        <!-- arrow connecting Q row to latent slab -->
+        <line x1="100" y1="62" x2="100" y2="78" stroke="#1a1815" stroke-width="1"/>
+        <polygon points="100,80 96,72 104,72" fill="#1a1815"/>
+        <!-- Latent slab -->
+        <rect x="20" y="84" width="160" height="22" fill="#72569a" opacity="0.65" stroke="#72569a" stroke-width="1.2"/>
+        <text class="svg-mono svg-text" x="100" y="100" text-anchor="middle" font-size="11" fill="#fff">c_KV ∈ ℝ^R</text>
+        <!-- explanation lines -->
+        <text class="svg-mono svg-text" x="100" y="128" text-anchor="middle" font-size="10" fill="#6b6359">上投影为虚拟的 K、V</text>
+        <text class="svg-mono svg-text" x="100" y="144" text-anchor="middle" font-size="10" fill="#6b6359">被吸收进 W_Q</text>
+        <text class="svg-mono svg-text" x="100" y="160" text-anchor="middle" font-size="10" fill="#6b6359">从不被物化</text>
+
+        <text class="svg-text svg-mono"  x="100" y="200" text-anchor="middle" font-size="11" fill="#1a1815">cache: 2·R·L</text>
+        <text class="svg-text svg-serif" x="100" y="220" text-anchor="middle" font-size="12" fill="#72569a" font-style="italic">小约 64 倍 · 无质量损失</text>
+      </g>
+
+      <!-- bottom commentary -->
+      <text class="svg-text svg-serif" x="440" y="350" text-anchor="middle" font-size="14" fill="#1a1815" font-style="italic">MLA 是帕累托赢家：存储像 MQA，质量像 MHA。</text>
+    </svg>
+    <figcaption><span class="fig-label">Fig. 5.1</span>现代 Transformer 存储 K 和 V 的四种方式。MHA 是原版。GQA 是务实的折中（Llama-3、Qwen、Mistral）。MQA 是激进的角落。MLA 由 DeepSeek-V2/V3 引入，用一个小隐向量取代存储的 K/V，按需上投影 —— 而「吸收」技巧意味着上投影在加载时就折叠进 <span class="mono">W_Q</span>，因此在解码过程中 K 甚至从不被重构。</figcaption>
+  </figure>
+
+  <h3>MLA 的吸收技巧。</h3>
+  <p>MLA 的优雅之处在于一个代数恒等式。模型不再存储每个头的 K，而是每个 token 存储一个小的隐变量 <span class="mono">c_KV ∈ ℝ^R</span>。在解码时，查询 <span class="mono">q</span> 对过去键的得分变为</p>
+
+  <div class="formula">
+    Q · Kᵀ &nbsp;=&nbsp; (x · W_Q) · (c_KV · W_UK)ᵀ &nbsp;=&nbsp; x · <em>(W_Q · W_UKᵀ)</em> · c_KVᵀ
+  </div>
+
+  <p>括号里的乘积是一个常量矩阵，可以在模型加载时一次性预计算并吸收进 <span class="mono">W_Q</span>。此后，内核只需用单个融合权重矩阵去乘 <span class="mono">x</span>，再点乘缓存的隐变量。完整的逐头 K 在解码时从不被物化。<strong>缓存保持小巧；逐头的多样性保持完整。</strong></p>
+
+  <p class="marginalia">DeepSeek-V3 在 L = 61 层上使用 R = 512。每 token 缓存：2·512·61 ≈ 62 KB，而等效 MHA 约为 4 MB。约 64 倍压缩，在标准评测上几乎没有可测量的质量损失。</p>
+</section>
+
+<!-- ================== § VI ACROSS TOKENS ================== -->
+<section id="s6">
+  <span class="section-num">§ VI</span>
+  <h2>跨 token 压缩 —— 滑窗、线性注意力、Mamba。</h2>
+  <p class="lede">第二个杠杆。头压缩压缩的是 H，而 token 压缩则是约束 —— 甚至消除 —— 那个让缓存随序列长度增长的 N 因子。</p>
+
+  <p>三大家族，按压缩的激进程度排序：</p>
+
+  <h3>滑窗 —— 一个环形缓冲区。</h3>
+  <p>每个 token 只关注最近的 <span class="mono">W</span> 个键。缓存变成一个固定大小为 W 的环形缓冲区；随着新 token 到来，更老的槽位被覆盖。缓存完全不再随 N 增长 —— 它封顶于 <span class="mono">4·W·H·D·L</span> 字节，并且永远保持在那里。</p>
+
+  <figure>
+    <svg viewBox="0 0 820 320" xmlns="http://www.w3.org/2000/svg">
+      <text class="svg-text" x="40" y="22" font-size="11" letter-spacing="0.15em" fill="#6b6359">滑窗 · 大小为 W 的环形缓冲区</text>
+
+      <!-- Mask -->
+      <g transform="translate(60,55)">
+        <text class="svg-text svg-mono" x="100" y="-10" text-anchor="middle" font-size="11" fill="#1a1815">注意力掩码</text>
+        <rect x="0" y="0" width="180" height="180" fill="#ebe1c7" stroke="#3d3833" stroke-width="1"/>
+        <!-- diagonal band -->
+        <path d="
+          M0,0 L0,15 L15,15 L15,0 Z
+          M0,15 L0,30 L30,30 L30,15 Z
+          M0,30 L0,45 L45,45 L45,30 Z
+          M0,45 L0,60 L60,60 L60,45 Z
+          M15,60 L15,75 L75,75 L75,60 Z
+          M30,75 L30,90 L90,90 L90,75 Z
+          M45,90 L45,105 L105,105 L105,90 Z
+          M60,105 L60,120 L120,120 L120,105 Z
+          M75,120 L75,135 L135,135 L135,120 Z
+          M90,135 L90,150 L150,150 L150,135 Z
+          M105,150 L105,165 L165,165 L165,150 Z
+          M120,165 L120,180 L180,180 L180,165 Z
+        " fill="#c8351b" opacity="0.55"/>
+      </g>
+
+      <!-- Circular buffer ring -->
+      <g transform="translate(380,160)">
+        <text class="svg-text svg-mono" x="0" y="-130" text-anchor="middle" font-size="11" fill="#1a1815">作为环形缓冲区的缓存</text>
+        <!-- 8 slots arranged in a circle -->
+        <g>
+          <g transform="translate(0,-80)">
+            <rect x="-15" y="-12" width="30" height="24" fill="#c8351b" opacity="0.65"/>
+            <text class="svg-mono svg-text" x="0" y="3" text-anchor="middle" font-size="9" fill="#fff">t-7</text>
+          </g>
+          <g transform="translate(57,-57)">
+            <rect x="-15" y="-12" width="30" height="24" fill="#c8351b" opacity="0.65"/>
+            <text class="svg-mono svg-text" x="0" y="3" text-anchor="middle" font-size="9" fill="#fff">t-6</text>
+          </g>
+          <g transform="translate(80,0)">
+            <rect x="-15" y="-12" width="30" height="24" fill="#c8351b" opacity="0.65"/>
+            <text class="svg-mono svg-text" x="0" y="3" text-anchor="middle" font-size="9" fill="#fff">t-5</text>
+          </g>
+          <g transform="translate(57,57)">
+            <rect x="-15" y="-12" width="30" height="24" fill="#c8351b" opacity="0.65"/>
+            <text class="svg-mono svg-text" x="0" y="3" text-anchor="middle" font-size="9" fill="#fff">t-4</text>
+          </g>
+          <g transform="translate(0,80)">
+            <rect x="-15" y="-12" width="30" height="24" fill="#c8351b" opacity="0.65"/>
+            <text class="svg-mono svg-text" x="0" y="3" text-anchor="middle" font-size="9" fill="#fff">t-3</text>
+          </g>
+          <g transform="translate(-57,57)">
+            <rect x="-15" y="-12" width="30" height="24" fill="#c8351b" opacity="0.65"/>
+            <text class="svg-mono svg-text" x="0" y="3" text-anchor="middle" font-size="9" fill="#fff">t-2</text>
+          </g>
+          <g transform="translate(-80,0)">
+            <rect x="-15" y="-12" width="30" height="24" fill="#c8351b" opacity="0.65"/>
+            <text class="svg-mono svg-text" x="0" y="3" text-anchor="middle" font-size="9" fill="#fff">t-1</text>
+          </g>
+          <g transform="translate(-57,-57)">
+            <rect x="-15" y="-12" width="30" height="24" fill="#4a6b3a" opacity="0.85"/>
+            <text class="svg-mono svg-text" x="0" y="3" text-anchor="middle" font-size="9" fill="#fff">新</text>
+          </g>
+        </g>
+        <!-- annotation: arrow from "new" rightward into the ring direction (overwrites slot that was oldest) -->
+        <path d="M -40 -57 L -8 -78" stroke="#1a1815" stroke-width="1.5"/>
+        <polygon points="-8,-78 -16,-79 -12,-71" fill="#1a1815"/>
+        <text class="svg-text svg-mono" x="-95" y="-50" font-size="10" fill="#1a1815">新 token</text>
+        <text class="svg-text svg-mono" x="-95" y="-36" font-size="10" fill="#1a1815">覆盖最旧的</text>
+      </g>
+
+      <!-- Receptive field via stacking -->
+      <g transform="translate(560,55)">
+        <text class="svg-text svg-mono" x="100" y="-10" text-anchor="middle" font-size="11" fill="#1a1815">通过堆叠获得感受野</text>
+        <!-- 3 layers, arrows fanning out -->
+        <g>
+          <rect x="0" y="0" width="200" height="32" fill="#2e4a7b" opacity="0.18" stroke="#2e4a7b"/>
+          <text class="svg-mono svg-text" x="100" y="20" text-anchor="middle" font-size="10" fill="#1a1815">第 1 层 —— 看到 W 个 token</text>
+
+          <rect x="0" y="50" width="200" height="32" fill="#2e4a7b" opacity="0.32" stroke="#2e4a7b"/>
+          <text class="svg-mono svg-text" x="100" y="70" text-anchor="middle" font-size="10" fill="#1a1815">第 2 层 —— 有效看到约 2W 个 token</text>
+
+          <rect x="0" y="100" width="200" height="32" fill="#2e4a7b" opacity="0.5" stroke="#2e4a7b"/>
+          <text class="svg-mono svg-text" x="100" y="120" text-anchor="middle" font-size="10" fill="#fff">第 L 层 —— 看到 W·L 个 token</text>
+        </g>
+        <text class="svg-text svg-serif" x="100" y="160" text-anchor="middle" font-size="13" fill="#4a6b3a" font-style="italic">Mistral：W=4K，L=32 → 有效 128K</text>
+      </g>
+
+    </svg>
+    <figcaption><span class="fig-label">Fig. 6.1</span>滑窗。每个查询只看到最近的 W 个键。缓存变成一个固定大小的环。感受野通过层的堆叠得以恢复 —— 但只是像接力一样，随着深度而衰减。</figcaption>
+  </figure>
+
+  <h3>线性注意力 —— 一个恒定大小的运行状态。</h3>
+  <p>滑窗保留了 softmax，却丢掉了旧 token。<em>线性注意力</em>则反其道而行 —— 保留所有 token，但丢掉 softmax。诀窍在于结合律：</p>
+
+  <div class="formula">
+    softmax(QKᵀ) V &nbsp;<em>(不可重排)</em>&nbsp; &nbsp;→&nbsp; φ(Q) · ( <em>φ(K)ᵀ V</em> ) &nbsp;<em>(可重排)</em>
+  </div>
+
+  <p>当 softmax 被一个核特征映射 φ 取代后，内积 <span class="mono">φ(K)ᵀV</span> 就变成一个与 N 无关的小 <span class="mono">D × D</span> 矩阵。过去的 token 被增量式地累加进这个矩阵：</p>
+
+  <div class="formula">
+    S<sub>t</sub> &nbsp;=&nbsp; S<sub>t−1</sub> &nbsp;+&nbsp; φ(K<sub>t</sub>)ᵀ V<sub>t</sub> &nbsp;&nbsp;&nbsp;<em>(D × D，与 N 无关)</em>
+  </div>
+
+  <figure>
+    <svg viewBox="0 0 820 280" xmlns="http://www.w3.org/2000/svg">
+      <text class="svg-text" x="40" y="22" font-size="11" letter-spacing="0.15em" fill="#6b6359">线性注意力 · 一个覆盖全部历史的固定 D×D 状态</text>
+
+      <!-- timeline of incoming tokens -->
+      <g transform="translate(40,60)">
+        <text class="svg-text svg-mono" x="0" y="-10" font-size="11" fill="#6b6359">输入 token</text>
+        <g font-family="JetBrains Mono">
+          <rect x="0" y="0" width="40" height="30" rx="3" fill="#2e4a7b" opacity="0.45"/>
+          <text class="svg-text svg-mono" x="20" y="20" text-anchor="middle" fill="#fff" font-size="11">x_1</text>
+
+          <rect x="50" y="0" width="40" height="30" rx="3" fill="#2e4a7b" opacity="0.55"/>
+          <text class="svg-text svg-mono" x="70" y="20" text-anchor="middle" fill="#fff" font-size="11">x_2</text>
+
+          <rect x="100" y="0" width="40" height="30" rx="3" fill="#2e4a7b" opacity="0.65"/>
+          <text class="svg-text svg-mono" x="120" y="20" text-anchor="middle" fill="#fff" font-size="11">x_3</text>
+
+          <rect x="150" y="0" width="40" height="30" rx="3" fill="#2e4a7b" opacity="0.75"/>
+          <text class="svg-text svg-mono" x="170" y="20" text-anchor="middle" fill="#fff" font-size="11">x_4</text>
+
+          <text class="svg-mono svg-text" x="200" y="20" font-size="14" fill="#1a1815">⋯</text>
+
+          <rect x="220" y="0" width="40" height="30" rx="3" fill="#2e4a7b" opacity="0.85"/>
+          <text class="svg-text svg-mono" x="240" y="20" text-anchor="middle" fill="#fff" font-size="11">x_t</text>
+        </g>
+      </g>
+
+      <!-- arrows down to state -->
+      <g transform="translate(40,110)">
+        <line x1="20" y1="0" x2="20" y2="20" stroke="#1a1815" stroke-width="1"/>
+        <line x1="70" y1="0" x2="70" y2="20" stroke="#1a1815" stroke-width="1"/>
+        <line x1="120" y1="0" x2="120" y2="20" stroke="#1a1815" stroke-width="1"/>
+        <line x1="170" y1="0" x2="170" y2="20" stroke="#1a1815" stroke-width="1"/>
+        <line x1="240" y1="0" x2="240" y2="20" stroke="#1a1815" stroke-width="1"/>
+      </g>
+
+      <!-- single state -->
+      <g transform="translate(40,140)">
+        <rect x="0" y="0" width="260" height="80" fill="#72569a" opacity="0.18" stroke="#72569a" stroke-width="1.5"/>
+        <text class="svg-text svg-mono" x="130" y="30" text-anchor="middle" font-size="13" fill="#1a1815">运行状态 &nbsp; S ∈ ℝ^(D × D)</text>
+        <text class="svg-text" x="130" y="52" text-anchor="middle" font-size="11" fill="#6b6359">大小永不增长 —— 每个 token 都被折叠进来</text>
+        <text class="svg-text svg-mono" x="130" y="70" text-anchor="middle" font-size="11" fill="#1a1815">S ← S + φ(K_t)ᵀ V_t</text>
+      </g>
+
+      <!-- comparison panel right -->
+      <g transform="translate(440,60)">
+        <rect x="0" y="0" width="340" height="160" fill="#ebe1c7" stroke="#3d3833" stroke-width="1"/>
+        <text class="svg-text" x="170" y="22" text-anchor="middle" font-size="11" letter-spacing="0.15em" fill="#6b6359">缓存对比 · D = 128，L = 32</text>
+
+        <text class="svg-text svg-mono" x="20" y="55" font-size="13" fill="#c8351b">MHA，100K 上下文：</text>
+        <text class="svg-text svg-mono" x="20" y="73" font-size="13" fill="#1a1815">  ≈ 16 GB</text>
+
+        <text class="svg-text svg-mono" x="20" y="100" font-size="13" fill="#b8862f">SWA，W=4K：</text>
+        <text class="svg-text svg-mono" x="20" y="118" font-size="13" fill="#1a1815">  ≈ 256 MB</text>
+
+        <text class="svg-text svg-mono" x="20" y="145" font-size="13" fill="#72569a">线性注意力：</text>
+        <text class="svg-text svg-mono" x="200" y="145" font-size="13" fill="#1a1815">≈ 1 MB &nbsp;(任意 N)</text>
+      </g>
+
+      <!-- caveat -->
+      <text class="svg-text svg-serif" x="170" y="245" text-anchor="middle" font-size="13" fill="#c8351b" font-style="italic">但：不同的历史可能碰撞进同一个 S —— 这就是上下文瓶颈。</text>
+    </svg>
+    <figcaption><span class="fig-label">Fig. 6.2</span>线性注意力是可能的最激进缓存压缩 —— 整场对话只用一个固定的 D×D 矩阵。代价是<em>上下文瓶颈</em>：运行状态是一种有损摘要，不同的历史可能映射到同一个状态，检索质量会受损。</figcaption>
+  </figure>
+
+  <h3>Mamba —— 选择性来救场。</h3>
+  <p>解决上下文瓶颈的办法，是承认模型应当被允许<em>选择</em>记住什么。在线性注意力里，每个输入都以相同的权重折叠进状态。<strong>Mamba</strong>，这个选择性的状态空间模型，让递推的参数变得输入相关：矩阵 A、B 与时间步 Δ 都是当前 token 的函数。一个被模型判定为重要的 token 会以全部强度「通过」；一个填充词则被抑制。</p>
+
+  <figure>
+    <svg viewBox="0 0 820 320" xmlns="http://www.w3.org/2000/svg">
+      <text class="svg-text" x="40" y="22" font-size="11" letter-spacing="0.15em" fill="#6b6359">MAMBA · 输入相关的门</text>
+
+      <!-- token stream with selectivity -->
+      <g transform="translate(40,60)">
+        <text class="svg-text svg-mono" x="0" y="-10" font-size="11" fill="#6b6359">token 流</text>
+        <!-- 8 tokens with varying "let through" weights -->
+        <g>
+          <!-- pass strong -->
+          <g>
+            <rect x="0" y="0" width="50" height="34" rx="3" fill="#4a6b3a" opacity="0.85"/>
+            <text class="svg-text svg-mono" x="25" y="22" text-anchor="middle" fill="#fff" font-size="11">关键</text>
+            <text class="svg-text" x="25" y="50" text-anchor="middle" font-size="10" fill="#4a6b3a" font-weight="700">放行</text>
+          </g>
+          <g transform="translate(60,0)">
+            <rect x="0" y="6" width="50" height="22" rx="3" fill="#b8862f" opacity="0.5"/>
+            <text class="svg-text svg-mono" x="25" y="22" text-anchor="middle" fill="#fff" font-size="11">这个</text>
+            <text class="svg-text" x="25" y="50" text-anchor="middle" font-size="10" fill="#b8862f" font-weight="700">衰减</text>
+          </g>
+          <g transform="translate(120,0)">
+            <rect x="0" y="6" width="50" height="22" rx="3" fill="#b8862f" opacity="0.5"/>
+            <text class="svg-text svg-mono" x="25" y="22" text-anchor="middle" fill="#fff" font-size="11">一个</text>
+            <text class="svg-text" x="25" y="50" text-anchor="middle" font-size="10" fill="#b8862f" font-weight="700">衰减</text>
+          </g>
+          <g transform="translate(180,0)">
+            <rect x="0" y="0" width="50" height="34" rx="3" fill="#4a6b3a" opacity="0.85"/>
+            <text class="svg-text svg-mono" x="25" y="22" text-anchor="middle" fill="#fff" font-size="11">名字</text>
+            <text class="svg-text" x="25" y="50" text-anchor="middle" font-size="10" fill="#4a6b3a" font-weight="700">放行</text>
+          </g>
+          <g transform="translate(240,0)">
+            <rect x="0" y="10" width="50" height="14" rx="3" fill="#c8351b" opacity="0.4"/>
+            <text class="svg-text svg-mono" x="25" y="22" text-anchor="middle" fill="#fff" font-size="11">嗯</text>
+            <text class="svg-text" x="25" y="50" text-anchor="middle" font-size="10" fill="#c8351b" font-weight="700">抑制</text>
+          </g>
+          <g transform="translate(300,0)">
+            <rect x="0" y="0" width="50" height="34" rx="3" fill="#4a6b3a" opacity="0.85"/>
+            <text class="svg-text svg-mono" x="25" y="22" text-anchor="middle" fill="#fff" font-size="11">日期</text>
+            <text class="svg-text" x="25" y="50" text-anchor="middle" font-size="10" fill="#4a6b3a" font-weight="700">放行</text>
+          </g>
+          <g transform="translate(360,0)">
+            <rect x="0" y="6" width="50" height="22" rx="3" fill="#b8862f" opacity="0.5"/>
+            <text class="svg-text svg-mono" x="25" y="22" text-anchor="middle" fill="#fff" font-size="11">的</text>
+            <text class="svg-text" x="25" y="50" text-anchor="middle" font-size="10" fill="#b8862f" font-weight="700">衰减</text>
+          </g>
+          <g transform="translate(420,0)">
+            <rect x="0" y="0" width="50" height="34" rx="3" fill="#4a6b3a" opacity="0.85"/>
+            <text class="svg-text svg-mono" x="25" y="22" text-anchor="middle" fill="#fff" font-size="11">生日</text>
+            <text class="svg-text" x="25" y="50" text-anchor="middle" font-size="10" fill="#4a6b3a" font-weight="700">放行</text>
+          </g>
+        </g>
+      </g>
+
+      <!-- arrows down -->
+      <g transform="translate(40,140)">
+        <text class="svg-mono svg-text" x="240" y="0" text-anchor="middle" font-size="11" fill="#1a1815">B(x)、C(x)、Δ(x) 由模型根据 x 本身来选择</text>
+      </g>
+
+      <!-- recurrence equation -->
+      <g transform="translate(40,170)">
+        <rect x="0" y="0" width="500" height="100" fill="#72569a" opacity="0.12" stroke="#72569a" stroke-width="1.5"/>
+        <text class="svg-text svg-mono" x="250" y="28" text-anchor="middle" font-size="13" fill="#1a1815">选择性 SSM：</text>
+        <text class="svg-text svg-mono" x="250" y="55" text-anchor="middle" font-size="14" fill="#1a1815">h_t &nbsp;=&nbsp; A(x_t) · h_{t−1} &nbsp;+&nbsp; B(x_t) · x_t</text>
+        <text class="svg-text svg-mono" x="250" y="80" text-anchor="middle" font-size="14" fill="#1a1815">y_t &nbsp;=&nbsp; C(x_t) · h_t</text>
+      </g>
+
+      <!-- right side: takeaway -->
+      <g transform="translate(580,170)">
+        <text class="svg-text svg-serif" x="100" y="20" text-anchor="middle" font-size="13" fill="#1a1815" font-style="italic">线性注意力的小巧、</text>
+        <text class="svg-text svg-serif" x="100" y="40" text-anchor="middle" font-size="13" fill="#1a1815" font-style="italic">恒定大小的缓存 ——</text>
+        <text class="svg-text svg-serif" x="100" y="60" text-anchor="middle" font-size="13" fill="#4a6b3a" font-style="italic">但模型可以选择</text>
+        <text class="svg-text svg-serif" x="100" y="80" text-anchor="middle" font-size="13" fill="#4a6b3a" font-style="italic">什么进入状态。</text>
+      </g>
+
+    </svg>
+    <figcaption><span class="fig-label">Fig. 6.3</span>Mamba 是带选择性的线性注意力。递推矩阵 A、B、C 是输入相关的 —— 模型的「门」为重要 token 打开，为填充词关闭。缓存仍然是一个恒定大小的隐藏状态，但现在它装的是<em>模型想要记住的内容</em>，而非一个均匀的求和。</figcaption>
+  </figure>
+
+  <p class="marginalia">Mamba 自带一个硬件感知的选择性扫描内核，这一点至关重要 —— 没有它，输入相关的递推在 GPU 上会太慢。这个内核正是 Mamba 在实践中具备竞争力的原因。</p>
+</section>
+
+<!-- ================== § VII THREE AXES ================== -->
+<section id="s7">
+  <span class="section-num">§ VII</span>
+  <h2>三个维度。</h2>
+  <p class="lede">质量、内存与吞吐并不在同一条线上。我们遇到的每一种变体都是三角形中的一个点，而正确的选择取决于你在乎哪个角。</p>
+
+  <figure>
+    <svg viewBox="0 0 820 460" xmlns="http://www.w3.org/2000/svg">
+      <text class="svg-text" x="40" y="22" font-size="11" letter-spacing="0.15em" fill="#6b6359">权衡三角形</text>
+
+      <!-- Triangle frame -->
+      <g transform="translate(80,60)">
+        <polygon points="320,0 0,360 640,360" fill="#ebe1c7" stroke="#1a1815" stroke-width="1.2" opacity="0.6"/>
+
+        <!-- Axis labels -->
+        <text class="svg-text" x="320" y="-15" text-anchor="middle" font-size="11" letter-spacing="0.12em" fill="#1a1815" font-weight="700">质量</text>
+        <text class="svg-text" x="-30" y="380" font-size="11" letter-spacing="0.12em" fill="#1a1815" font-weight="700">内存效率</text>
+        <text class="svg-text" x="660" y="380" text-anchor="end" font-size="11" letter-spacing="0.12em" fill="#1a1815" font-weight="700">吞吐</text>
+
+        <!-- Variant points -->
+        <!-- MHA: high quality, low memory eff, low throughput -> high up, but balanced -->
+        <g>
+          <circle cx="320" cy="20" r="9" fill="#c8351b"/>
+          <text class="svg-text svg-mono" x="320" y="0" text-anchor="middle" font-size="11" fill="#1a1815">MHA</text>
+          <text class="svg-text" x="320" y="42" text-anchor="middle" font-size="9" fill="#6b6359">全是质量，毫无效率</text>
+        </g>
+
+        <!-- GQA: balanced -->
+        <g>
+          <circle cx="380" cy="120" r="9" fill="#b8862f"/>
+          <text class="svg-text svg-mono" x="395" y="118" font-size="11" fill="#1a1815">GQA</text>
+          <text class="svg-text" x="395" y="135" font-size="9" fill="#6b6359">务实的折中</text>
+        </g>
+
+        <!-- MLA: top-left ish — high quality + memory eff -->
+        <g>
+          <circle cx="180" cy="80" r="11" fill="#72569a"/>
+          <text class="svg-text svg-mono" x="170" y="80" text-anchor="end" font-size="11" fill="#1a1815">MLA ★</text>
+          <text class="svg-text" x="170" y="96" text-anchor="end" font-size="9" fill="#6b6359">帕累托赢家</text>
+        </g>
+
+        <!-- MQA: bottom-left -->
+        <g>
+          <circle cx="120" cy="220" r="9" fill="#4a6b3a"/>
+          <text class="svg-text svg-mono" x="120" y="240" text-anchor="middle" font-size="11" fill="#1a1815">MQA</text>
+          <text class="svg-text" x="120" y="255" text-anchor="middle" font-size="9" fill="#6b6359">缓存占优，质量下降</text>
+        </g>
+
+        <!-- Sliding window: middle-right -->
+        <g>
+          <circle cx="460" cy="180" r="9" fill="#2e4a7b"/>
+          <text class="svg-text svg-mono" x="476" y="178" font-size="11" fill="#1a1815">滑窗</text>
+          <text class="svg-text" x="476" y="194" font-size="9" fill="#6b6359">长上下文，检索有代价</text>
+        </g>
+
+        <!-- Linear: far left -->
+        <g>
+          <circle cx="60" cy="280" r="9" fill="#2f5e5a"/>
+          <text class="svg-text svg-mono" x="60" y="300" text-anchor="middle" font-size="11" fill="#1a1815">线性注意力</text>
+          <text class="svg-text" x="60" y="315" text-anchor="middle" font-size="9" fill="#6b6359">恒定缓存 · 上下文瓶颈</text>
+        </g>
+
+        <!-- Mamba -->
+        <g>
+          <circle cx="180" cy="240" r="10" fill="#72569a" stroke="#1a1815" stroke-width="1"/>
+          <text class="svg-text svg-mono" x="180" y="270" text-anchor="middle" font-size="11" fill="#1a1815">Mamba</text>
+          <text class="svg-text" x="180" y="285" text-anchor="middle" font-size="9" fill="#6b6359">选择性恢复质量</text>
+        </g>
+      </g>
+
+      <!-- caveat -->
+      <text class="svg-text svg-serif" x="410" y="445" text-anchor="middle" font-size="13" fill="#1a1815" font-style="italic">这个三角形是真实的。不存在能碾压其他所有角的单个角。</text>
+    </svg>
+    <figcaption><span class="fig-label">Fig. 7.1</span>三个维度。MHA 是纯粹质量的角。MQA 深居内存那一侧，是纯粹省缓存的角。MLA 则高居侧边，两者皆占优 —— 它是这个家族所产出的最接近「免费午餐」的东西。滑窗与 Mamba 位于吞吐轴上，分别以长上下文与流式见长。</figcaption>
+  </figure>
+</section>
+
+<!-- ================== § VIII MIXTURE ================== -->
+<section id="s8">
+  <span class="section-num">§ VIII</span>
+  <h2>现实中，模型什么都混用。</h2>
+  <p class="lede">没有哪个生产模型只选一种变体就罢手。真实系统把头压缩、token 压缩以及一连串系统级技巧组合在一起。架构是一个栈，而不是一道选择题。</p>
+
+  <figure>
+    <svg viewBox="0 0 820 380" xmlns="http://www.w3.org/2000/svg">
+      <text class="svg-text" x="40" y="22" font-size="11" letter-spacing="0.15em" fill="#6b6359">真实模型 · 货架上实际有什么</text>
+
+      <!-- Three columns: model, head choice, token choice, kernel -->
+      <g transform="translate(40,55)">
+        <!-- Header -->
+        <rect x="0" y="0" width="740" height="32" fill="#1a1815"/>
+        <text class="svg-text" x="20" y="20" font-size="11" letter-spacing="0.1em" fill="#fff">模型</text>
+        <text class="svg-text" x="200" y="20" font-size="11" letter-spacing="0.1em" fill="#fff">头（第 8 章）</text>
+        <text class="svg-text" x="380" y="20" font-size="11" letter-spacing="0.1em" fill="#fff">token（第 9 章）</text>
+        <text class="svg-text" x="560" y="20" font-size="11" letter-spacing="0.1em" fill="#fff">内核（第 10 章）</text>
+
+        <!-- Llama 3 70B -->
+        <g transform="translate(0,40)">
+          <rect x="0" y="0" width="740" height="42" fill="#ebe1c7" stroke="#3d3833" stroke-width="1"/>
+          <text class="svg-text svg-serif" x="20" y="26" font-size="14" fill="#1a1815" font-style="italic">Llama-3 70B</text>
+          <text class="svg-text svg-mono" x="200" y="20" font-size="12" fill="#1a1815">GQA · G = 8</text>
+          <text class="svg-text" x="200" y="35" font-size="10" fill="#6b6359">缓存减少 4 倍</text>
+          <text class="svg-text svg-mono" x="380" y="20" font-size="12" fill="#1a1815">稠密 softmax</text>
+          <text class="svg-text" x="380" y="35" font-size="10" fill="#6b6359">无 token 压缩</text>
+          <text class="svg-text svg-mono" x="560" y="20" font-size="12" fill="#1a1815">FlashAttention-2/3</text>
+          <text class="svg-text" x="560" y="35" font-size="10" fill="#6b6359">分块，HBM 中无 N²</text>
+        </g>
+
+        <!-- Mistral 7B -->
+        <g transform="translate(0,90)">
+          <rect x="0" y="0" width="740" height="42" fill="#ebe1c7" stroke="#3d3833" stroke-width="1"/>
+          <text class="svg-text svg-serif" x="20" y="26" font-size="14" fill="#1a1815" font-style="italic">Mistral 7B</text>
+          <text class="svg-text svg-mono" x="200" y="20" font-size="12" fill="#1a1815">GQA · G = 8</text>
+          <text class="svg-text" x="200" y="35" font-size="10" fill="#6b6359">缓存减少 4 倍</text>
+          <text class="svg-text svg-mono" x="380" y="20" font-size="12" fill="#1a1815">SWA · W = 4K</text>
+          <text class="svg-text" x="380" y="35" font-size="10" fill="#6b6359">环形缓冲区 + 接力</text>
+          <text class="svg-text svg-mono" x="560" y="20" font-size="12" fill="#1a1815">FlashAttention-2</text>
+          <text class="svg-text" x="560" y="35" font-size="10" fill="#6b6359">长上下文分块</text>
+        </g>
+
+        <!-- Gemma 2 -->
+        <g transform="translate(0,140)">
+          <rect x="0" y="0" width="740" height="42" fill="#ebe1c7" stroke="#3d3833" stroke-width="1"/>
+          <text class="svg-text svg-serif" x="20" y="26" font-size="14" fill="#1a1815" font-style="italic">Gemma-2 27B</text>
+          <text class="svg-text svg-mono" x="200" y="20" font-size="12" fill="#1a1815">GQA · G = 4</text>
+          <text class="svg-text" x="200" y="35" font-size="10" fill="#6b6359">缓存减少 8 倍</text>
+          <text class="svg-text svg-mono" x="380" y="20" font-size="12" fill="#1a1815">SWA + full (5:1)</text>
+          <text class="svg-text" x="380" y="35" font-size="10" fill="#6b6359">混合层</text>
+          <text class="svg-text svg-mono" x="560" y="20" font-size="12" fill="#1a1815">FlashAttention-2</text>
+          <text class="svg-text" x="560" y="35" font-size="10" fill="#6b6359">多掩码内核</text>
+        </g>
+
+        <!-- DeepSeek V3 -->
+        <g transform="translate(0,190)">
+          <rect x="0" y="0" width="740" height="42" fill="#ebe1c7" stroke="#3d3833" stroke-width="1"/>
+          <text class="svg-text svg-serif" x="20" y="26" font-size="14" fill="#1a1815" font-style="italic">DeepSeek V3</text>
+          <text class="svg-text svg-mono" x="200" y="20" font-size="12" fill="#1a1815">MLA · R = 512</text>
+          <text class="svg-text" x="200" y="35" font-size="10" fill="#6b6359">缓存减少约 64 倍</text>
+          <text class="svg-text svg-mono" x="380" y="20" font-size="12" fill="#1a1815">dense + NSA tier</text>
+          <text class="svg-text" x="380" y="35" font-size="10" fill="#6b6359">原生稀疏注意力</text>
+          <text class="svg-text svg-mono" x="560" y="20" font-size="12" fill="#1a1815">FlashAttention-3 / TMA</text>
+          <text class="svg-text" x="560" y="35" font-size="10" fill="#6b6359">Hopper 优化</text>
+        </g>
+
+        <!-- Mamba -->
+        <g transform="translate(0,240)">
+          <rect x="0" y="0" width="740" height="42" fill="#ebe1c7" stroke="#3d3833" stroke-width="1"/>
+          <text class="svg-text svg-serif" x="20" y="26" font-size="14" fill="#1a1815" font-style="italic">Mamba 2.8B</text>
+          <text class="svg-text svg-mono" x="200" y="20" font-size="12" fill="#1a1815">——（无头）</text>
+          <text class="svg-text" x="200" y="35" font-size="10" fill="#6b6359">完全没有注意力</text>
+          <text class="svg-text svg-mono" x="380" y="20" font-size="12" fill="#1a1815">选择性 SSM</text>
+          <text class="svg-text" x="380" y="35" font-size="10" fill="#6b6359">恒定隐藏状态</text>
+          <text class="svg-text svg-mono" x="560" y="20" font-size="12" fill="#1a1815">选择性扫描内核</text>
+          <text class="svg-text" x="560" y="35" font-size="10" fill="#6b6359">SRAM 中的并行扫描</text>
+        </g>
+      </g>
+
+      <text class="svg-text svg-serif" x="410" y="370" text-anchor="middle" font-size="13" fill="#1a1815" font-style="italic">注意最右一列：每一行都是同一个名字。</text>
+    </svg>
+    <figcaption><span class="fig-label">Fig. 8.1</span>真实的生产模型。头这一列各不相同，token 这一列各不相同，内核这一列却始终不变。FlashAttention（或其 SSM 等价物，选择性扫描内核）是那个常量 —— 是万事万物赖以立足的系统层地板。</figcaption>
+  </figure>
+
+  <p>有两点值得注意。第一，每一种架构都同时组合了头选择<em>和</em> token 选择 —— 它们是两个正交的杠杆。第二，内核这一列是不变的。<strong>FlashAttention 是基板。</strong>它不是菜单上的一项选择，而是这栋楼的地板。</p>
+</section>
+
+<!-- ================== § IX FLASHATTENTION ================== -->
+<section id="s9">
+  <span class="section-num">§ IX</span>
+  <h2>FlashAttention —— 位于一切之下的那一层。</h2>
+  <p class="lede">FlashAttention 不是 GQA、MLA 或 Mamba 的竞争对手，它位于所有这些之下。你决定用什么注意力数学，它就计算什么 —— 但计算过程中从不把那块巨大的中间矩阵写进慢速内存。</p>
+
+  <p>要理解这个诀窍，先想象 GPU 的内存层级。HBM 又大又慢（H100 上约 3 TB/s，但与算力速度相比每纳秒都很金贵）。片上 SRAM 又小又快（每个流式多处理器约 228 KB，大约快两个数量级）。标准注意力内核会在 HBM 中物化 <span class="mono">N × N</span> 的得分矩阵，读回来做 softmax，再读一次去乘 V。<em>这块矩阵就是瓶颈。</em></p>
+
+  <figure>
+    <svg viewBox="0 0 820 460" xmlns="http://www.w3.org/2000/svg">
+      <text class="svg-text" x="40" y="22" font-size="11" letter-spacing="0.15em" fill="#6b6359">一个流式多处理器 · FlashAttention 的居所</text>
+
+      <!-- Outer GPU frame -->
+      <g transform="translate(40,50)">
+        <rect x="0" y="0" width="740" height="380" fill="#ebe1c7" stroke="#1a1815" stroke-width="1.5"/>
+        <text class="svg-text" x="20" y="22" font-size="11" letter-spacing="0.12em" fill="#1a1815" font-weight="700">H100 GPU</text>
+
+        <!-- HBM bar (top) -->
+        <g transform="translate(40,40)">
+          <rect x="0" y="0" width="660" height="60" fill="#c8351b" opacity="0.8"/>
+          <text class="svg-text" x="330" y="36" text-anchor="middle" font-size="14" fill="#fff" font-weight="700">HBM · 80 GB · 3 TB/s</text>
+          <text class="svg-text" x="330" y="52" text-anchor="middle" font-size="11" fill="#fff">慢、大，模型所在之处</text>
+        </g>
+
+        <!-- bidirectional arrow with cost -->
+        <g transform="translate(370,110)">
+          <line x1="0" y1="0" x2="0" y2="40" stroke="#1a1815" stroke-width="2"/>
+          <polygon points="0,40 -5,32 5,32" fill="#1a1815"/>
+          <polygon points="0,0 -5,8 5,8" fill="#1a1815"/>
+          <text class="svg-text svg-mono" x="14" y="25" font-size="11" fill="#c8351b">昂贵！</text>
+        </g>
+
+        <!-- L2 cache bar -->
+        <g transform="translate(40,160)">
+          <rect x="0" y="0" width="660" height="36" fill="#b8862f" opacity="0.7"/>
+          <text class="svg-text" x="330" y="22" text-anchor="middle" font-size="12" fill="#fff" font-weight="700">L2 cache · 50 MB · ~12 TB/s</text>
+        </g>
+
+        <!-- 4 SMs -->
+        <g transform="translate(40,210)">
+          <text class="svg-text" x="0" y="-5" font-size="10" letter-spacing="0.1em" fill="#6b6359">144 个流式多处理器 —— 放大其中一个</text>
+
+          <!-- 1 SM closeup at left -->
+          <g transform="translate(0,5)">
+            <rect x="0" y="0" width="320" height="155" fill="#fff" stroke="#1a1815" stroke-width="1.2"/>
+            <text class="svg-text" x="160" y="22" text-anchor="middle" font-size="11" letter-spacing="0.1em" fill="#1a1815" font-weight="700">SM</text>
+
+            <!-- SRAM block -->
+            <rect x="20" y="40" width="280" height="40" fill="#4a6b3a" opacity="0.7"/>
+            <text class="svg-text" x="160" y="58" text-anchor="middle" font-size="12" fill="#fff" font-weight="700">SRAM (shared) · 228 KB · ~19 TB/s</text>
+            <text class="svg-text" x="160" y="74" text-anchor="middle" font-size="10" fill="#fff">FlashAttention 的游乐场</text>
+
+            <!-- Tensor cores -->
+            <g transform="translate(20,95)">
+              <rect x="0" y="0" width="60" height="40" fill="#2e4a7b" opacity="0.7"/>
+              <text class="svg-text svg-mono" x="30" y="20" text-anchor="middle" font-size="9" fill="#fff">TC</text>
+              <text class="svg-text svg-mono" x="30" y="32" text-anchor="middle" font-size="9" fill="#fff">⊕</text>
+
+              <rect x="65" y="0" width="60" height="40" fill="#2e4a7b" opacity="0.7"/>
+              <text class="svg-text svg-mono" x="95" y="20" text-anchor="middle" font-size="9" fill="#fff">TC</text>
+
+              <rect x="130" y="0" width="60" height="40" fill="#2e4a7b" opacity="0.7"/>
+              <text class="svg-text svg-mono" x="160" y="20" text-anchor="middle" font-size="9" fill="#fff">TC</text>
+
+              <rect x="195" y="0" width="60" height="40" fill="#2e4a7b" opacity="0.7"/>
+              <text class="svg-text svg-mono" x="225" y="20" text-anchor="middle" font-size="9" fill="#fff">TC</text>
+            </g>
+            <text class="svg-text" x="160" y="148" text-anchor="middle" font-size="10" fill="#6b6359">张量核心直接从 SRAM 读取</text>
+          </g>
+
+          <!-- Right side: tile flow -->
+          <g transform="translate(360,5)">
+            <text class="svg-text" x="180" y="0" text-anchor="middle" font-size="11" letter-spacing="0.12em" fill="#1a1815" font-weight="700">FlashAttention · 一块一块地</text>
+
+            <!-- Q matrix tiles -->
+            <g transform="translate(0,20)">
+              <text class="svg-text svg-mono" x="0" y="0" font-size="11" fill="#1a1815">Q 分块</text>
+              <rect x="0" y="8" width="60" height="22" fill="#2e4a7b" opacity="0.7"/>
+
+              <text class="svg-text svg-mono" x="100" y="0" font-size="11" fill="#1a1815">K 分块</text>
+              <rect x="100" y="8" width="60" height="22" fill="#c8351b" opacity="0.55"/>
+
+              <text class="svg-text svg-mono" x="200" y="0" font-size="11" fill="#1a1815">V 分块</text>
+              <rect x="200" y="8" width="60" height="22" fill="#b8862f" opacity="0.6"/>
+            </g>
+
+            <text class="svg-mono svg-text" x="180" y="58" text-anchor="middle" font-size="13" fill="#1a1815">↓ 载入 SRAM</text>
+
+            <!-- in SRAM ops -->
+            <g transform="translate(0,72)">
+              <rect x="0" y="0" width="360" height="44" fill="#4a6b3a" opacity="0.18" stroke="#4a6b3a"/>
+              <text class="svg-mono svg-text" x="180" y="18" text-anchor="middle" font-size="11" fill="#1a1815">QKᵀ &nbsp;·&nbsp; online softmax &nbsp;·&nbsp; @V</text>
+              <text class="svg-text" x="180" y="34" text-anchor="middle" font-size="10" fill="#6b6359">全都在快速的片上内存中 · 不写出 N×N 矩阵</text>
+            </g>
+
+            <text class="svg-mono svg-text" x="180" y="142" text-anchor="middle" font-size="13" fill="#1a1815">↓ 累加到输出</text>
+          </g>
+
+        </g>
+
+      </g>
+    </svg>
+    <figcaption><span class="fig-label">Fig. 9.1</span>H100 底部的一个流式多处理器。SRAM 是那条绿色的带 —— 虽小，却比 HBM 快两个数量级。FlashAttention 的全部洞见，就是在一块块地把 <span class="mono">QKᵀ · softmax · V</span> 整条序列放在 SRAM 里完成，最后只把输出写回 HBM。N × N 的中间矩阵从不曾存在。</figcaption>
+  </figure>
+
+  <p>「online softmax」技巧让这一切成为可能。朴素 softmax 需要把所有 logits 扫两遍 —— 一遍找最大值以保证数值稳定，一遍做指数与归一化。FlashAttention 把它改写为一个流式归约：每当新的一块键分块到来，运行最大值、运行分母与运行输出都在单趟中更新。数学上与标准 softmax 完全相同，调度却面目全非。</p>
+
+  <div class="formula">
+    <em>与 MHA 输出相同</em> &nbsp;·&nbsp; 分块循环 &nbsp;·&nbsp; online softmax &nbsp;·&nbsp; 常驻 SRAM
+  </div>
+</section>
+
+<!-- ================== § X N²d²/M ================== -->
+<section id="s10">
+  <span class="section-num">§ X</span>
+  <h2>为什么 N²·d²/M 才是关键结果。</h2>
+  <p class="lede">两种内核执行相同的 FLOPs。区别在于它们在 HBM 与芯片之间搬动的字节数。书中第 10 章用一行给出公式 —— 而那一行正是解释一切的那一行。</p>
+
+  <p>标准注意力为矩阵乘法做 <span class="mono">O(N·d)</span> 的工作，为得分矩阵做 <span class="mono">O(N²)</span> 的工作。它的 HBM 流量主要由读写那块 N × N 矩阵主导：</p>
+
+  <div class="formula">
+    标准 HBM 流量 &nbsp;=&nbsp; <em>O(N · d + N²)</em>
+  </div>
+
+  <p>FlashAttention 从不写出得分矩阵。它的 HBM 流量主要由以 SRAM 大小 <span class="mono">M</span> 决定的方式反复读写 Q、K、V 分块所主导：</p>
+
+  <div class="formula">
+    FlashAttention HBM 流量 &nbsp;=&nbsp; <em>O( N² · d² / M )</em>
+  </div>
+
+  <figure>
+    <svg viewBox="0 0 820 320" xmlns="http://www.w3.org/2000/svg">
+      <text class="svg-text" x="40" y="22" font-size="11" letter-spacing="0.15em" fill="#6b6359">HBM 流量 · 为什么 d²/M 才是制胜因子</text>
+
+      <!-- Two horizontal bars -->
+      <g transform="translate(60,60)">
+        <text class="svg-text svg-mono" x="0" y="0" font-size="12" fill="#c8351b">标准：</text>
+        <text class="svg-text svg-mono" x="0" y="18" font-size="11" fill="#1a1815">O(N² + N·d)</text>
+        <rect x="180" y="0" width="540" height="30" fill="#c8351b" opacity="0.75"/>
+        <text class="svg-text svg-mono" x="450" y="20" text-anchor="middle" font-size="12" fill="#fff">N=8K，d=128 → 约 6400 万次浮点读取</text>
+      </g>
+
+      <g transform="translate(60,120)">
+        <text class="svg-text svg-mono" x="0" y="0" font-size="12" fill="#4a6b3a">FlashAttention：</text>
+        <text class="svg-text svg-mono" x="0" y="18" font-size="11" fill="#1a1815">O(N²·d²/M)</text>
+        <rect x="180" y="0" width="80" height="30" fill="#4a6b3a" opacity="0.85"/>
+        <text class="svg-text svg-mono" x="220" y="20" text-anchor="middle" font-size="11" fill="#fff">约少 6 倍</text>
+      </g>
+
+      <!-- Why d²/M is small panel -->
+      <g transform="translate(60,180)">
+        <rect x="0" y="0" width="700" height="100" fill="#ebe1c7" stroke="#3d3833" stroke-width="1"/>
+        <text class="svg-text" x="350" y="22" text-anchor="middle" font-size="11" letter-spacing="0.15em" fill="#6b6359">代入数字 · H100</text>
+
+        <text class="svg-text svg-mono" x="20" y="50" font-size="13" fill="#1a1815">d = 128（头维度）</text>
+        <text class="svg-text svg-mono" x="220" y="50" font-size="13" fill="#1a1815">M ≈ 100 KB ≈ 25,000 个浮点数</text>
+        <text class="svg-text svg-mono" x="490" y="50" font-size="13" fill="#1a1815">d²/M ≈ 16384/25000</text>
+
+        <text class="svg-text svg-serif" x="350" y="80" text-anchor="middle" font-size="14" fill="#4a6b3a" font-style="italic">d²/M 远小于 1 —— SRAM 大到足以完全吞下内部的 d 维度。</text>
+      </g>
+    </svg>
+    <figcaption><span class="fig-label">Fig. 10.1</span>让 FlashAttention 得以工作的那个数字。因子 d²/M 之所以小，恰恰是因为 SRAM（M）远大于头维度的平方。N×N 矩阵从不出现在 HBM 中，因此 roofline 图上那条缓慢的斜坡对这个内核而言几乎无关紧要 —— 那个点向脊点移动。</figcaption>
+  </figure>
+
+  <p>解释：<hl>d² 由模型架构固定且很小（典型头为 16K 个浮点数）。M 是 SRAM，在现代 GPU 上每个 SM 有数万个浮点数。</hl> 比值 <span class="mono">d²/M</span> 舒适地低于 1，FlashAttention 的 HBM 流量最终仍与 N 二次方相关，但系数极小，而标准注意力的流量与 N 二次方相关的系数是 1。在长上下文下，那个小系数就是救你的东西。</p>
+
+  <div class="pull-quote">FlashAttention 不改变你计算什么，它改变的是中间结果的那些字节究竟会触及哪块内存。</div>
+</section>
+
+<!-- ================== § XI VLLM TEASER ================== -->
+<section id="s11">
+  <span class="section-num">§ XI</span>
+  <h2>今日课程 —— vLLM 内部。</h2>
+  <p class="lede">这个故事迄今的每一章都在讲数学与内核。再往上一层就是引擎：那个把所有这些技术拿起来、同时服务众多用户的运行时。</p>
+
+  <p>到此为止，你已经有了一个用 GQA 或 MLA 的模型，一个（如果你想要的话）token 压缩方案，以及其下的 FlashAttention 内核。你还没有的，是把 HTTP 请求流转化为 token 流的那个东西 —— 它要处理动态批处理、公平性、前缀共享、页表式的缓存分配，以及每秒几十个决定你的 H100 究竟是 30% 还是 90% 利用率的决策。</p>
+
+  <p>这就是推理引擎所做的事。最重要的开源实现就是 <strong>vLLM</strong>。它是今天这节课的主题。</p>
+
+  <div class="teaser">
+    <span class="small-caps">今日白板</span>
+    <h3>vLLM —— 包裹内核的引擎。</h3>
+    <p>这个运行时把本文中的一切拿起来并提供服务。PagedAttention 把 KV 缓存变成一张操作系统式的页表。连续批处理在迭代边界而非请求边界上调度。前缀缓存分摊重复系统 prompt 的成本。分块预填充在不造成队头阻塞的前提下混排长预填充与短解码工作。</p>
+    <ul>
+      <li>PagedAttention</li>
+      <li>连续批处理</li>
+      <li>前缀缓存</li>
+      <li>分块预填充</li>
+      <li>块池内存</li>
+      <li>迭代调度</li>
+    </ul>
+  </div>
+
+  <p>其中每一项在书里都各成一章。每一项都是引擎在回答本文一路悄悄铺垫的某个问题。得益于 MLA 或 GQA，KV 缓存现在很小了 —— 我们该如何在多个用户间分配它？解码那个点离脊点更近了 —— 当预填充在对话中途到来时，我们该如何把它留在那里？内核很快 —— 我们该如何给它投喂而不产生气泡？</p>
+
+  <p>这正是我们接下来要去的地方。</p>
+
+  <div class="ornament">· · ·</div>
+
+  <p style="text-align:center;font-style:italic;color:var(--ink-faint)">从一张 roofline 图到一个完整的服务引擎 —— 而我们甚至还没提到量化、投机解码、并行，或预填充/解码的分离式部署。书里为每一项都准备了章节。这一页只是主干。</p>
+</section>
+
+<footer>
+  <p class="small-caps">Vizuara · 推理工程</p>
+  <p style="margin-top:1rem;font-size:1rem;font-style:italic">从第一次推理到引擎的完整脉络 —— 尽在一页。</p>
+  <p style="margin-top:2rem;font-size:0.85rem;color:#bda88f">
+    <a href="visual-walkthroughs.html" style="color:#e08a76;text-decoration:none">← 返回资料库</a> &nbsp;·&nbsp;
+    <a href="book.html" style="color:#e08a76;text-decoration:none">阅读原书 →</a>
+  </p>
+</footer>
+
+</main>
+</body>
+</html>

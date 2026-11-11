@@ -1,0 +1,1664 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>困惑度的解剖 —— 可视化指南</title>
+<meta name="description" content="一个关于大语言模型中困惑度（perplexity）损失的第一性原理交互式可视化指南。" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=JetBrains+Mono:wght@400;500;700&family=Inter+Tight:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper:        #f4ecd8;
+    --paper-deep:   #ebe1c7;
+    --ink:          #1a1815;
+    --ink-soft:     #3d3833;
+    --ink-faint:    #6b6359;
+    --rule:         #2a2622;
+    --accent:       #c8351b;          /* vermilion */
+    --accent-soft:  #e08a76;
+    --gold:         #b8862f;
+    --teal:         #2f5e5a;
+    --blue:         #2e4a7b;
+    --green:        #4a6b3a;
+    --hot:          #c8351b;
+    --cool:         #2e4a7b;
+    --margin:       max(2rem, calc(50vw - 38rem));
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: 'Fraunces', 'Times New Roman', 'PingFang SC', 'Microsoft YaHei', serif;
+    font-feature-settings: "ss01" on, "ss02" on, "onum" on;
+    background: var(--paper);
+    color: var(--ink);
+    line-height: 1.55;
+    font-size: 18px;
+    overflow-x: hidden;
+    position: relative;
+  }
+
+  /* Subtle paper grain */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      radial-gradient(circle at 20% 30%, rgba(120,90,40,0.04) 0%, transparent 40%),
+      radial-gradient(circle at 80% 70%, rgba(60,40,20,0.035) 0%, transparent 40%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  body::after {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.15 0 0 0 0 0.12 0 0 0 0 0.08 0 0 0 0.18 0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
+    opacity: 0.35;
+    mix-blend-mode: multiply;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  main { position: relative; z-index: 2; }
+
+  /* ---------- TYPOGRAPHY ---------- */
+  h1, h2, h3, h4 {
+    font-family: 'Fraunces', 'PingFang SC', 'Microsoft YaHei', serif;
+    font-variation-settings: "opsz" 144;
+    color: var(--ink);
+    letter-spacing: -0.02em;
+    line-height: 1.05;
+    font-weight: 500;
+  }
+  h2 { font-size: clamp(2.2rem, 5vw, 3.6rem); margin-bottom: 1.5rem; font-weight: 400; }
+  h3 { font-size: clamp(1.5rem, 3vw, 2.1rem); margin: 2.5rem 0 1rem; font-weight: 500; }
+  h4 { font-size: 1.25rem; margin: 1.5rem 0 0.6rem; font-weight: 600; font-variation-settings: "opsz" 14; }
+
+  p { font-size: 1.125rem; margin-bottom: 1.25rem; max-width: 65ch; }
+  p.lede {
+    font-size: 1.45rem;
+    line-height: 1.5;
+    color: var(--ink-soft);
+    font-style: italic;
+    font-weight: 300;
+    max-width: 60ch;
+  }
+  .small-caps {
+    font-family: 'Inter Tight', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--ink-faint);
+  }
+  .drop::first-letter {
+    font-family: 'Fraunces', serif;
+    font-weight: 600;
+    font-size: 4.5rem;
+    float: left;
+    line-height: 0.85;
+    margin: 0.4rem 0.5rem 0 0;
+    color: var(--accent);
+  }
+
+  code, .mono {
+    font-family: 'JetBrains Mono', 'PingFang SC', 'Microsoft YaHei', monospace;
+    font-size: 0.9em;
+    background: rgba(40,30,20,0.06);
+    padding: 0.1em 0.35em;
+    border-radius: 3px;
+    color: var(--ink);
+  }
+
+  /* ---------- LAYOUT ---------- */
+  section {
+    padding: 6rem var(--margin);
+    position: relative;
+    border-bottom: 1px solid rgba(40,30,20,0.08);
+  }
+  section:last-child { border-bottom: none; }
+
+  .section-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    letter-spacing: 0.05em;
+    color: var(--accent);
+    margin-bottom: 1rem;
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border: 1px solid var(--accent);
+    border-radius: 2px;
+  }
+
+  /* ---------- HERO ---------- */
+  .hero {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 4rem var(--margin) 2rem;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    border-bottom: 2px solid var(--ink);
+    padding-bottom: 0.75rem;
+    margin-bottom: 3rem;
+  }
+  .hero-meta .vol {
+    font-family: 'Fraunces', 'PingFang SC', 'Microsoft YaHei', serif;
+    font-style: italic;
+    font-size: 1rem;
+    color: var(--ink-soft);
+  }
+  .hero h1 {
+    font-size: clamp(3rem, 9.5vw, 8rem);
+    font-weight: 300;
+    line-height: 0.92;
+    margin: 1rem 0 2rem;
+    font-variation-settings: "opsz" 144, "wght" 300;
+  }
+  .hero h1 em {
+    font-style: italic;
+    color: var(--accent);
+    font-variation-settings: "opsz" 144, "wght" 400;
+  }
+  .hero-sub {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3rem;
+    margin-top: 3rem;
+    border-top: 1px solid rgba(40,30,20,0.2);
+    padding-top: 1.5rem;
+  }
+  .hero-sub p { font-size: 1rem; color: var(--ink-soft); }
+
+  .hero-formula {
+    margin: 2rem 0;
+    padding: 2rem;
+    background: var(--ink);
+    color: var(--paper);
+    font-family: 'JetBrains Mono', 'PingFang SC', 'Microsoft YaHei', monospace;
+    text-align: center;
+    border-radius: 2px;
+    position: relative;
+  }
+  .hero-formula .label {
+    position: absolute;
+    top: -0.7rem; left: 1rem;
+    background: var(--paper);
+    color: var(--ink);
+    padding: 0 0.5rem;
+    font-size: 0.7rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
+  .hero-formula .eq {
+    font-size: 1.6rem;
+    letter-spacing: 0.05em;
+  }
+  .hero-formula .eq .var { color: var(--accent-soft); }
+
+  /* ---------- TABLE OF CONTENTS ---------- */
+  .toc {
+    background: var(--paper-deep);
+    padding: 4rem var(--margin);
+    border-top: 1px solid rgba(40,30,20,0.15);
+    border-bottom: 1px solid rgba(40,30,20,0.15);
+  }
+  .toc h2 {
+    font-size: 1.2rem;
+    font-family: 'Inter Tight', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: 2rem;
+    font-weight: 600;
+  }
+  .toc-list { list-style: none; }
+  .toc-list li {
+    border-top: 1px solid rgba(40,30,20,0.15);
+    padding: 1rem 0;
+    display: flex;
+    align-items: baseline;
+    gap: 1.5rem;
+  }
+  .toc-list li:last-child { border-bottom: 1px solid rgba(40,30,20,0.15); }
+  .toc-list .num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85rem;
+    color: var(--accent);
+    width: 3rem;
+    flex-shrink: 0;
+  }
+  .toc-list a {
+    color: var(--ink);
+    text-decoration: none;
+    font-family: 'Fraunces', 'PingFang SC', 'Microsoft YaHei', serif;
+    font-size: 1.4rem;
+    flex-grow: 1;
+    transition: color 0.2s;
+  }
+  .toc-list a:hover { color: var(--accent); font-style: italic; }
+  .toc-list .pg {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--ink-faint);
+  }
+
+  /* ---------- FIGURES ---------- */
+  figure {
+    margin: 3rem auto;
+    padding: 0;
+    text-align: center;
+    max-width: 100%;
+  }
+  figure svg {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 0 auto;
+    background: var(--paper);
+  }
+  figcaption {
+    font-family: 'Inter Tight', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    font-size: 0.85rem;
+    color: var(--ink-faint);
+    margin-top: 1rem;
+    line-height: 1.4;
+    max-width: 50ch;
+    margin-left: auto;
+    margin-right: auto;
+    text-align: center;
+  }
+  figcaption .fig-label {
+    font-weight: 700;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-size: 0.72rem;
+    margin-right: 0.5rem;
+  }
+
+  /* ---------- INTERACTIVE BLOCKS ---------- */
+  .interactive {
+    background: var(--paper-deep);
+    border: 1px solid rgba(40,30,20,0.15);
+    padding: 2rem;
+    border-radius: 4px;
+    margin: 3rem 0;
+    position: relative;
+  }
+  .interactive::before {
+    content: 'Try it ↓';
+    position: absolute;
+    top: -0.6rem; left: 1.2rem;
+    background: var(--accent);
+    color: var(--paper);
+    padding: 0.15rem 0.7rem;
+    font-family: 'Inter Tight', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    font-size: 0.7rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    font-weight: 700;
+    border-radius: 2px;
+  }
+
+  /* Buttons & controls */
+  button {
+    font-family: 'Inter Tight', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 500;
+    padding: 0.5rem 1rem;
+    background: var(--ink);
+    color: var(--paper);
+    border: none;
+    border-radius: 2px;
+    cursor: pointer;
+    letter-spacing: 0.05em;
+    transition: all 0.15s;
+  }
+  button:hover { background: var(--accent); }
+  button.ghost {
+    background: transparent;
+    color: var(--ink);
+    border: 1px solid var(--ink);
+  }
+  button.ghost:hover { background: var(--ink); color: var(--paper); }
+  button.ghost.active {
+    background: var(--accent);
+    color: var(--paper);
+    border-color: var(--accent);
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 4px;
+    background: rgba(40,30,20,0.2);
+    outline: none;
+    border-radius: 2px;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px; height: 20px;
+    background: var(--accent);
+    border-radius: 50%;
+    cursor: pointer;
+    border: 3px solid var(--paper);
+    box-shadow: 0 0 0 1px var(--accent);
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 20px; height: 20px;
+    background: var(--accent);
+    border-radius: 50%;
+    cursor: pointer;
+    border: 3px solid var(--paper);
+  }
+
+  /* Pull quote */
+  .pull-quote {
+    font-family: 'Fraunces', 'PingFang SC', 'Microsoft YaHei', serif;
+    font-style: italic;
+    font-weight: 300;
+    font-size: clamp(1.6rem, 3.8vw, 2.6rem);
+    line-height: 1.25;
+    color: var(--ink);
+    margin: 4rem auto;
+    padding: 2.5rem 0;
+    max-width: 50ch;
+    text-align: center;
+    border-top: 1px solid var(--ink);
+    border-bottom: 1px solid var(--ink);
+    position: relative;
+  }
+  .pull-quote::before {
+    content: '"';
+    position: absolute;
+    top: -1.5rem; left: 50%;
+    transform: translateX(-50%);
+    background: var(--paper);
+    padding: 0 1rem;
+    font-size: 4rem;
+    color: var(--accent);
+    line-height: 1;
+    font-style: normal;
+  }
+
+  /* Margin notes */
+  .marginalia {
+    font-family: 'Inter Tight', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    font-size: 0.85rem;
+    color: var(--ink-faint);
+    line-height: 1.4;
+    border-left: 2px solid var(--accent);
+    padding-left: 1rem;
+    margin: 1.5rem 0;
+    font-style: italic;
+  }
+
+  /* Formula display */
+  .formula {
+    background: var(--paper-deep);
+    border: 1px solid rgba(40,30,20,0.15);
+    padding: 1.5rem 2rem;
+    margin: 2rem 0;
+    text-align: center;
+    font-family: 'JetBrains Mono', 'PingFang SC', 'Microsoft YaHei', monospace;
+    font-size: 1.15rem;
+    border-radius: 3px;
+    overflow-x: auto;
+  }
+  .formula em { color: var(--accent); font-style: normal; font-weight: 700; }
+  .formula .sub { font-size: 0.7em; vertical-align: -0.3em; }
+  .formula .sup { font-size: 0.7em; vertical-align: 0.5em; }
+  .formula .frac {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    vertical-align: middle;
+    margin: 0 0.3rem;
+    font-size: 0.95em;
+  }
+  .formula .frac .top {
+    border-bottom: 1.5px solid currentColor;
+    padding: 0 0.5rem 0.1rem;
+  }
+  .formula .frac .bot { padding: 0.1rem 0.5rem 0; }
+
+  /* Token cards */
+  .token-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin: 1.5rem 0;
+    align-items: center;
+    justify-content: center;
+  }
+  .tok {
+    display: inline-block;
+    padding: 0.45rem 0.75rem;
+    background: var(--paper-deep);
+    border: 1px solid rgba(40,30,20,0.2);
+    border-radius: 3px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.95rem;
+    color: var(--ink);
+    position: relative;
+  }
+  .tok.active { background: var(--accent); color: var(--paper); border-color: var(--accent); }
+  .tok.target { background: var(--gold); color: var(--paper); border-color: var(--gold); }
+  .tok.context { opacity: 0.65; }
+
+  /* Stats grid */
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 0;
+    margin: 2.5rem 0;
+    border-top: 1px solid var(--ink);
+    border-bottom: 1px solid var(--ink);
+  }
+  .stat {
+    padding: 1.5rem;
+    border-right: 1px solid rgba(40,30,20,0.15);
+    text-align: center;
+  }
+  .stat:last-child { border-right: none; }
+  .stat .num {
+    font-family: 'Fraunces', serif;
+    font-variation-settings: "opsz" 144, "wght" 400;
+    font-size: 3rem;
+    color: var(--accent);
+    line-height: 1;
+    display: block;
+  }
+  .stat .lbl {
+    font-family: 'Inter Tight', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--ink-faint);
+    margin-top: 0.5rem;
+    display: block;
+  }
+
+  /* Two-col */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3rem;
+    margin: 2rem 0;
+  }
+  @media (max-width: 768px) {
+    .two-col { grid-template-columns: 1fr; gap: 1.5rem; }
+    .hero-sub { grid-template-columns: 1fr; }
+    .stat-grid { grid-template-columns: 1fr 1fr; }
+    .stat { border-right: 1px solid rgba(40,30,20,0.15); border-bottom: 1px solid rgba(40,30,20,0.15); }
+  }
+
+  /* Footer */
+  footer {
+    padding: 4rem var(--margin) 3rem;
+    background: var(--ink);
+    color: var(--paper);
+    text-align: center;
+  }
+  footer p { color: var(--paper); margin: 0 auto 0.5rem; max-width: none; }
+  footer .small-caps { color: var(--accent-soft); }
+
+  /* SVG defaults inside figures */
+  .svg-text {
+    font-family: 'Inter Tight', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    font-size: 13px;
+    fill: var(--ink);
+  }
+  .svg-mono { font-family: 'JetBrains Mono', monospace; }
+  .svg-serif { font-family: 'Fraunces', 'PingFang SC', 'Microsoft YaHei', serif; font-style: italic; }
+
+  /* Highlight */
+  .hl { background: linear-gradient(180deg, transparent 60%, rgba(200,53,27,0.25) 60%); padding: 0 0.1em; }
+  .hl-gold { background: linear-gradient(180deg, transparent 60%, rgba(184,134,47,0.3) 60%); padding: 0 0.1em; }
+
+  /* Section divider ornament */
+  .ornament {
+    text-align: center;
+    margin: 3rem 0;
+    color: var(--ink-faint);
+    font-size: 1.5rem;
+    letter-spacing: 1rem;
+  }
+
+  /* Animation */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .anim { animation: fadeUp 0.8s ease-out backwards; }
+
+  /* Tooltip */
+  .info {
+    display: inline-block;
+    width: 1.1em; height: 1.1em;
+    line-height: 1.1em;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    border-radius: 50%;
+    text-align: center;
+    font-size: 0.7em;
+    cursor: help;
+    font-family: 'Inter Tight', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    vertical-align: middle;
+    margin: 0 0.2em;
+  }
+</style>
+</head>
+<body>
+<main>
+
+<!-- ===================================================================== -->
+<!-- HERO                                                                  -->
+<!-- ===================================================================== -->
+<section class="hero">
+  <div class="hero-meta">
+    <span class="small-caps">Vizuara · 可视化田野笔记</span>
+    <span class="vol">第三卷 · 一篇交互式文章</span>
+    <span class="small-caps">第 07 期 · 困惑度</span>
+  </div>
+
+  <p class="small-caps anim" style="animation-delay:.05s">一次关于……的第一性原理之旅</p>
+  <h1 class="anim" style="animation-delay:.15s">
+    <em>困惑度</em><br>
+    的<em>解剖</em>
+  </h1>
+  <p class="lede anim" style="animation-delay:.35s">
+    你的语言模型有多「惊讶」？我们将从一个 token 开始，一步一步、小心翼翼地搭建答案——直到一个数字就能告诉你，模型到底有多困惑、又有多自信。
+  </p>
+
+  <div class="hero-formula anim" style="animation-delay:.55s">
+    <span class="label">最终目的地</span>
+    <div class="eq">
+      困惑度 = exp(− <span class="var">1/N</span> · Σ log <span class="var">P(x<sub>i</sub> | x<sub>&lt;i</sub>)</span>)
+    </div>
+  </div>
+
+  <div class="hero-sub anim" style="animation-delay:.75s">
+    <p>到最后，这个公式会显得理所当然。我们会从一个几乎有点孩子气的问题出发，推导出每一个符号：<em>当模型猜测下一个词时，它猜对的频率有多高？</em></p>
+    <p style="text-align:right">向下滚动开始。<br><span style="font-size:1.5rem">↓</span></p>
+  </div>
+</section>
+
+<!-- ===================================================================== -->
+<!-- TABLE OF CONTENTS                                                     -->
+<!-- ===================================================================== -->
+<nav class="toc">
+  <h2>目录</h2>
+  <ol class="toc-list">
+    <li><span class="num">I</span><a href="#s1">模型是下一个 token 的猜测者</a><span class="pg">p. 01</span></li>
+    <li><span class="num">II</span><a href="#s2">token，以及它们所处的概率</a><span class="pg">p. 02</span></li>
+    <li><span class="num">III</span><a href="#s3">惊讶度：用比特度量</a><span class="pg">p. 03</span></li>
+    <li><span class="num">IV</span><a href="#s4">从一个 token 到一句话：交叉熵</a><span class="pg">p. 04</span></li>
+    <li><span class="num">V</span><a href="#s5">指数技巧：从对数到选择数</a><span class="pg">p. 05</span></li>
+    <li><span class="num">VI</span><a href="#s6">困惑度：一个有灵魂的数字</a><span class="pg">p. 06</span></li>
+    <li><span class="num">VII</span><a href="#s7">一个交互式困惑度实验室</a><span class="pg">p. 07</span></li>
+    <li><span class="num">VIII</span><a href="#s8">这个数字能说明什么、不能说明什么</a><span class="pg">p. 08</span></li>
+  </ol>
+</nav>
+
+<!-- ===================================================================== -->
+<!-- SECTION I                                                             -->
+<!-- ===================================================================== -->
+<section id="s1">
+  <span class="section-num">§ I</span>
+  <h2>模型是下一个 token 的猜测者。</h2>
+  <p class="lede">暂时忘掉你听说过的关于 Transformer、注意力（attention）和数十亿参数的一切。把模型剥离到它在推理时真正做的唯一一件事。</p>
+
+  <p class="drop">一个语言模型，在其不可再约简的核心上，反复地玩同一个游戏：<em>给定到目前为止的文本，预测接下来会出现什么。</em>不是一句话，不是一段话。只是下一个单独的片段——下一个 <span class="hl">token</span>。</p>
+
+  <p>给它看「The cat sat on the」。模型并不「知道」答案。它在词表中的每一个可能 token 上产生一个概率——一张长长的排序列表。<span class="mono">mat</span> 可能拿到 41%。<span class="mono">floor</span> 12%。<span class="mono">roof</span> 4%。<span class="mono">banana</span>，谢天谢地，只有 0.001%。</p>
+
+  <figure>
+    <svg viewBox="0 0 800 380" xmlns="http://www.w3.org/2000/svg">
+      <!-- Context tokens -->
+      <g transform="translate(40,40)">
+        <text class="svg-text" style="font-size:11px;letter-spacing:0.15em" fill="#6b6359">上下文</text>
+        <g transform="translate(0,15)">
+          <rect x="0" y="0" width="60" height="32" rx="3" fill="#ebe1c7" stroke="#3d3833" stroke-width="1"/>
+          <text class="svg-text svg-mono" x="30" y="21" text-anchor="middle">The</text>
+          <rect x="68" y="0" width="60" height="32" rx="3" fill="#ebe1c7" stroke="#3d3833" stroke-width="1"/>
+          <text class="svg-text svg-mono" x="98" y="21" text-anchor="middle">cat</text>
+          <rect x="136" y="0" width="60" height="32" rx="3" fill="#ebe1c7" stroke="#3d3833" stroke-width="1"/>
+          <text class="svg-text svg-mono" x="166" y="21" text-anchor="middle">sat</text>
+          <rect x="204" y="0" width="60" height="32" rx="3" fill="#ebe1c7" stroke="#3d3833" stroke-width="1"/>
+          <text class="svg-text svg-mono" x="234" y="21" text-anchor="middle">on</text>
+          <rect x="272" y="0" width="60" height="32" rx="3" fill="#ebe1c7" stroke="#3d3833" stroke-width="1"/>
+          <text class="svg-text svg-mono" x="302" y="21" text-anchor="middle">the</text>
+          <rect x="340" y="0" width="60" height="32" rx="3" fill="#1a1815" stroke="#1a1815" stroke-width="1" stroke-dasharray="3,3"/>
+          <text class="svg-text svg-mono" x="370" y="21" text-anchor="middle" fill="#f4ecd8">?</text>
+        </g>
+      </g>
+
+      <!-- Arrow into model -->
+      <g transform="translate(440,55)">
+        <path d="M0,0 L40,0 L40,-5 L55,5 L40,15 L40,10 L0,10 Z" fill="#1a1815"/>
+      </g>
+
+      <!-- Model box -->
+      <g transform="translate(510,30)">
+        <rect x="0" y="0" width="240" height="60" rx="4" fill="#1a1815"/>
+        <text class="svg-text" x="120" y="25" text-anchor="middle" fill="#f4ecd8" style="font-size:13px;letter-spacing:0.1em">语言模型</text>
+        <text class="svg-text svg-serif" x="120" y="46" text-anchor="middle" fill="#e08a76" style="font-size:14px">一台概率机器</text>
+      </g>
+
+      <!-- Output distribution -->
+      <g transform="translate(40,150)">
+        <text class="svg-text" style="font-size:11px;letter-spacing:0.15em" fill="#6b6359">词表上的概率分布（下一个 token）</text>
+
+        <!-- Bars -->
+        <g transform="translate(0,30)" font-family="JetBrains Mono, monospace">
+          <!-- mat -->
+          <rect x="80" y="0" width="295" height="22" fill="#c8351b"/>
+          <text x="75" y="16" text-anchor="end" font-size="13" fill="#1a1815">mat</text>
+          <text x="385" y="16" font-size="12" fill="#1a1815">0.41</text>
+
+          <!-- floor -->
+          <rect x="80" y="28" width="86" height="22" fill="#c8351b" opacity="0.6"/>
+          <text x="75" y="44" text-anchor="end" font-size="13" fill="#1a1815">floor</text>
+          <text x="176" y="44" font-size="12" fill="#1a1815">0.12</text>
+
+          <!-- chair -->
+          <rect x="80" y="56" width="65" height="22" fill="#c8351b" opacity="0.45"/>
+          <text x="75" y="72" text-anchor="end" font-size="13" fill="#1a1815">chair</text>
+          <text x="155" y="72" font-size="12" fill="#1a1815">0.09</text>
+
+          <!-- couch -->
+          <rect x="80" y="84" width="50" height="22" fill="#c8351b" opacity="0.35"/>
+          <text x="75" y="100" text-anchor="end" font-size="13" fill="#1a1815">couch</text>
+          <text x="140" y="100" font-size="12" fill="#1a1815">0.07</text>
+
+          <!-- roof -->
+          <rect x="80" y="112" width="29" height="22" fill="#c8351b" opacity="0.25"/>
+          <text x="75" y="128" text-anchor="end" font-size="13" fill="#1a1815">roof</text>
+          <text x="119" y="128" font-size="12" fill="#1a1815">0.04</text>
+
+          <!-- ... -->
+          <text x="80" y="156" font-size="14" fill="#6b6359">⋯  还有成千上万个其它 token，每个都只有极小的概率  ⋯</text>
+
+          <!-- banana -->
+          <rect x="80" y="168" width="0.7" height="22" fill="#c8351b" opacity="0.15"/>
+          <text x="75" y="184" text-anchor="end" font-size="13" fill="#1a1815">banana</text>
+          <text x="92" y="184" font-size="12" fill="#1a1815">0.00001</text>
+        </g>
+
+        <!-- Sum line -->
+        <g transform="translate(0,235)">
+          <line x1="80" y1="0" x2="650" y2="0" stroke="#1a1815" stroke-width="1"/>
+          <text x="80" y="16" font-size="12" fill="#6b6359" font-family="Fraunces, serif" font-style="italic">所有概率之和恰好为 1——一张完整的「我会多惊讶」的地图</text>
+        </g>
+      </g>
+    </svg>
+    <figcaption><span class="fig-label">Fig. 1.1</span>每个语言模型都在做的唯一动作：接收上下文，在整个词表上输出一个概率分布。</figcaption>
+  </figure>
+
+  <p>那张排序列表<em>就是</em>模型对这个世界的信念，在这个确切时刻、给定这个确切前缀时被冻结下来。我们接下来要做的一切——每一个公式、每一个指标——都只是从不同的视角问同一个问题：</p>
+
+  <div class="pull-quote">当真相揭晓时，模型的赌注下得是否明智？</div>
+</section>
+
+<!-- ===================================================================== -->
+<!-- SECTION II                                                            -->
+<!-- ===================================================================== -->
+<section id="s2">
+  <span class="section-num">§ II</span>
+  <h2>token，以及它们所处的概率。</h2>
+
+  <p class="lede">「token」不是一个词。token 是你的分词器（tokenizer）说它是什么就是什么——是模型当作一个原子来处理的一段文本。</p>
+
+  <p>对于 GPT 风格的模型，单词 <span class="mono">"unbelievable"</span> 可能会被切成三个 token：<span class="mono">un</span> · <span class="mono">believ</span> · <span class="mono">able</span>。单词 <span class="mono">"the"</span> 是一个 token。空格很重要。标点很重要。一个拼写错误可能把一个词打散成一长串细小的碎片。</p>
+
+  <p>这对困惑度很重要，有一个具体的原因：<span class="hl">困惑度是按 token 计算的</span>。两个使用不同分词器的模型，在同一个英文句子上打分，其结果并不能直接比较。始终要检查分词器。</p>
+
+  <figure>
+    <svg viewBox="0 0 800 250" xmlns="http://www.w3.org/2000/svg">
+      <!-- Sentence -->
+      <text class="svg-text svg-serif" x="400" y="35" text-anchor="middle" font-size="20" fill="#1a1815">"unbelievably tokenized"</text>
+
+      <!-- Arrow down -->
+      <line x1="400" y1="55" x2="400" y2="85" stroke="#1a1815" stroke-width="1.5"/>
+      <polygon points="400,90 395,80 405,80" fill="#1a1815"/>
+
+      <!-- Token row 1 (BPE) -->
+      <text class="svg-text" x="400" y="110" text-anchor="middle" font-size="11" letter-spacing="0.15em" fill="#6b6359">GPT 风格的 BPE 分词器</text>
+      <g transform="translate(180,125)" font-family="JetBrains Mono, monospace">
+        <g transform="translate(0,0)">
+          <rect x="0" y="0" width="55" height="32" rx="3" fill="#c8351b"/>
+          <text x="27" y="21" text-anchor="middle" font-size="13" fill="#f4ecd8">un</text>
+        </g>
+        <g transform="translate(60,0)">
+          <rect x="0" y="0" width="75" height="32" rx="3" fill="#c8351b"/>
+          <text x="37" y="21" text-anchor="middle" font-size="13" fill="#f4ecd8">believ</text>
+        </g>
+        <g transform="translate(140,0)">
+          <rect x="0" y="0" width="60" height="32" rx="3" fill="#c8351b"/>
+          <text x="30" y="21" text-anchor="middle" font-size="13" fill="#f4ecd8">ably</text>
+        </g>
+        <g transform="translate(208,0)">
+          <rect x="0" y="0" width="105" height="32" rx="3" fill="#c8351b"/>
+          <text x="52" y="21" text-anchor="middle" font-size="13" fill="#f4ecd8">tokenized</text>
+        </g>
+        <text x="160" y="58" text-anchor="middle" font-size="12" fill="#6b6359" font-family="Inter Tight">4 个 token</text>
+      </g>
+
+      <!-- Token row 2 (char) -->
+      <text class="svg-text" x="400" y="200" text-anchor="middle" font-size="11" letter-spacing="0.15em" fill="#6b6359">字符级分词器（极端情况）</text>
+      <g transform="translate(70,215)" font-family="JetBrains Mono, monospace">
+        <g>
+          <text x="330" y="20" text-anchor="middle" font-size="13" fill="#1a1815">u·n·b·e·l·i·e·v·a·b·l·y · t·o·k·e·n·i·z·e·d</text>
+          <text x="330" y="36" text-anchor="middle" font-size="12" fill="#6b6359" font-family="Inter Tight">21 个 token——同一句话，截然不同的记账方式</text>
+        </g>
+      </g>
+    </svg>
+    <figcaption><span class="fig-label">Fig. 2.1</span>同一个英文字符串在不同的分词器下会得到不同的 token 数。同一段文本、不同分词器下的困惑度并不是同一个数字。</figcaption>
+  </figure>
+
+  <h3>概率单纯形</h3>
+  <p>每当模型看到一个上下文，它都会输出一个长度为 <span class="mono">|V|</span> 的向量（词表大小——通常是 30,000 到 200,000 个条目），其中每个条目都是非负的，且整个向量之和为 1。</p>
+
+  <p>这个对象住在数学家所说的<em>概率单纯形</em>（probability simplex）上。对于一个小小的三 token 词表，你可以把它想象成一个三角形：</p>
+
+  <figure>
+    <svg viewBox="0 0 800 360" xmlns="http://www.w3.org/2000/svg">
+      <!-- Three triangles showing different distributions -->
+
+      <!-- Triangle 1: confident -->
+      <g transform="translate(60,40)">
+        <text class="svg-text" x="100" y="0" text-anchor="middle" font-size="11" letter-spacing="0.15em" fill="#6b6359">自信</text>
+        <polygon points="100,30 30,200 170,200" fill="#ebe1c7" stroke="#1a1815" stroke-width="1.2"/>
+        <text class="svg-text svg-mono" x="100" y="22" text-anchor="middle" font-size="11">mat</text>
+        <text class="svg-text svg-mono" x="20" y="215" text-anchor="middle" font-size="11">floor</text>
+        <text class="svg-text svg-mono" x="180" y="215" text-anchor="middle" font-size="11">roof</text>
+        <!-- Distribution dot -->
+        <circle cx="100" cy="65" r="9" fill="#c8351b"/>
+        <text class="svg-text svg-serif" x="100" y="245" text-anchor="middle" font-size="13" fill="#1a1815" font-style="italic">P = (0.85, 0.10, 0.05)</text>
+        <text class="svg-text" x="100" y="275" text-anchor="middle" font-size="12" fill="#6b6359">大部分质量集中在一个 token 上</text>
+        <text class="svg-text" x="100" y="291" text-anchor="middle" font-size="12" fill="#6b6359">如果猜对了，惊讶度很低</text>
+      </g>
+
+      <!-- Triangle 2: balanced -->
+      <g transform="translate(310,40)">
+        <text class="svg-text" x="100" y="0" text-anchor="middle" font-size="11" letter-spacing="0.15em" fill="#6b6359">不确定</text>
+        <polygon points="100,30 30,200 170,200" fill="#ebe1c7" stroke="#1a1815" stroke-width="1.2"/>
+        <text class="svg-text svg-mono" x="100" y="22" text-anchor="middle" font-size="11">mat</text>
+        <text class="svg-text svg-mono" x="20" y="215" text-anchor="middle" font-size="11">floor</text>
+        <text class="svg-text svg-mono" x="180" y="215" text-anchor="middle" font-size="11">roof</text>
+        <circle cx="100" cy="143" r="9" fill="#c8351b"/>
+        <text class="svg-text svg-serif" x="100" y="245" text-anchor="middle" font-size="13" fill="#1a1815" font-style="italic">P = (0.45, 0.35, 0.20)</text>
+        <text class="svg-text" x="100" y="275" text-anchor="middle" font-size="12" fill="#6b6359">质量分散在各个选项之间</text>
+        <text class="svg-text" x="100" y="291" text-anchor="middle" font-size="12" fill="#6b6359">到处都有中等程度的惊讶</text>
+      </g>
+
+      <!-- Triangle 3: uniform -->
+      <g transform="translate(560,40)">
+        <text class="svg-text" x="100" y="0" text-anchor="middle" font-size="11" letter-spacing="0.15em" fill="#6b6359">迷茫</text>
+        <polygon points="100,30 30,200 170,200" fill="#ebe1c7" stroke="#1a1815" stroke-width="1.2"/>
+        <text class="svg-text svg-mono" x="100" y="22" text-anchor="middle" font-size="11">mat</text>
+        <text class="svg-text svg-mono" x="20" y="215" text-anchor="middle" font-size="11">floor</text>
+        <text class="svg-text svg-mono" x="180" y="215" text-anchor="middle" font-size="11">roof</text>
+        <circle cx="100" cy="143" r="9" fill="#c8351b"/>
+        <text class="svg-text svg-serif" x="100" y="245" text-anchor="middle" font-size="13" fill="#1a1815" font-style="italic">P = (0.33, 0.33, 0.33)</text>
+        <text class="svg-text" x="100" y="275" text-anchor="middle" font-size="12" fill="#6b6359">均匀分布——纯粹的茫然</text>
+        <text class="svg-text" x="100" y="291" text-anchor="middle" font-size="12" fill="#6b6359">惊讶程度最大</text>
+      </g>
+
+    </svg>
+    <figcaption><span class="fig-label">Fig. 2.2</span>模型信念的「形状」。尖锐的分布是自信的模型；平坦的分布是无知的模型。困惑度将把这个几何图形变成一个单一的数字。</figcaption>
+  </figure>
+
+  <p class="marginalia">本文中的每个概率向量之和都为 1。我们会反复强调这一点。它对代数很重要。</p>
+</section>
+
+<!-- ===================================================================== -->
+<!-- SECTION III                                                           -->
+<!-- ===================================================================== -->
+<section id="s3">
+  <span class="section-num">§ III</span>
+  <h2>惊讶度：用比特度量。</h2>
+  <p class="lede">如果我们想给模型打分，就需要一个数字：当模型错的时候很大，当模型对的时候很小。最自然的这样一个数字就是<em>惊讶度</em>（surprise）。</p>
+
+  <p class="drop">想象一下，我告诉你今天早上太阳升起了。你并不惊讶。你给这个事件分配的概率基本上是 1。现在想象我告诉你有一颗陨石落在了你的厨房里。你会<em>极度</em>惊讶——你给它分配的概率几乎为 0。</p>
+
+  <p>所以惊讶度是概率的某个函数，当 <span class="mono">P → 1</span> 时趋于 0，当 <span class="mono">P → 0</span> 时趋于无穷。许多函数都能做到这一点，但有一个特定的选择——<em>负对数概率</em>——它的性质如此优美，以至于整个信息论都建立在它之上。</p>
+
+  <div class="formula">
+    惊讶度(<em>x</em>) = − log <em>P</em>(<em>x</em>)
+  </div>
+
+  <p>为什么是这一个确切的公式？三个原因，每一个都是我们使用它的全部理由。</p>
+
+  <figure>
+    <svg viewBox="0 0 800 380" xmlns="http://www.w3.org/2000/svg">
+      <!-- Surprise curve -->
+      <g transform="translate(60,40)">
+        <text class="svg-text" x="0" y="0" font-size="11" letter-spacing="0.15em" fill="#6b6359">惊讶度 = −log₂ P</text>
+
+        <!-- Axes -->
+        <line x1="0" y1="280" x2="600" y2="280" stroke="#1a1815" stroke-width="1.2"/>
+        <line x1="0" y1="280" x2="0" y2="20" stroke="#1a1815" stroke-width="1.2"/>
+
+        <!-- X axis labels -->
+        <text class="svg-text" x="600" y="305" text-anchor="end" font-size="12" fill="#6b6359">概率 P(x)</text>
+        <text class="svg-text" x="0" y="295" text-anchor="middle" font-size="11" fill="#1a1815">0</text>
+        <text class="svg-text" x="150" y="295" text-anchor="middle" font-size="11" fill="#1a1815">0.25</text>
+        <text class="svg-text" x="300" y="295" text-anchor="middle" font-size="11" fill="#1a1815">0.5</text>
+        <text class="svg-text" x="450" y="295" text-anchor="middle" font-size="11" fill="#1a1815">0.75</text>
+        <text class="svg-text" x="600" y="295" text-anchor="middle" font-size="11" fill="#1a1815">1.0</text>
+
+        <!-- Y axis labels -->
+        <text class="svg-text" x="-10" y="280" text-anchor="end" font-size="11" fill="#1a1815">0</text>
+        <text class="svg-text" x="-10" y="220" text-anchor="end" font-size="11" fill="#1a1815">1 比特</text>
+        <text class="svg-text" x="-10" y="160" text-anchor="end" font-size="11" fill="#1a1815">2 比特</text>
+        <text class="svg-text" x="-10" y="100" text-anchor="end" font-size="11" fill="#1a1815">4 比特</text>
+        <text class="svg-text" x="-10" y="40" text-anchor="end" font-size="11" fill="#1a1815">8 比特</text>
+
+        <!-- The curve: y = -log2(x) mapped. height range 20 to 280; map: x in [0,1]->[0,600] -->
+        <!-- We'll plot: surprise=8 bits at top (y=40), 0 at bottom (y=280). 30px per bit.
+             So y = 280 - 30*surprise = 280 - 30 * (-log2(x)) = 280 + 30 log2(x). For x=1: y=280. For x=0.5: y=280-30=250. For x=0.25: y=220. For x=0.0625 (1/16): y=160. -->
+        <path d="
+          M 6 40
+          L 9 70
+          L 14 100
+          L 23 130
+          L 38 160
+          L 61 190
+          L 95 220
+          L 150 250
+          L 240 270
+          L 350 277
+          L 600 280
+        " fill="none" stroke="#c8351b" stroke-width="2.5"/>
+
+        <!-- annotations -->
+        <circle cx="600" cy="280" r="5" fill="#1a1815"/>
+        <text class="svg-text svg-serif" x="595" y="265" text-anchor="end" font-size="13" fill="#1a1815" font-style="italic">P=1：零惊讶</text>
+
+        <circle cx="300" cy="250" r="5" fill="#1a1815"/>
+        <text class="svg-text svg-serif" x="320" y="248" font-size="13" fill="#1a1815" font-style="italic">P=½：1 比特（一次抛硬币）</text>
+
+        <circle cx="38" cy="160" r="5" fill="#1a1815"/>
+        <text class="svg-text svg-serif" x="55" y="155" font-size="13" fill="#1a1815" font-style="italic">P=1/16：4 比特</text>
+
+        <text class="svg-text svg-serif" x="20" y="55" font-size="13" fill="#c8351b" font-style="italic">P→0：惊讶度 →∞</text>
+      </g>
+    </svg>
+    <figcaption><span class="fig-label">Fig. 3.1</span>惊讶度的形状。被赋予概率 1 的真相产生零惊讶。被赋予概率 ½ 的真相产生 1 比特。趋近于零时，曲线发散——模型为宣称「这永远不可能发生」付出了无限代价。</figcaption>
+  </figure>
+
+  <h3>为什么是<em>这个</em>函数，而不是别的？</h3>
+
+  <div class="two-col">
+    <div>
+      <h4>① 它有一个单位：比特。</h4>
+      <p>如果 <span class="mono">P = 1/2</span>，惊讶度恰好是 1 比特——也就是回答一个是/否问题所需的信息量。<span class="mono">P = 1/256</span> 呢？那是 8 比特，一个字节的大小。惊讶度变成了一个你可以<em>存储</em>的量。</p>
+    </div>
+    <div>
+      <h4>② 它在独立事件上可加。</h4>
+      <p>如果两个独立的事情都发生了，它们的概率相乘（<span class="mono">P(A,B) = P(A)·P(B)</span>），但它们的惊讶度<em>相加</em>：<span class="mono">−log P(A,B) = −log P(A) + −log P(B)</span>。惊讶度表现得像一个预算。</p>
+    </div>
+  </div>
+
+  <h4>③ 它会对过度自信进行灾难性的惩罚。</h4>
+  <p>如果你的模型说「这个 token 的概率是 0.0001」，而那个 token 正是接下来实际出现的，你就要付出 <span class="mono">−log₂(0.0001) ≈ 13.3 比特</span> 的惊讶度——相当多。如果你的模型说「0」，你会被收取<em>无穷大</em>。这正是正确的行为：一个自信地排除真相的模型，理应受到无限惩罚。</p>
+
+  <p class="marginalia">在本文中，做数学时我们使用自然对数（以 e 为底），因为困惑度公式用到了 <span class="mono">exp</span>。概念上，以 2 为底的对数（比特）更容易感受。它们之间的比值只是一个常数——它们表达的是同一个意思。</p>
+</section>
+
+<!-- ===================================================================== -->
+<!-- SECTION IV                                                            -->
+<!-- ===================================================================== -->
+<section id="s4">
+  <span class="section-num">§ IV</span>
+  <h2>从一个 token 到一句话。</h2>
+  <p class="lede">模型不会孤立地预测一个 token。它预测的是整条流——一个 token 接着一个 token，每一个都以它之前的内容为条件。要在一句话上给它打分，我们就把它的惊讶度取平均。</p>
+
+  <p>拿这句话 <span class="mono">"the cat sat on the mat"</span> 为例。分词后——我们假装每个词是一个 token——它有 6 个 token。当我们从左到右滑动时，模型产生 6 个概率分布，每个位置一个：</p>
+
+  <figure>
+    <svg viewBox="0 0 800 460" xmlns="http://www.w3.org/2000/svg">
+      <!-- Title -->
+      <text class="svg-text" x="40" y="30" font-size="11" letter-spacing="0.15em" fill="#6b6359">滑动窗口：每个 token 一次预测</text>
+
+      <!-- For each step show context bar and probability assigned to true token -->
+      <!-- Step format: y baseline -->
+      <g font-family="JetBrains Mono, monospace">
+
+        <!-- Step 1: predict 'the' from <BOS> -->
+        <g transform="translate(40,55)">
+          <text x="0" y="0" font-size="10" fill="#6b6359" font-family="Inter Tight">第 1 步</text>
+          <text x="50" y="0" font-size="10" fill="#6b6359" font-family="Inter Tight">上下文</text>
+          <text x="450" y="0" font-size="10" fill="#6b6359" font-family="Inter Tight">真实的下一个</text>
+          <text x="555" y="0" font-size="10" fill="#6b6359" font-family="Inter Tight">P(真实)</text>
+          <text x="655" y="0" font-size="10" fill="#6b6359" font-family="Inter Tight">惊讶度</text>
+
+          <text x="0" y="22" font-size="13" fill="#1a1815">⟨bos⟩</text>
+          <rect x="50" y="8" width="380" height="20" rx="2" fill="#ebe1c7" stroke="#3d3833"/>
+          <text x="60" y="22" font-size="13" fill="#1a1815">⟨句子开头⟩</text>
+          <rect x="448" y="8" width="50" height="20" rx="2" fill="#b8862f"/>
+          <text x="473" y="22" text-anchor="middle" font-size="13" fill="#f4ecd8">the</text>
+          <text x="555" y="22" font-size="13" fill="#1a1815">0.10</text>
+          <text x="655" y="22" font-size="13" fill="#c8351b">3.32 比特</text>
+        </g>
+
+        <!-- Step 2 -->
+        <g transform="translate(40,95)">
+          <text x="0" y="0" font-size="10" fill="#6b6359" font-family="Inter Tight">第 2 步</text>
+          <text x="0" y="22" font-size="13" fill="#1a1815">⟨bos⟩</text>
+          <rect x="50" y="8" width="380" height="20" rx="2" fill="#ebe1c7" stroke="#3d3833"/>
+          <text x="60" y="22" font-size="13" fill="#1a1815">the</text>
+          <rect x="448" y="8" width="50" height="20" rx="2" fill="#b8862f"/>
+          <text x="473" y="22" text-anchor="middle" font-size="13" fill="#f4ecd8">cat</text>
+          <text x="555" y="22" font-size="13" fill="#1a1815">0.04</text>
+          <text x="655" y="22" font-size="13" fill="#c8351b">4.64 比特</text>
+        </g>
+
+        <!-- Step 3 -->
+        <g transform="translate(40,135)">
+          <text x="0" y="0" font-size="10" fill="#6b6359" font-family="Inter Tight">第 3 步</text>
+          <text x="0" y="22" font-size="13" fill="#1a1815">⟨bos⟩</text>
+          <rect x="50" y="8" width="380" height="20" rx="2" fill="#ebe1c7" stroke="#3d3833"/>
+          <text x="60" y="22" font-size="13" fill="#1a1815">the cat</text>
+          <rect x="448" y="8" width="50" height="20" rx="2" fill="#b8862f"/>
+          <text x="473" y="22" text-anchor="middle" font-size="13" fill="#f4ecd8">sat</text>
+          <text x="555" y="22" font-size="13" fill="#1a1815">0.08</text>
+          <text x="655" y="22" font-size="13" fill="#c8351b">3.64 比特</text>
+        </g>
+
+        <!-- Step 4 -->
+        <g transform="translate(40,175)">
+          <text x="0" y="0" font-size="10" fill="#6b6359" font-family="Inter Tight">第 4 步</text>
+          <text x="0" y="22" font-size="13" fill="#1a1815">⟨bos⟩</text>
+          <rect x="50" y="8" width="380" height="20" rx="2" fill="#ebe1c7" stroke="#3d3833"/>
+          <text x="60" y="22" font-size="13" fill="#1a1815">the cat sat</text>
+          <rect x="448" y="8" width="50" height="20" rx="2" fill="#b8862f"/>
+          <text x="473" y="22" text-anchor="middle" font-size="13" fill="#f4ecd8">on</text>
+          <text x="555" y="22" font-size="13" fill="#1a1815">0.30</text>
+          <text x="655" y="22" font-size="13" fill="#c8351b">1.74 比特</text>
+        </g>
+
+        <!-- Step 5 -->
+        <g transform="translate(40,215)">
+          <text x="0" y="0" font-size="10" fill="#6b6359" font-family="Inter Tight">第 5 步</text>
+          <text x="0" y="22" font-size="13" fill="#1a1815">⟨bos⟩</text>
+          <rect x="50" y="8" width="380" height="20" rx="2" fill="#ebe1c7" stroke="#3d3833"/>
+          <text x="60" y="22" font-size="13" fill="#1a1815">the cat sat on</text>
+          <rect x="448" y="8" width="50" height="20" rx="2" fill="#b8862f"/>
+          <text x="473" y="22" text-anchor="middle" font-size="13" fill="#f4ecd8">the</text>
+          <text x="555" y="22" font-size="13" fill="#1a1815">0.55</text>
+          <text x="655" y="22" font-size="13" fill="#c8351b">0.86 比特</text>
+        </g>
+
+        <!-- Step 6 -->
+        <g transform="translate(40,255)">
+          <text x="0" y="0" font-size="10" fill="#6b6359" font-family="Inter Tight">第 6 步</text>
+          <text x="0" y="22" font-size="13" fill="#1a1815">⟨bos⟩</text>
+          <rect x="50" y="8" width="380" height="20" rx="2" fill="#ebe1c7" stroke="#3d3833"/>
+          <text x="60" y="22" font-size="13" fill="#1a1815">the cat sat on the</text>
+          <rect x="448" y="8" width="50" height="20" rx="2" fill="#b8862f"/>
+          <text x="473" y="22" text-anchor="middle" font-size="13" fill="#f4ecd8">mat</text>
+          <text x="555" y="22" font-size="13" fill="#1a1815">0.41</text>
+          <text x="655" y="22" font-size="13" fill="#c8351b">1.29 比特</text>
+        </g>
+
+        <!-- Sum bar -->
+        <line x1="40" y1="295" x2="760" y2="295" stroke="#1a1815" stroke-width="1"/>
+        <g transform="translate(40,310)" font-family="Inter Tight, sans-serif">
+          <text x="0" y="15" font-size="13" fill="#1a1815" font-weight="600">全部 6 个 token 的总惊讶度</text>
+          <text x="655" y="15" font-size="13" fill="#1a1815" font-weight="600" font-family="JetBrains Mono">15.49 比特</text>
+        </g>
+        <g transform="translate(40,335)" font-family="Inter Tight, sans-serif">
+          <text x="0" y="15" font-size="13" fill="#1a1815" font-weight="600">每个 token 的平均惊讶度</text>
+          <text x="655" y="15" font-size="13" fill="#c8351b" font-weight="700" font-family="JetBrains Mono">2.58 比特</text>
+        </g>
+      </g>
+
+      <!-- Big formula at bottom -->
+      <g transform="translate(40,395)">
+        <rect x="0" y="0" width="720" height="50" rx="3" fill="#1a1815"/>
+        <text x="360" y="20" text-anchor="middle" font-size="12" fill="#e08a76" letter-spacing="0.15em" font-family="Inter Tight, sans-serif">交叉熵损失——每个 token 的平均惊讶度</text>
+        <text x="360" y="42" text-anchor="middle" font-size="16" fill="#f4ecd8" font-family="JetBrains Mono, monospace">L = − (1/N) · Σᵢ log P(xᵢ | x&lt;ᵢ)</text>
+      </g>
+    </svg>
+    <figcaption><span class="fig-label">Fig. 4.1</span>对 6 个 token 的句子逐 token 记账。交叉熵损失就是记账的最终一行：每个 token 的<em>平均</em>惊讶度。这个单一的量正是语言模型训练时被最小化的东西。</figcaption>
+  </figure>
+
+  <p>那最后一行就是著名的<span class="hl">交叉熵损失</span>（cross-entropy loss）——用于训练每一个现代语言模型的损失函数。从机制上讲，它是负对数概率的平均值。从概念上讲，它是每个 token 的平均惊讶度。</p>
+
+  <div class="formula">
+    L = − <span class="frac"><span class="top">1</span><span class="bot">N</span></span> Σ<span class="sub">i=1</span><span class="sup">N</span> log <em>P</em>(<em>x</em><span class="sub">i</span> | <em>x</em><span class="sub">&lt;i</span>)
+  </div>
+
+  <p class="marginalia">大声读出来：「负的 N 分之一，对所有位置求和，取模型在该位置给实际下一个 token 的对数概率。」这个公式里的每一项现在都已经熟悉了。</p>
+
+  <p>这个数字出现在每一篇 Transformer 论文的每一条损失曲线上。当你看到 GPT-2 达到 3.0 的训练损失时，它的意思是：<em>平均而言，验证集中的每一个 token 都让模型付出了 3.0 纳特（nats）的惊讶度</em>。</p>
+</section>
+
+<!-- ===================================================================== -->
+<!-- SECTION V                                                             -->
+<!-- ===================================================================== -->
+<section id="s5">
+  <span class="section-num">§ V</span>
+  <h2>指数技巧。</h2>
+  <p class="lede">交叉熵在数学上很干净——但它用纳特（nats）这个抽象单位来表述。研究者想要一个单位感觉上像你能<em>看到</em>的东西的数字。所以他们做了指数化。结果就是困惑度。</p>
+
+  <p class="drop">这就是那个动作。我们有一个平均对数概率。如果对它做指数化，就回到了概率。而这个概率的倒数有一个优美的解释：<em>模型正在犹豫的等可能选择的有效数量</em>。</p>
+
+  <div class="formula">
+    困惑度 = <em>exp</em>(L) = <em>exp</em>(− <span class="frac"><span class="top">1</span><span class="bot">N</span></span> Σ log P(x<span class="sub">i</span> | x<span class="sub">&lt;i</span>))
+  </div>
+
+  <p>要理解为什么，假设模型在一个大小为 <span class="mono">k</span> 的词表上完全均匀。每个 token 得到概率 <span class="mono">1/k</span>。每个 token 的惊讶度是 <span class="mono">log(k)</span>。指数化后你就回到了 <span class="mono">k</span>。所以一个在 <span class="mono">k</span> 个 token 之间完全瞎猜的模型，其困惑度为 <span class="mono">k</span>。<span class="hl-gold">困惑度就是那个隐含的「猜测池」的大小。</span></p>
+
+  <figure>
+    <svg viewBox="0 0 800 320" xmlns="http://www.w3.org/2000/svg">
+      <!-- Three scenarios with dice-like illustrations -->
+      <text class="svg-text" x="400" y="30" font-size="11" letter-spacing="0.15em" fill="#6b6359" text-anchor="middle">困惑度 = 「像在这许多 token 之间均匀猜测一样不确定」</text>
+
+      <!-- Scenario A: ppl 2 -->
+      <g transform="translate(50,60)">
+        <text class="svg-text svg-serif" x="100" y="20" text-anchor="middle" font-size="14" fill="#1a1815" font-style="italic">一次抛硬币</text>
+
+        <!-- two boxes -->
+        <g>
+          <rect x="40" y="40" width="50" height="60" rx="3" fill="#c8351b"/>
+          <text x="65" y="76" text-anchor="middle" font-size="20" fill="#f4ecd8" font-family="JetBrains Mono">?</text>
+          <rect x="110" y="40" width="50" height="60" rx="3" fill="#c8351b"/>
+          <text x="135" y="76" text-anchor="middle" font-size="20" fill="#f4ecd8" font-family="JetBrains Mono">?</text>
+        </g>
+
+        <text x="100" y="135" text-anchor="middle" font-size="11" fill="#6b6359" letter-spacing="0.1em">困惑度</text>
+        <text x="100" y="170" text-anchor="middle" font-size="38" fill="#1a1815" font-family="Fraunces">2</text>
+        <text x="100" y="200" text-anchor="middle" font-size="12" fill="#6b6359" font-family="Inter Tight">「在 2 个东西之间做选择」</text>
+      </g>
+
+      <!-- Scenario B: ppl 6 -->
+      <g transform="translate(290,60)">
+        <text class="svg-text svg-serif" x="100" y="20" text-anchor="middle" font-size="14" fill="#1a1815" font-style="italic">一颗六面骰子</text>
+
+        <g font-family="JetBrains Mono">
+          <rect x="20" y="40" width="35" height="50" rx="3" fill="#c8351b"/>
+          <text x="37" y="71" text-anchor="middle" font-size="16" fill="#f4ecd8">?</text>
+          <rect x="58" y="40" width="35" height="50" rx="3" fill="#c8351b"/>
+          <text x="75" y="71" text-anchor="middle" font-size="16" fill="#f4ecd8">?</text>
+          <rect x="96" y="40" width="35" height="50" rx="3" fill="#c8351b"/>
+          <text x="113" y="71" text-anchor="middle" font-size="16" fill="#f4ecd8">?</text>
+          <rect x="134" y="40" width="35" height="50" rx="3" fill="#c8351b"/>
+          <text x="151" y="71" text-anchor="middle" font-size="16" fill="#f4ecd8">?</text>
+          <rect x="172" y="40" width="35" height="50" rx="3" fill="#c8351b"/>
+          <text x="189" y="71" text-anchor="middle" font-size="16" fill="#f4ecd8">?</text>
+          <rect x="20" y="93" width="35" height="20" rx="3" fill="#c8351b"/>
+          <text x="37" y="108" text-anchor="middle" font-size="13" fill="#f4ecd8">?</text>
+        </g>
+
+        <text x="100" y="135" text-anchor="middle" font-size="11" fill="#6b6359" letter-spacing="0.1em">困惑度</text>
+        <text x="100" y="170" text-anchor="middle" font-size="38" fill="#1a1815" font-family="Fraunces">6</text>
+        <text x="100" y="200" text-anchor="middle" font-size="12" fill="#6b6359" font-family="Inter Tight">「在 6 个东西之间做选择」</text>
+      </g>
+
+      <!-- Scenario C: GPT-2 ppl ~30 -->
+      <g transform="translate(530,60)">
+        <text class="svg-text svg-serif" x="100" y="20" text-anchor="middle" font-size="14" fill="#1a1815" font-style="italic">一个训练过的 LM</text>
+
+        <g font-family="JetBrains Mono">
+          <!-- Show a haze of small boxes representing ~30 -->
+          <g fill="#c8351b" opacity="0.85">
+            <rect x="0" y="35" width="14" height="14" rx="2"/>
+            <rect x="16" y="35" width="14" height="14" rx="2"/>
+            <rect x="32" y="35" width="14" height="14" rx="2"/>
+            <rect x="48" y="35" width="14" height="14" rx="2"/>
+            <rect x="64" y="35" width="14" height="14" rx="2"/>
+            <rect x="80" y="35" width="14" height="14" rx="2"/>
+            <rect x="96" y="35" width="14" height="14" rx="2"/>
+            <rect x="112" y="35" width="14" height="14" rx="2"/>
+            <rect x="128" y="35" width="14" height="14" rx="2"/>
+            <rect x="144" y="35" width="14" height="14" rx="2"/>
+            <rect x="160" y="35" width="14" height="14" rx="2"/>
+            <rect x="176" y="35" width="14" height="14" rx="2"/>
+          </g>
+          <g fill="#c8351b" opacity="0.85">
+            <rect x="0" y="51" width="14" height="14" rx="2"/>
+            <rect x="16" y="51" width="14" height="14" rx="2"/>
+            <rect x="32" y="51" width="14" height="14" rx="2"/>
+            <rect x="48" y="51" width="14" height="14" rx="2"/>
+            <rect x="64" y="51" width="14" height="14" rx="2"/>
+            <rect x="80" y="51" width="14" height="14" rx="2"/>
+            <rect x="96" y="51" width="14" height="14" rx="2"/>
+            <rect x="112" y="51" width="14" height="14" rx="2"/>
+            <rect x="128" y="51" width="14" height="14" rx="2"/>
+            <rect x="144" y="51" width="14" height="14" rx="2"/>
+          </g>
+          <g fill="#c8351b" opacity="0.85">
+            <rect x="0" y="67" width="14" height="14" rx="2"/>
+            <rect x="16" y="67" width="14" height="14" rx="2"/>
+            <rect x="32" y="67" width="14" height="14" rx="2"/>
+            <rect x="48" y="67" width="14" height="14" rx="2"/>
+            <rect x="64" y="67" width="14" height="14" rx="2"/>
+            <rect x="80" y="67" width="14" height="14" rx="2"/>
+            <rect x="96" y="67" width="14" height="14" rx="2"/>
+            <rect x="112" y="67" width="14" height="14" rx="2"/>
+          </g>
+        </g>
+
+        <text x="95" y="135" text-anchor="middle" font-size="11" fill="#6b6359" letter-spacing="0.1em">困惑度</text>
+        <text x="95" y="170" text-anchor="middle" font-size="38" fill="#1a1815" font-family="Fraunces">≈ 30</text>
+        <text x="95" y="200" text-anchor="middle" font-size="12" fill="#6b6359" font-family="Inter Tight">在维基百科上的强 LM</text>
+      </g>
+
+    </svg>
+    <figcaption><span class="fig-label">Fig. 5.1</span>困惑度把抽象的平均对数损失转换成一个具体的分支因子。困惑度为 30 意味着：在每一个位置上，模型的自信程度都不如一个在 30 个可能性之间均匀选择的人——无论它实际的分布看起来多么偏斜。</figcaption>
+  </figure>
+
+  <h3>同一个数字，三种说法</h3>
+  <p>困惑度、交叉熵和平均对数概率携带的是同一个信息；它们只是说着不同的方言。</p>
+
+  <div class="formula" style="text-align:left">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.8rem;font-size:0.95rem">
+      <div>平均对数概率：</div><div><em>ℓ</em>  =  (1/N) Σ log P(x<span class="sub">i</span>|x<span class="sub">&lt;i</span>)</div>
+      <div>交叉熵（损失）：</div><div><em>L</em>  =  −<em>ℓ</em></div>
+      <div>困惑度：</div><div><em>PPL</em>  =  exp(<em>L</em>)  =  exp(−<em>ℓ</em>)</div>
+    </div>
+  </div>
+
+  <p>如果你训练一个模型，看着它的损失从 4.0 降到 3.0，你就刚刚看着它的困惑度从 <span class="mono">e⁴ ≈ 54.6</span> 降到了 <span class="mono">e³ ≈ 20.1</span>。模型的有效「猜测池」几乎减半了。</p>
+
+  <div class="pull-quote">3.0 的损失听起来很抽象。20 的困惑度听起来像个具体的东西。这正是这个单位存在的全部理由。</div>
+</section>
+
+<!-- ===================================================================== -->
+<!-- SECTION VI                                                            -->
+<!-- ===================================================================== -->
+<section id="s6">
+  <span class="section-num">§ VI</span>
+  <h2>困惑度：一个有灵魂的数字。</h2>
+  <p class="lede">现在这个公式无处可藏了。每一个符号都有意义。让我们从左到右读它，感受每一个部分。</p>
+
+  <figure>
+    <svg viewBox="0 0 900 380" xmlns="http://www.w3.org/2000/svg">
+      <!-- Background paper -->
+      <rect x="0" y="0" width="900" height="380" fill="none"/>
+
+      <!-- Center the formula at the top -->
+      <g transform="translate(450,80)" text-anchor="middle">
+        <text font-family="JetBrains Mono, monospace" font-size="42" fill="#1a1815">
+          <tspan>PPL =</tspan>
+          <tspan dx="6" fill="#c8351b">exp</tspan>
+          <tspan>(−</tspan>
+          <tspan dx="2" fill="#2e4a7b">1/N</tspan>
+          <tspan dx="6" fill="#4a6b3a">Σ</tspan>
+          <tspan dx="6">log</tspan>
+          <tspan dx="6" fill="#b8862f">P(xᵢ|x&lt;ᵢ)</tspan>
+          <tspan>)</tspan>
+        </text>
+      </g>
+
+      <!-- Annotations -->
+      <!-- exp -->
+      <g>
+        <line x1="380" y1="100" x2="350" y2="170" stroke="#c8351b" stroke-width="1.2"/>
+        <rect x="170" y="170" width="200" height="80" rx="3" fill="#c8351b" opacity="0.1" stroke="#c8351b"/>
+        <text class="svg-text" x="270" y="190" text-anchor="middle" font-size="11" letter-spacing="0.15em" fill="#c8351b" font-weight="700">EXP</text>
+        <text class="svg-text" x="270" y="210" text-anchor="middle" font-size="12" fill="#1a1815">撤销对数，让我们落到</text>
+        <text class="svg-text" x="270" y="226" text-anchor="middle" font-size="12" fill="#1a1815">一个「分支因子」上</text>
+        <text class="svg-text" x="270" y="242" text-anchor="middle" font-size="12" fill="#1a1815">而不是一个抽象的损失</text>
+      </g>
+
+      <!-- 1/N -->
+      <g>
+        <line x1="475" y1="100" x2="475" y2="170" stroke="#2e4a7b" stroke-width="1.2"/>
+        <rect x="385" y="170" width="180" height="80" rx="3" fill="#2e4a7b" opacity="0.1" stroke="#2e4a7b"/>
+        <text class="svg-text" x="475" y="190" text-anchor="middle" font-size="11" letter-spacing="0.15em" fill="#2e4a7b" font-weight="700">求平均</text>
+        <text class="svg-text" x="475" y="210" text-anchor="middle" font-size="12" fill="#1a1815">除以 token 数，让</text>
+        <text class="svg-text" x="475" y="226" text-anchor="middle" font-size="12" fill="#1a1815">长短文本都处于</text>
+        <text class="svg-text" x="475" y="242" text-anchor="middle" font-size="12" fill="#1a1815">同一个尺度上</text>
+      </g>
+
+      <!-- Sigma -->
+      <g>
+        <line x1="555" y1="100" x2="610" y2="170" stroke="#4a6b3a" stroke-width="1.2"/>
+        <rect x="580" y="170" width="180" height="80" rx="3" fill="#4a6b3a" opacity="0.1" stroke="#4a6b3a"/>
+        <text class="svg-text" x="670" y="190" text-anchor="middle" font-size="11" letter-spacing="0.15em" fill="#4a6b3a" font-weight="700">求和</text>
+        <text class="svg-text" x="670" y="210" text-anchor="middle" font-size="12" fill="#1a1815">把序列中每一个位置</text>
+        <text class="svg-text" x="670" y="226" text-anchor="middle" font-size="12" fill="#1a1815">的惊讶度都</text>
+        <text class="svg-text" x="670" y="242" text-anchor="middle" font-size="12" fill="#1a1815">加起来</text>
+      </g>
+
+      <!-- P(x|...) -->
+      <g>
+        <line x1="685" y1="100" x2="685" y2="280" stroke="#b8862f" stroke-width="1.2"/>
+        <rect x="500" y="280" width="370" height="80" rx="3" fill="#b8862f" opacity="0.1" stroke="#b8862f"/>
+        <text class="svg-text" x="685" y="300" text-anchor="middle" font-size="11" letter-spacing="0.15em" fill="#b8862f" font-weight="700">条件概率</text>
+        <text class="svg-text" x="685" y="320" text-anchor="middle" font-size="12" fill="#1a1815">模型在给定前面一切的情况下，</text>
+        <text class="svg-text" x="685" y="336" text-anchor="middle" font-size="12" fill="#1a1815">给实际出现的 token xᵢ 分配的概率。</text>
+        <text class="svg-text" x="685" y="352" text-anchor="middle" font-size="12" fill="#1a1815">这个数字——且只有这个数字——是被打分的对象。</text>
+      </g>
+
+      <!-- Title cap above -->
+      <text x="450" y="35" text-anchor="middle" font-family="Inter Tight, sans-serif" font-size="11" letter-spacing="0.2em" fill="#6b6359">拆解困惑度公式</text>
+
+    </svg>
+    <figcaption><span class="fig-label">Fig. 6.1</span>困惑度公式中的每个运算符都承担着特定的工作。<span style="color:var(--gold)">P(x<sub>i</sub>|x<sub>&lt;i</sub>)</span> 是模型下的赌注。<span style="color:#4a6b3a">log + Σ</span> 把这些赌注变成可加的惊讶度。<span style="color:#2e4a7b">1/N</span> 对它取平均。<span style="color:var(--accent)">exp</span> 再把它送回一个你可以想象的单位。</figcaption>
+  </figure>
+
+  <h3>一个等价且同样优美的形式</h3>
+  <p>把那个公式拿来做代数展开：</p>
+
+  <div class="formula">
+    PPL = exp(− <span class="frac"><span class="top">1</span><span class="bot">N</span></span> Σ log P<span class="sub">i</span>) = (P<span class="sub">1</span> · P<span class="sub">2</span> · ⋯ · P<span class="sub">N</span>)<span class="sup">−1/N</span>
+  </div>
+
+  <p>大声读出来：<em>困惑度是模型给实际 token 的概率的几何平均数的倒数。</em>几何平均数会惩罚离群值——哪怕只是一个接近零的概率，也会把整个乘积拖垮。这正是为什么一个自信地猜错的预测就能毁掉一个模型的困惑度分数。</p>
+
+  <p class="marginalia">用几何平均数而不是算术平均数：概率是相乘的，所以对<em>它们</em>的贡献取平均也必须是相乘的。对数让我们能够相加；指数化再把它撤销。</p>
+</section>
+
+<!-- ===================================================================== -->
+<!-- SECTION VII — INTERACTIVE                                             -->
+<!-- ===================================================================== -->
+<section id="s7">
+  <span class="section-num">§ VII</span>
+  <h2>困惑度实验室。</h2>
+  <p class="lede">理论只能走到这里。拖动下面的滑块，直接感受——一个分布的形状如何设定困惑度、一连串的赌注如何累加，以及当模型过度自信却又猜错时会发生什么。</p>
+
+  <!-- LAB 1: Distribution shape -->
+  <div class="interactive">
+    <h4>实验 1 · 信念的形状</h4>
+    <p style="font-size:0.95rem;color:var(--ink-soft)">一个 5 个 token 的词表。滑动温度来重新分配概率质量。观察困惑度如何随之变化。</p>
+
+    <div style="display:grid;grid-template-columns:2fr 1fr;gap:2rem;align-items:center;margin-top:1.5rem">
+      <div>
+        <svg id="lab1-svg" viewBox="0 0 500 240" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto"></svg>
+        <div style="margin-top:1rem">
+          <label style="font-family:'Inter Tight';font-size:0.85rem;color:var(--ink-faint);display:block;margin-bottom:0.4rem">
+            温度：<span id="lab1-temp" class="mono" style="color:var(--accent);font-weight:700">1.0</span>
+          </label>
+          <input type="range" id="lab1-slider" min="0.1" max="5" step="0.05" value="1.0">
+          <div style="display:flex;justify-content:space-between;font-size:0.7rem;color:var(--ink-faint);margin-top:0.3rem">
+            <span>尖锐 / 自信</span>
+            <span>平坦 / 迷茫</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="text-align:center;border-left:1px solid rgba(40,30,20,0.15);padding-left:2rem">
+        <div class="small-caps" style="margin-bottom:0.5rem">困惑度</div>
+        <div id="lab1-ppl" style="font-family:'Fraunces';font-size:4rem;color:var(--accent);line-height:1;font-weight:400">1.00</div>
+        <div style="font-family:'Inter Tight';font-size:0.85rem;color:var(--ink-soft);margin-top:0.5rem">词表大小为 5</div>
+
+        <div style="margin-top:2rem;font-family:'Inter Tight';font-size:0.8rem;color:var(--ink-faint);line-height:1.5">
+          交叉熵：<span id="lab1-ce" class="mono" style="color:var(--ink)">0.000</span> 纳特<br>
+          熵（比特）：<span id="lab1-bits" class="mono" style="color:var(--ink)">0.000</span> 比特
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LAB 2: Confidence vs reality -->
+  <div class="interactive">
+    <h4>实验 2 · 猜错的代价</h4>
+    <p style="font-size:0.95rem;color:var(--ink-soft)">真实的下一个 token 是固定的（金标准）。在 0 到 1 之间滑动模型给那个 token 的概率，看看它要付出多少惊讶度。注意零附近的那个悬崖。</p>
+
+    <div style="display:grid;grid-template-columns:2fr 1fr;gap:2rem;align-items:center;margin-top:1.5rem">
+      <div>
+        <svg id="lab2-svg" viewBox="0 0 500 220" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto"></svg>
+        <div style="margin-top:1rem">
+          <label style="font-family:'Inter Tight';font-size:0.85rem;color:var(--ink-faint);display:block;margin-bottom:0.4rem">
+            分配给真实 token 的概率：<span id="lab2-p" class="mono" style="color:var(--accent);font-weight:700">0.50</span>
+          </label>
+          <input type="range" id="lab2-slider" min="0.001" max="0.999" step="0.001" value="0.5">
+        </div>
+      </div>
+
+      <div style="text-align:center;border-left:1px solid rgba(40,30,20,0.15);padding-left:2rem">
+        <div class="small-caps" style="margin-bottom:0.5rem">惊讶度</div>
+        <div id="lab2-bits" style="font-family:'Fraunces';font-size:3rem;color:var(--accent);line-height:1;font-weight:400">1.00</div>
+        <div style="font-family:'Inter Tight';font-size:0.85rem;color:var(--ink-soft);margin-top:0.5rem">比特的代价</div>
+
+        <div style="margin-top:1.5rem;font-family:'Inter Tight';font-size:0.8rem;color:var(--ink-faint);line-height:1.5">
+          逐 token 困惑度：<span id="lab2-ppl" class="mono" style="color:var(--ink);font-weight:700">2.00</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LAB 3: Sequence -->
+  <div class="interactive">
+    <h4>实验 3 · 一整句话的量</h4>
+    <p style="font-size:0.95rem;color:var(--ink-soft)">挑选一种模型性格。每种都用不同的逐 token 置信度来预测同一个 8 个 token 的句子。看看这些置信度如何累加成一个单一的困惑度。</p>
+
+    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin:1.2rem 0">
+      <button class="ghost active" data-model="ideal">理想模型</button>
+      <button class="ghost" data-model="strong">强（GPT 级别）</button>
+      <button class="ghost" data-model="weak">弱（n-gram）</button>
+      <button class="ghost" data-model="terrible">困惑</button>
+      <button class="ghost" data-model="random">随机 / 未训练</button>
+    </div>
+
+    <svg id="lab3-svg" viewBox="0 0 760 320" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto"></svg>
+
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-top:1.5rem;border-top:1px solid rgba(40,30,20,0.15);padding-top:1.5rem">
+      <div style="text-align:center">
+        <div class="small-caps">平均对数概率</div>
+        <div id="lab3-avglog" class="mono" style="font-size:1.6rem;color:var(--ink);margin-top:0.3rem">—</div>
+      </div>
+      <div style="text-align:center">
+        <div class="small-caps">交叉熵</div>
+        <div id="lab3-ce" class="mono" style="font-size:1.6rem;color:var(--ink);margin-top:0.3rem">—</div>
+      </div>
+      <div style="text-align:center">
+        <div class="small-caps">困惑度</div>
+        <div id="lab3-ppl" class="mono" style="font-size:1.6rem;color:var(--accent);font-weight:700;margin-top:0.3rem">—</div>
+      </div>
+    </div>
+  </div>
+
+  <p class="marginalia">注意：在实验 3 中，哪怕只是一个糟糕的 token（一根很低的橙色柱子）也会把整个困惑度拉高——因为几何平均数是无情的。这正是我们从 §VI 的代数中预测到的行为。</p>
+</section>
+
+<!-- ===================================================================== -->
+<!-- SECTION VIII                                                          -->
+<!-- ===================================================================== -->
+<section id="s8">
+  <span class="section-num">§ VIII</span>
+  <h2>这个数字能说明什么——以及不能说明什么。</h2>
+  <p class="lede">困惑度是被引用最多的语言模型指标之一，也是被误用最多的指标之一。这里是对何时该信任它、何时该另寻他法的清醒看法。</p>
+
+  <div class="stat-grid">
+    <div class="stat"><span class="num">1</span><span class="lbl">完美的预言机（始终 P=1）</span></div>
+    <div class="stat"><span class="num">≈ 30</span><span class="lbl">维基百科上的强 LLM</span></div>
+    <div class="stat"><span class="num">≈ 50K</span><span class="lbl">未训练的模型 · 词表大小</span></div>
+    <div class="stat"><span class="num">∞</span><span class="lbl">模型对任何真相给出 P=0</span></div>
+  </div>
+
+  <h3>困惑度做对了什么</h3>
+  <p>困惑度是回答一个具体问题的正确指标：<em>这个模型对这个分布的文本压缩得有多好？</em>更低的困惑度字面意义上意味着，在模型的分布下，编码语料所需的每 token 比特数更少。这就是为什么困惑度是<em>训练</em>目标的黄金标准，也是一个优美而有原则的<em>缩放定律</em>（scaling law）指标。</p>
+
+  <h3>困惑度做错了什么</h3>
+
+  <div class="two-col">
+    <div>
+      <h4>分词器毁掉了比较。</h4>
+      <p>一个使用更细分词器的模型，在其它条件相同的情况下，会有<em>更高</em>的逐 token 困惑度——它把同样的惊讶度分摊到了更多的 token 上。跨不同分词器比较时，始终要用每字符比特数或每字节比特数，而不是原始困惑度。</p>
+    </div>
+    <div>
+      <h4>它只衡量局部的流畅度。</h4>
+      <p>困惑度是对单 token 预测取平均。一个模型可以有极好的困惑度，却仍然会幻觉出事实、在段落之间自相矛盾，或者在任何需要推理的任务上失败。困惑度给「词」打分，而不是给「思想」打分。</p>
+    </div>
+    <div>
+      <h4>它对测试语料很敏感。</h4>
+      <p>在维基百科上、在 Reddit 上、在 Python 代码上、在诗歌上的困惑度是四个不同的数字。一个按维基百科困惑度「更好」的模型，按代码困惑度可能更差。始终要注明语料。</p>
+    </div>
+    <div>
+      <h4>它忽略了真相之外的校准。</h4>
+      <p>困惑度只关注<em>实际出现</em>的那个 token 的概率。一个模型可能给「mat」99%、给「banana」1%，也可能给「mat」99%、给「floor」1%——困惑度相同，合理性却大不相同。</p>
+    </div>
+  </div>
+
+  <div class="ornament">· · ·</div>
+
+  <h3>把一切串起来</h3>
+
+  <p>困惑度——终于——是我们一开始那个问题的答案：<em>你的模型有多惊讶？</em>它把模型在你打分过的每一句话的每一个 token 上犹豫的「猜测池」的平均大小，压缩进了一个数字。</p>
+
+  <p>越低越好。困惑度为 1 意味着完美的预测。困惑度为 <span class="mono">|V|</span> 意味着完全的茫然。介于两者之间的每一个值，都是你的模型内化了多少语言结构的度量。</p>
+
+  <div class="pull-quote">一个模型的困惑度，是它仍然身处黑暗之中的那个房间的大小。</div>
+
+  <p>现在再最后读一遍这个公式。每一个符号都应该显得不可避免。</p>
+
+  <div class="formula" style="background:var(--ink);color:var(--paper);font-size:1.5rem">
+    <span style="color:var(--accent-soft)">PPL</span>  =  <span style="color:var(--accent-soft)">exp</span>(− <span class="frac"><span class="top">1</span><span class="bot">N</span></span> Σ log P(x<span class="sub">i</span> | x<span class="sub">&lt;i</span>))
+  </div>
+
+  <p style="text-align:center;font-style:italic;color:var(--ink-soft);margin-top:3rem">— 完 —</p>
+</section>
+
+</main>
+
+<footer>
+  <p class="small-caps" style="margin-bottom:1rem">一篇 Vizuara 视觉文章</p>
+  <p style="font-family:'Fraunces',serif;font-size:1.1rem;font-style:italic;margin-bottom:0.5rem">困惑度的解剖</p>
+  <p style="font-size:0.85rem;color:var(--accent-soft);margin-top:1.5rem">以交互式、第一性原理的旅程构建而成。向上滚动即可重新开始。</p>
+</footer>
+
+<script>
+/* ============================================================
+   LAB 1 — Distribution shape & perplexity
+   ============================================================ */
+(function(){
+  const svg = document.getElementById('lab1-svg');
+  const slider = document.getElementById('lab1-slider');
+  const tempEl = document.getElementById('lab1-temp');
+  const pplEl  = document.getElementById('lab1-ppl');
+  const ceEl   = document.getElementById('lab1-ce');
+  const bitsEl = document.getElementById('lab1-bits');
+
+  // Base logits (peaked at index 0)
+  const baseLogits = [3.0, 1.5, 0.5, -0.2, -1.0];
+  const labels = ['mat','floor','chair','couch','roof'];
+
+  function softmax(logits, T){
+    const adj = logits.map(z => z / T);
+    const m = Math.max(...adj);
+    const exps = adj.map(z => Math.exp(z - m));
+    const s = exps.reduce((a,b)=>a+b, 0);
+    return exps.map(e => e/s);
+  }
+
+  function render(){
+    const T = parseFloat(slider.value);
+    tempEl.textContent = T.toFixed(2);
+    const probs = softmax(baseLogits, T);
+
+    // Compute entropy (nats) — for a uniform sample expectation, entropy = -Σ p log p
+    const H = -probs.reduce((a,p)=> a + (p > 0 ? p*Math.log(p) : 0), 0);
+    const PPL = Math.exp(H);
+    const Hbits = H / Math.log(2);
+
+    pplEl.textContent = PPL.toFixed(2);
+    ceEl.textContent  = H.toFixed(3);
+    bitsEl.textContent= Hbits.toFixed(3);
+
+    // Render bars
+    const W = 500, Hh = 240;
+    const padL = 60, padR = 20, padT = 30, padB = 50;
+    const barW = (W - padL - padR) / probs.length;
+
+    let s = `<text x="${padL}" y="20" font-family="Inter Tight" font-size="11" fill="#6b6359" letter-spacing="0.15em">5 个 token 词表上的概率分布</text>`;
+
+    // grid lines
+    for(let g=0; g<=4; g++){
+      const y = padT + (Hh-padT-padB) * g/4;
+      s += `<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" stroke="#1a1815" stroke-width="0.4" opacity="0.15"/>`;
+      s += `<text x="${padL-6}" y="${y+3}" text-anchor="end" font-family="JetBrains Mono" font-size="9" fill="#6b6359">${(1 - g/4).toFixed(2)}</text>`;
+    }
+
+    probs.forEach((p, i) => {
+      const x = padL + i*barW + barW*0.18;
+      const w = barW*0.64;
+      const h = (Hh - padT - padB) * p;
+      const y = (Hh - padB) - h;
+      s += `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#c8351b" rx="2"/>`;
+      s += `<text x="${x + w/2}" y="${Hh-padB+15}" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#1a1815">${labels[i]}</text>`;
+      s += `<text x="${x + w/2}" y="${Hh-padB+30}" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#6b6359">${p.toFixed(3)}</text>`;
+    });
+
+    svg.innerHTML = s;
+  }
+
+  slider.addEventListener('input', render);
+  render();
+})();
+
+/* ============================================================
+   LAB 2 — Surprise from a single probability
+   ============================================================ */
+(function(){
+  const svg = document.getElementById('lab2-svg');
+  const slider = document.getElementById('lab2-slider');
+  const pEl = document.getElementById('lab2-p');
+  const bitsEl = document.getElementById('lab2-bits');
+  const pplEl  = document.getElementById('lab2-ppl');
+
+  function render(){
+    const p = parseFloat(slider.value);
+    pEl.textContent = p.toFixed(3);
+    const surprise_bits = -Math.log2(p);
+    const ppl = Math.pow(2, surprise_bits); // = 1/p
+    bitsEl.textContent = surprise_bits.toFixed(2);
+    pplEl.textContent  = ppl.toFixed(2);
+
+    // Plot the curve y = -log2(x)
+    const W = 500, Hh = 220;
+    const padL = 50, padR = 20, padT = 25, padB = 40;
+    const xToPx = x => padL + (W - padL - padR) * x;
+    // surprise capped at 10 bits visually
+    const yToPx = bits => (Hh - padB) - (Hh - padT - padB) * (Math.min(bits, 10) / 10);
+
+    let s = `<text x="${padL}" y="15" font-family="Inter Tight" font-size="11" fill="#6b6359" letter-spacing="0.15em">惊讶度 = −log₂ P</text>`;
+
+    // axes
+    s += `<line x1="${padL}" y1="${Hh-padB}" x2="${W-padR}" y2="${Hh-padB}" stroke="#1a1815" stroke-width="1"/>`;
+    s += `<line x1="${padL}" y1="${padT}" x2="${padL}" y2="${Hh-padB}" stroke="#1a1815" stroke-width="1"/>`;
+
+    // x labels
+    [0, 0.25, 0.5, 0.75, 1].forEach(v => {
+      s += `<text x="${xToPx(v)}" y="${Hh-padB+14}" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#6b6359">${v}</text>`;
+    });
+    // y labels
+    [0,2,4,6,8,10].forEach(v=>{
+      s += `<text x="${padL-6}" y="${yToPx(v)+3}" text-anchor="end" font-family="JetBrains Mono" font-size="10" fill="#6b6359">${v}</text>`;
+    });
+    s += `<text x="${padL-30}" y="${(padT+Hh-padB)/2}" text-anchor="middle" font-family="Inter Tight" font-size="10" fill="#6b6359" transform="rotate(-90 ${padL-30} ${(padT+Hh-padB)/2})">比特</text>`;
+
+    // Curve path - sample
+    let path = '';
+    for(let xi = 0; xi <= 200; xi++){
+      const x = 0.001 + (xi/200) * 0.999;
+      const px = xToPx(x);
+      const py = yToPx(-Math.log2(x));
+      path += (xi === 0 ? 'M' : 'L') + px.toFixed(1) + ',' + py.toFixed(1) + ' ';
+    }
+    s += `<path d="${path}" fill="none" stroke="#c8351b" stroke-width="2"/>`;
+
+    // Marker
+    const mx = xToPx(p);
+    const my = yToPx(surprise_bits);
+    s += `<line x1="${mx}" y1="${Hh-padB}" x2="${mx}" y2="${my}" stroke="#1a1815" stroke-width="0.8" stroke-dasharray="3,3"/>`;
+    s += `<line x1="${padL}" y1="${my}" x2="${mx}" y2="${my}" stroke="#1a1815" stroke-width="0.8" stroke-dasharray="3,3"/>`;
+    s += `<circle cx="${mx}" cy="${my}" r="6" fill="#1a1815"/>`;
+    s += `<circle cx="${mx}" cy="${my}" r="3" fill="#f4ecd8"/>`;
+
+    svg.innerHTML = s;
+  }
+  slider.addEventListener('input', render);
+  render();
+})();
+
+/* ============================================================
+   LAB 3 — Sequence-level perplexity
+   ============================================================ */
+(function(){
+  const svg = document.getElementById('lab3-svg');
+  const buttons = document.querySelectorAll('[data-model]');
+  const tokens = ['the','cat','sat','on','the','soft','wool','mat'];
+
+  // probabilities the actual token receives, per model
+  const profiles = {
+    ideal:    [1,1,1,1,1,1,1,1].map(_ => 0.999),
+    strong:   [0.42, 0.18, 0.34, 0.55, 0.71, 0.21, 0.16, 0.48],
+    weak:     [0.12, 0.06, 0.09, 0.22, 0.30, 0.04, 0.03, 0.14],
+    terrible: [0.08, 0.02, 0.05, 0.10, 0.15, 0.01, 0.005, 0.04],
+    random:   tokens.map(_ => 1/50000)
+  };
+
+  let current = 'ideal';
+
+  function render(){
+    const probs = profiles[current];
+    const N = probs.length;
+    const logs = probs.map(p => Math.log(p));
+    const avgLog = logs.reduce((a,b)=>a+b,0) / N;
+    const ce = -avgLog;
+    const ppl = Math.exp(ce);
+
+    document.getElementById('lab3-avglog').textContent = avgLog.toFixed(3);
+    document.getElementById('lab3-ce').textContent     = ce.toFixed(3);
+    document.getElementById('lab3-ppl').textContent    = ppl < 1000 ? ppl.toFixed(2) : ppl.toExponential(2);
+
+    // Render
+    const W = 760, Hh = 320;
+    const padL = 40, padR = 40, padT = 50, padB = 80;
+    const slotW = (W - padL - padR) / N;
+
+    let s = `<text x="${padL}" y="22" font-family="Inter Tight" font-size="11" fill="#6b6359" letter-spacing="0.15em">分配给真实下一个 token 的逐 token 概率</text>`;
+
+    // baseline
+    s += `<line x1="${padL}" y1="${Hh-padB}" x2="${W-padR}" y2="${Hh-padB}" stroke="#1a1815" stroke-width="1"/>`;
+
+    // grid 0, 0.5, 1
+    [0, 0.25, 0.5, 0.75, 1].forEach(v=>{
+      const y = (Hh-padB) - (Hh-padT-padB)*v;
+      s += `<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" stroke="#1a1815" stroke-width="0.4" opacity="0.12"/>`;
+      s += `<text x="${padL-6}" y="${y+3}" text-anchor="end" font-family="JetBrains Mono" font-size="9" fill="#6b6359">${v.toFixed(2)}</text>`;
+    });
+
+    probs.forEach((p,i)=>{
+      const cx = padL + slotW*(i+0.5);
+      const barW = slotW * 0.55;
+      const x = cx - barW/2;
+      const h = Math.max(2, (Hh-padT-padB) * p);
+      const y = (Hh-padB) - h;
+
+      // Color: more orange = more confident
+      const intensity = Math.min(1, p*1.5 + 0.2);
+      s += `<rect x="${x}" y="${y}" width="${barW}" height="${h}" rx="3" fill="#c8351b" opacity="${0.4 + 0.6*p}"/>`;
+      // probability label
+      s += `<text x="${cx}" y="${y-6}" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#1a1815">${p < 0.001 ? p.toExponential(1) : p.toFixed(2)}</text>`;
+      // token chip below
+      s += `<rect x="${cx-25}" y="${Hh-padB+10}" width="50" height="22" rx="3" fill="#1a1815"/>`;
+      s += `<text x="${cx}" y="${Hh-padB+25}" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#f4ecd8">${tokens[i]}</text>`;
+      // surprise label
+      const bits = -Math.log2(p);
+      s += `<text x="${cx}" y="${Hh-padB+50}" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#6b6359">${bits.toFixed(1)} 比特</text>`;
+    });
+
+    // Geometric mean line
+    const gm = Math.exp(avgLog);
+    const gmY = (Hh-padB) - (Hh-padT-padB) * gm;
+    s += `<line x1="${padL}" y1="${gmY}" x2="${W-padR}" y2="${gmY}" stroke="#b8862f" stroke-width="1.5" stroke-dasharray="6,4"/>`;
+    s += `<text x="${W-padR-6}" y="${gmY-6}" text-anchor="end" font-family="Inter Tight" font-size="11" fill="#b8862f" font-weight="700">几何均值 = ${gm.toFixed(3)}</text>`;
+
+    svg.innerHTML = s;
+  }
+
+  buttons.forEach(b=>{
+    b.addEventListener('click', ()=>{
+      buttons.forEach(x=>x.classList.remove('active'));
+      b.classList.add('active');
+      current = b.dataset.model;
+      render();
+    });
+  });
+
+  render();
+})();
+</script>
+
+</body>
+</html>

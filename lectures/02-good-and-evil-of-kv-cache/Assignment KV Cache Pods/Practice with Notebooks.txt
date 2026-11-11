@@ -1,0 +1,79 @@
+Notebook 1 of 9
+Introduction
+
+How a clever trick that slashes computation silently moves the bottleneck somewhere else — and why your GPU feels it.
+https://colab.research.google.com/drive/1lVnHb687CJl45gV6XdaXJ3bK_7MlpqEd
+
+------------------------
+
+Notebook 2 of 9
+Section 1: The GPU Has Two Masters — VRAM and Bandwidth
+
+A GPU is fundamentally a machine for doing a very large number of multiplications and additions very quickly. Modern GPUs used for deep learning can perform tens of trillions of such operations per second. That number is almost incomprehensible in its scale. If you handed a human a pencil and asked them to perform one multiplication per second, they would need millions of years to match what a GPU does in a single heartbeat.
+
+https://colab.research.google.com/drive/14fCskRhCdX6NKfK6KjWFVebqHMpyCu9j
+
+------------------------
+
+Notebook 3 of 9
+Section 2: The Naive Inference Loop — An O(n³) Disaster
+
+To understand what makes naive inference so expensive, we first need to understand what the attention mechanism is actually doing at each step. Let us do that in plain language, without any equations.
+
+https://colab.research.google.com/drive/1FNYNfj7NhVotJL06udTPiEHFG-7GU4FT
+
+------------------------
+
+Notebook 4 of 9
+Section 3: Enter the KV Cache — The Hero We Needed
+
+The key observation is deceptively simple. When you move from generating token 1,001 to generating token 1,002, what changes? The new query is different — it comes from the new token. But the keys and values for the previous 1,001 tokens? They are completely unchanged. A token's key and value are a function of that token and that token alone — they do not depend on what comes after. This means all that work we did in the previous step to compute those keys and values was not wasted — we just fai
+
+https://colab.research.google.com/drive/14sPxYYsOv1sdQ9zO2FERD4LBkXsw-Uwp
+
+------------------------
+
+Notebook 5 of 9
+Section 4: The Hidden Cost — What the KV Cache Does to Your GPU
+
+Let us go back to the roofline model and think carefully about what the KV cache actually changes at the hardware level.
+
+https://colab.research.google.com/drive/11iTFfSTIDWQoVYUdh7ysmS1d9KxQAzx8
+
+------------------------
+
+Notebook 6 of 9
+Section 5: Living With the Necessary Evil — GQA, Quantization, and the Bandwidth Fight
+
+Once you understand that the KV cache's core problem is memory bandwidth — the truck having too much to carry — the design space for solutions becomes clear. You either make the cache smaller, or you make the cache denser (more information per byte). Every major technique in this space is doing one of those two things.
+
+https://colab.research.google.com/drive/1B4Nna8-KOPZAj0siW4X2LlhDoYr-kBwP
+
+------------------------
+
+Notebook 7 of 9
+Section 6: TurboQuant — Rotating Your Way to Better Cache Compression
+
+Let us think carefully about what quantization actually does. When you quantize a vector — a list of numbers — you are replacing each number with the nearest value on a fixed grid. If you have 4-bit quantization, that grid has 16 levels. Those 16 levels must span the full range of the vector from its smallest to its largest value. Everything in between gets rounded to the nearest grid line.
+
+https://colab.research.google.com/drive/1XP9wXFbwgDf2VL9DYncCdCjJv3t5luRa
+
+------------------------
+
+Notebook 8 of 9
+The Full Picture
+
+Let us step back and trace the arc of what we have built together.
+
+https://colab.research.google.com/drive/1PSkfjpbiasLHEyqT3xj45TpIhJXFUrYv
+
+------------------------
+
+Notebook 9 of 9
+Further Reading
+
+- Vaswani et al., "Attention Is All You Need" (2017) — the original transformer paper, which sets up the attention mechanism that motivates the KV cache. - Ainslie et al., "GQA: Training Generalized Multi-Query Transformer Models from Multi-Head Checkpoints" (2023) — the paper that introduced and validated Grouped Query Attention as a practical KV cache reduction technique. - Dao et al., "FlashAttention: Fast and Memory-Efficient Exact Attention with IO-Awareness" (2022) — an honorable mention f
+
+https://colab.research.google.com/drive/1-yoOVkj-8Exf1oSLLTtZ_EkCKxhjGjeO
+
+------------------------
