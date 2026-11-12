@@ -1,6 +1,6 @@
 # 第 09 讲 · Bonus：推理与 YCombinator
 
-> Bonus Lecture: Inference and YCombinator
+> Bonus：从创业与产品视角看推理工程——点子、成本与可落地性。
 
 ## 本讲讲了什么
 

@@ -1,6 +1,6 @@
 # 第 06 讲 · vLLM 一步的解剖
 
-> The Anatomy of a vLLM Step
+> 解剖 vLLM 的一步：PagedAttention、调度、前缀缓存与连续批处理如何咬合。
 
 ## 本讲讲了什么
 

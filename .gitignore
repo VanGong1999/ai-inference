@@ -20,3 +20,8 @@ lectures/05-flash-attention/flash-attention-main/
 
 Inference Engineering.pdf
 Inference Engineering.epub
+
+# Temporary book translation scratch (rebuild via rebuild_part02.py)
+docs/_translate/*.en.html
+docs/_translate/*.zh.html
+docs/_translate/ids.txt

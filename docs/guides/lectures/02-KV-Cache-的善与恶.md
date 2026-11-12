@@ -1,6 +1,6 @@
 # 第 02 讲 · KV Cache 的善与恶
 
-> The Good and Evil of the KV Cache
+> KV Cache 如何把冗余算力变成带宽压力，以及后续一切优化为何都绕不开它。
 
 ## 本讲讲了什么
 

@@ -1,6 +1,6 @@
 # 第 04 讲 · 注意力变体 Part 2（滑窗 / SSM / Mamba）
 
-> Attention Variants Part 2: Sliding Window, State Space Models and Mamba
+> 跨 token 压缩：滑窗注意力、状态空间模型（SSM）与 Mamba。
 
 ## 本讲讲了什么
 

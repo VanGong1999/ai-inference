@@ -1,6 +1,6 @@
 # 第 05 讲 · FlashAttention 1 / 2 / 3
 
-> All About Flash Attention 1, 2, 3
+> FlashAttention 1/2/3：用 tiling 与 online softmax 把注意力从 HBM 搬回片上。
 
 ## 本讲讲了什么
 

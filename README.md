@@ -8,7 +8,7 @@
 
 | 内容 | 位置 | 说明 |
 |---|---|---|
-| 📖 推理工程书籍（中文） | [`docs/book.zh.html`](docs/book.zh.html) | 中文译本（由 `_part_01`–`_part_07` 拼合）；第 5 章起为中文 |
+| 📖 推理工程书籍（中文） | [`docs/book.zh.html`](docs/book.zh.html) | 中文译本（由 `_part_01`–`_part_07` 拼合）；第 0–26 章均为中文 |
 | 📖 推理工程书籍（英文） | [`docs/book.html`](docs/book.html) | 27 章英文原著 + 4 个 Breadcrumb |
 | 📖 高效 LLM 推理（面试口袋笔记） | [`docs/llm-notes/README.md`](docs/llm-notes/README.md) · [站点](https://vanguong1999.github.io/ai-inference/md.html?src=llm-notes/README.md) | 《Efficient LLM Inference》中文全译本（14 章 + 4 附录 + 约 70 道面试问答） |
 | 📖 推理工程（Philip Kiely） | [`docs/inference-engineering/README.md`](docs/inference-engineering/README.md) · [站点](https://vanguong1999.github.io/ai-inference/md.html?src=inference-engineering/README.md) | 《Inference Engineering》中文全译本（8 章 + 2 附录，含多模态与生产工程） |

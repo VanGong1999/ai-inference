@@ -1,6 +1,6 @@
 # 第 03 讲 · 注意力变体 Part 1（MHA / MQA / GQA / MLA）
 
-> Attention Variants Part 1: MHA, MQA, GQA, Latent Attention, Sparse Attention
+> 跨头压缩：从 MHA 到 MQA / GQA / MLA，以及稀疏注意力如何削减 KV。
 
 ## 本讲讲了什么
 

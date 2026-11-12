@@ -1,6 +1,6 @@
 # 第 11 讲 · Capstone 项目
 
-> Phase 1 Capstone Project: InferTutor Arena
+> Capstone：InferTutor Arena——把课程技术拼成可评测的推理服务。
 
 ## 本讲讲了什么
 
