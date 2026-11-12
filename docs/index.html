@@ -4,311 +4,767 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AI 推理工程学习仓库 — 门户</title>
+<meta name="description" content="系统性学习 LLM Inference Engineering：Vizuara 课程书、面试口袋笔记、Philip Kiely 推理工程，以及可视化 Walkthrough 与生产笔记。">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
-  --gradient-primary: linear-gradient(100deg, #ffd78a 0%, #8ad4ff 50%, #ffa8ff 100%);
-  --gradient-secondary: linear-gradient(120deg, #fbb03b 0%, #2eaae1 50%, #f906f9 100%);
-  --gradient-subtle: linear-gradient(120deg, rgba(255,215,138,0.22), rgba(138,212,255,0.28), rgba(255,168,255,0.22));
-  --gradient-ultra-subtle: linear-gradient(120deg, rgba(255,215,138,0.08), rgba(138,212,255,0.10), rgba(255,168,255,0.08));
-  --vizuara: #1e96e6;
-  --pink: #ffa8ff;
-  --gold: #ffd78a;
-  --sky: #8ad4ff;
-  --cyan: #2eaae1;
-  --magenta: #f906f9;
-  --bg: #ffffff;
-  --bg-warm: #fbfaf7;
-  --ink: #0f172a;
-  --muted: #64748b;
-  --rule: #e4e4e7;
-  --code-bg: #f6f5f3;
-  --content-width: 880px;
-  --radius: 12px;
+  --ink: #132033;
+  --ink-soft: #334155;
+  --muted: #4b5c72;
+  --line: rgba(19, 32, 51, 0.12);
+  --paper: #f4f0e8;
+  --paper-2: #fffdf9;
+  --surface: rgba(255, 253, 249, 0.92);
+  --accent: #0c73b8;
+  --accent-2: #b57912;
+  --accent-soft: rgba(12, 115, 184, 0.12);
+  --gold: #e0ad5a;
+  --sky: #6bbce8;
+  --max: 1120px;
+  --radius: 14px;
+  --font: "Figtree", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
 }
 
 * { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
-
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
 body {
-  font-family: 'Figtree', -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
-  font-weight: 300;
-  font-size: 17px;
-  line-height: 1.7;
-  color: var(--ink);
-  background:
-    radial-gradient(ellipse 1400px 900px at 50% -200px, rgba(138, 212, 255, 0.06), transparent 60%),
-    radial-gradient(ellipse 1200px 800px at 10% 300px, rgba(255, 168, 255, 0.05), transparent 60%),
-    radial-gradient(ellipse 1200px 800px at 90% 900px, rgba(255, 215, 138, 0.05), transparent 60%),
-    var(--bg-warm);
   margin: 0;
-  padding: 0;
-  letter-spacing: -0.005em;
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 17px;
+  line-height: 1.65;
+  background:
+    radial-gradient(1100px 620px at 8% -10%, rgba(126, 200, 239, 0.28), transparent 55%),
+    radial-gradient(900px 560px at 92% 8%, rgba(232, 184, 109, 0.22), transparent 50%),
+    radial-gradient(800px 500px at 70% 90%, rgba(15, 126, 200, 0.08), transparent 55%),
+    linear-gradient(180deg, #f3efe8 0%, var(--paper) 28%, #f8f6f2 100%);
+  letter-spacing: -0.01em;
 }
 
-.page {
-  max-width: var(--content-width);
+a { color: var(--accent); text-decoration: none; }
+a:hover { color: #0a63a0; }
+
+.shell {
+  width: min(var(--max), calc(100% - 40px));
   margin: 0 auto;
-  padding: 48px 32px 120px 32px;
-  position: relative;
+  padding: 22px 0 96px;
 }
 
-/* Top nav */
-.top-nav {
-  position: relative;
-  margin: 0 auto 36px auto;
-  padding: 16px 20px;
-  border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.78);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(30, 41, 59, 0.06);
-  box-shadow: 0 8px 30px rgba(30, 41, 59, 0.04);
+/* Nav */
+.nav {
+  position: sticky;
+  top: 14px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 10px 30px rgba(19, 32, 51, 0.05);
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  color: var(--ink);
+  min-width: 0;
+}
+.brand img { width: 28px; height: 28px; border-radius: 7px; }
+.brand span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nav-links {
+  margin-left: auto;
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 14px;
+  justify-content: flex-end;
+  gap: 4px;
 }
-.top-nav .logo { display: flex; align-items: center; gap: 10px; font-weight: 700; color: var(--ink); }
-.top-nav .logo img { width: 26px; height: auto; }
-.top-nav .spacer { flex: 1 1 auto; }
-.top-nav a {
-  color: var(--ink);
-  text-decoration: none;
-  font-size: 0.9rem;
-  font-weight: 500;
-  border-bottom: none;
+.nav-links a {
+  color: var(--ink-soft);
+  font-size: 0.88rem;
+  font-weight: 600;
+  padding: 8px 11px;
+  border-radius: 999px;
 }
-.top-nav a:hover { color: var(--vizuara); }
+.nav-links a:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
 
 /* Hero */
-.hero { text-align: center; padding: 30px 0 20px 0; }
-.hero .badge {
+.hero {
+  display: grid;
+  grid-template-columns: 1.08fr 0.92fr;
+  gap: 36px;
+  align-items: end;
+  min-height: min(78vh, 720px);
+  padding: 56px 0 28px;
+}
+.kicker {
   display: inline-block;
+  font-family: var(--mono);
   font-size: 0.78rem;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
   font-weight: 600;
-  padding: 6px 14px;
-  border-radius: 999px;
-  background: var(--gradient-ultra-subtle);
-  color: var(--muted);
-  margin-bottom: 22px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-2);
+  margin-bottom: 18px;
 }
 .hero h1 {
-  font-size: 3.2rem;
-  line-height: 1.08;
-  margin: 0 0 0.35em 0;
-  letter-spacing: -0.03em;
-  background: var(--gradient-primary);
+  margin: 0 0 16px;
+  font-size: clamp(2.5rem, 5.4vw, 4.2rem);
+  line-height: 1.02;
+  letter-spacing: -0.045em;
+  font-weight: 800;
+  color: var(--ink);
+}
+.hero h1 em {
+  font-style: normal;
+  background: linear-gradient(105deg, #0f7ec8 0%, #2aa3d9 45%, #c9851a 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
 }
-.hero p { font-size: 1.12rem; color: var(--muted); max-width: 620px; margin: 0 auto; }
-.hero .en { font-style: italic; color: var(--vizuara); }
-
-.divider {
-  width: 140px; height: 4px; border-radius: 2px;
-  background: var(--gradient-primary);
-  margin: 34px auto;
+.hero-lead {
+  margin: 0 0 28px;
+  max-width: 34rem;
+  color: var(--muted);
+  font-size: 1.08rem;
 }
-
-/* Section */
-h2.section-title {
-  font-size: 1.5rem;
+.cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 18px;
+  border-radius: 999px;
   font-weight: 700;
-  margin: 2.4em 0 0.9em 0;
-  color: #111827;
+  font-size: 0.95rem;
+  border: 1px solid transparent;
+  transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease;
 }
-h2.section-title .num {
-  font-family: "JetBrains Mono", monospace;
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: var(--vizuara);
-  margin-right: 8px;
-  vertical-align: middle;
+.btn:hover { transform: translateY(-2px); }
+.btn-primary {
+  background: var(--ink);
+  color: #fff;
 }
-p.lead { color: var(--muted); margin: 0 0 1.2em 0; }
+.btn-primary:hover { background: #0b1726; color: #fff; }
+.btn-ghost {
+  background: rgba(255,255,255,0.55);
+  border-color: var(--line);
+  color: var(--ink);
+}
+.btn-ghost:hover { border-color: rgba(15,126,200,0.35); color: var(--accent); }
 
-/* Cards */
-.card-grid {
+.hero-visual {
+  position: relative;
+  border-radius: 22px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: #0f172a;
+  box-shadow: 0 24px 60px rgba(19, 32, 51, 0.14);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .hero-visual { animation: floaty 7s ease-in-out infinite; }
+}
+.hero-visual img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 320px;
+  object-fit: cover;
+  opacity: 0.94;
+}
+.hero-visual::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 42%;
+  background: linear-gradient(180deg, transparent, rgba(15, 23, 42, 0.72));
+  pointer-events: none;
+}
+.hero-caption {
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  bottom: 16px;
+  z-index: 1;
+  color: rgba(255,255,255,0.92);
+  font-size: 0.86rem;
+  font-family: var(--mono);
+}
+
+/* Sections */
+section { padding: 42px 0 8px; }
+.section-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+.section-head h2 {
+  margin: 0;
+  font-size: clamp(1.55rem, 2.4vw, 2rem);
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+}
+.section-head p {
+  margin: 0;
+  color: var(--muted);
+  max-width: 36rem;
+  font-size: 0.98rem;
+}
+.section-num {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--accent);
+  display: block;
+  margin-bottom: 8px;
+}
+
+/* Books */
+.books {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  grid-template-columns: repeat(3, 1fr);
   gap: 16px;
 }
-.card {
-  display: block;
-  background: #fff;
-  border: 1px solid var(--rule);
-  border-radius: var(--radius);
-  padding: 18px 18px 16px 18px;
-  text-decoration: none;
-  color: var(--ink);
-  box-shadow: 0 2px 10px rgba(30, 41, 59, 0.03);
-  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
-  position: relative;
-}
-.card:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 12px 32px rgba(30, 41, 59, 0.08);
-  border-color: rgba(30, 150, 230, 0.35);
-}
-.card .tag {
-  display: inline-block;
-  font-size: 0.7rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  font-weight: 600;
-  color: var(--vizuara);
-  background: var(--gradient-ultra-subtle);
-  padding: 3px 9px;
-  border-radius: 999px;
-  margin-bottom: 10px;
-}
-.card h3 { margin: 0 0 6px 0; font-size: 1.05rem; font-weight: 600; color: #0f172a; }
-.card p { margin: 0; font-size: 0.9rem; color: var(--muted); line-height: 1.55; }
-.card .arrow { color: var(--vizuara); font-weight: 600; }
-
-/* Feature link list */
-ul.link-list { list-style: none; padding: 0; margin: 0; }
-ul.link-list li { margin: 0 0 10px 0; }
-ul.link-list a {
+.book {
   display: flex;
-  align-items: baseline;
-  gap: 10px;
-  padding: 12px 14px;
+  flex-direction: column;
+  min-height: 100%;
+  padding: 22px 20px 18px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  border-top: 3px solid transparent;
+  background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(255,253,249,0.84));
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.book:nth-child(1) { border-top-color: #0c73b8; }
+.book:nth-child(2) { border-top-color: #b57912; }
+.book:nth-child(3) { border-top-color: #1f8f6f; }
+.book:hover {
+  transform: translateY(-4px);
+  border-color: rgba(15, 126, 200, 0.28);
+  box-shadow: 0 18px 40px rgba(19, 32, 51, 0.08);
+}
+.book-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.chip {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 5px 9px;
   border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.chip.warm {
+  background: rgba(201, 133, 26, 0.12);
+  color: #9a6810;
+}
+.book h3 {
+  margin: 0 0 8px;
+  font-size: 1.22rem;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+.book .why {
+  margin: 0 0 16px;
+  color: var(--muted);
+  font-size: 0.93rem;
+  flex: 0 0 auto;
+}
+.topics {
+  list-style: none;
+  margin: 0 0 18px;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  flex: 1 1 auto;
+}
+.topics li {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+}
+.topics li::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: linear-gradient(120deg, var(--sky), var(--gold));
+  flex: 0 0 auto;
+  transform: translateY(-1px);
+}
+.book-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 4px;
+}
+.book-actions a {
+  font-size: 0.88rem;
+  font-weight: 700;
+  padding: 9px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--ink);
+  background: rgba(255,255,255,0.7);
+}
+.book-actions a.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.book-actions a:hover {
+  border-color: rgba(15,126,200,0.4);
+  color: var(--accent);
+}
+.book-actions a.primary:hover {
+  background: #0a63a0;
+  border-color: #0a63a0;
+  color: #fff;
+}
+
+/* Knowledge map */
+.map {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+.map a {
+  display: block;
+  padding: 16px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,0.62);
+  color: var(--ink);
+  transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+}
+.map a:hover {
   background: #fff;
-  border: 1px solid var(--rule);
+  border-color: rgba(15,126,200,0.35);
+  transform: translateY(-2px);
+  color: var(--ink);
+}
+.map .label {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+.map strong {
+  display: block;
+  font-size: 0.98rem;
+  letter-spacing: -0.015em;
+  margin-bottom: 4px;
+}
+.map span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+/* Split panels */
+.split {
+  display: grid;
+  grid-template-columns: 1.15fr 0.85fr;
+  gap: 16px;
+}
+.panel {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255,255,255,0.7);
+  padding: 18px;
+}
+.panel h3 {
+  margin: 0 0 4px;
+  font-size: 1.08rem;
+}
+.panel .sub {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.rows { display: grid; gap: 8px; }
+.row {
+  display: grid;
+  grid-template-columns: 42px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 10px;
   text-decoration: none;
   color: var(--ink);
-  transition: background 0.18s ease, border-color 0.18s ease;
+  background: rgba(247, 244, 239, 0.65);
+  border: 1px solid transparent;
+  transition: border-color 0.18s ease, background 0.18s ease;
 }
-ul.link-list a:hover { background: var(--gradient-ultra-subtle); border-color: rgba(30,150,230,0.3); }
-ul.link-list .idx {
-  font-family: "JetBrains Mono", monospace;
-  font-size: 0.82rem;
-  color: var(--vizuara);
-  min-width: 30px;
+.row:hover {
+  border-color: rgba(15,126,200,0.28);
+  background: #fff;
+  color: var(--ink);
+}
+.row .idx {
+  font-family: var(--mono);
+  font-size: 0.78rem;
   font-weight: 600;
+  color: var(--accent);
 }
-ul.link-list .desc { color: var(--muted); font-size: 0.9rem; }
+.row .go {
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: var(--accent);
+}
 
-/* Table */
-table { border-collapse: separate; border-spacing: 0; margin: 1.4em 0; width: 100%; font-size: 0.92em; border-radius: var(--radius); overflow: hidden; box-shadow: 0 4px 20px rgba(30,41,59,0.05); background: #fff; }
-th, td { padding: 0.62em 0.9em; border-bottom: 1px solid var(--rule); text-align: left; vertical-align: top; }
-th { background: var(--gradient-ultra-subtle); font-weight: 600; color: #0f172a; }
-tr:last-child td { border-bottom: none; }
-tr:nth-child(even) td { background: #fbfaf7; }
-
-a { color: var(--vizuara); text-decoration: none; border-bottom: 1px solid rgba(30,150,230,0.25); }
-a:hover { color: #0c7ac4; border-bottom-color: rgba(30,150,230,0.6); }
+.start-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+.start-grid a {
+  display: block;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,0.7);
+  color: var(--ink);
+  transition: transform 0.18s ease, border-color 0.18s ease;
+}
+.start-grid a:hover {
+  transform: translateY(-2px);
+  border-color: rgba(15,126,200,0.32);
+  color: var(--ink);
+}
+.start-grid strong { display: block; margin-bottom: 4px; }
+.start-grid span { color: var(--muted); font-size: 0.86rem; }
 
 .note {
-  background: linear-gradient(135deg, rgba(255,215,138,0.10), rgba(138,212,255,0.10), rgba(255,168,255,0.10));
-  border: 1px solid rgba(30,150,230,0.12);
-  border-radius: var(--radius);
-  padding: 14px 18px;
-  font-size: 0.9rem;
-  color: #475569;
-  margin: 1.2em 0;
+  margin-top: 18px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(15,126,200,0.14);
+  background: linear-gradient(120deg, rgba(126,200,239,0.12), rgba(232,184,109,0.12));
+  color: var(--ink-soft);
+  font-size: 0.92rem;
 }
 
-footer { text-align: center; color: var(--muted); font-size: 0.85rem; margin-top: 4em; }
-footer a { color: var(--muted); }
+footer {
+  margin-top: 56px;
+  padding-top: 22px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.88rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  justify-content: space-between;
+}
+footer a { color: var(--muted); font-weight: 600; }
+footer a:hover { color: var(--accent); }
+
+@keyframes floaty {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+@media (max-width: 980px) {
+  .hero, .books, .split, .map { grid-template-columns: 1fr 1fr; }
+  .map { grid-template-columns: 1fr 1fr; }
+  .books { grid-template-columns: 1fr; }
+  .hero { min-height: auto; padding-top: 36px; }
+}
+@media (max-width: 720px) {
+  .shell { width: calc(100% - 28px); }
+  .nav { border-radius: 18px; align-items: flex-start; flex-direction: column; }
+  .nav-links { margin-left: 0; justify-content: flex-start; }
+  .hero, .split, .map, .start-grid { grid-template-columns: 1fr; }
+  .hero-visual { min-height: 240px; }
+  .section-head { flex-direction: column; align-items: start; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
 </style>
 </head>
 <body>
-<div class="page">
+<div class="shell">
 
-  <div class="top-nav">
-    <div class="logo"><img src="vizlogo.png" alt="logo">AI 推理工程学习仓库</div>
-    <div class="spacer"></div>
-    <a href="book.zh.html">📖 中文书</a>
-    <a href="book.html">Book (EN)</a>
-    <a href="visual-walkthroughs.html">🎬 Walkthroughs</a>
-    <a href="md.html?src=guides/README.md">🗺️ 学习路径</a>
-  </div>
+  <nav class="nav" aria-label="主导航">
+    <div class="brand">
+      <img src="vizlogo.png" alt="">
+      <span>AI 推理工程学习仓库</span>
+    </div>
+    <div class="nav-links">
+      <a href="#books">三本书</a>
+      <a href="#map">知识地图</a>
+      <a href="visual-walkthroughs.html">Walkthroughs</a>
+      <a href="md.html?src=guides/README.md">学习路径</a>
+      <a href="https://github.com/VanGong1999/ai-inference">GitHub</a>
+    </div>
+  </nav>
 
-  <div class="hero">
-    <div class="badge">Inference Engineering · 学习仓库</div>
-    <h1>AI 推理工程学习仓库</h1>
-    <p>系统性掌握 <span class="en">LLM Inference Engineering</span> —— 从 KV Cache、注意力变体、FlashAttention，到 vLLM、量化、投机解码与生产级推理系统。</p>
-  </div>
+  <header class="hero">
+    <div>
+      <div class="kicker">LLM Inference Engineering</div>
+      <h1>把推理工程<br>学成一门<em>可落地的系统课</em></h1>
+      <p class="hero-lead">
+        三本互补读物 + 可视化 Walkthrough + 课程导读：从 Roofline、KV Cache、注意力变体，
+        到 vLLM、量化、投机解码、分离式服务与生产部署。
+      </p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="#books">浏览三本核心读物</a>
+        <a class="btn btn-ghost" href="md.html?src=guides/00-学习路径.md">查看完整学习路线</a>
+      </div>
+    </div>
+    <div class="hero-visual" aria-hidden="true">
+      <img src="figures/ch03-fig1-roofline-anchor/final.png" alt="">
+      <div class="hero-caption">Roofline：算力上限 × 带宽上限 —— 推理优化的坐标轴</div>
+    </div>
+  </header>
 
-  <div class="divider"></div>
+  <section id="books">
+    <div class="section-head">
+      <div>
+        <span class="section-num">01 / 核心读物</span>
+        <h2>三本书，三种切入角度</h2>
+      </div>
+      <p>同一主题的系统课、面试答法、产品与生产全景。可按目标任选一本，也可三本对照读。</p>
+    </div>
 
-  <h2 class="section-title"><span class="num">01</span>从这里开始</h2>
-  <p class="lead">本仓库将 Vizuara 的《Inference Engineering》课程整理成一套可自学的中文导航结构：英文原文（书籍、可视化 Walkthrough、笔记）全部保留，中文导读、术语表与学习路径作为“导读层”叠加其上。</p>
+    <div class="books">
+      <article class="book">
+        <div class="book-meta">
+          <span class="chip">Vizuara</span>
+          <span class="chip warm">系统推导 · 27 章</span>
+        </div>
+        <h3>《Inference Engineering》课程书</h3>
+        <p class="why">从 Roofline 出发讲「为什么」：KV Cache、注意力压缩、FlashAttention、PagedAttention，一路到 vLLM 与三个 Capstone。</p>
+        <ul class="topics">
+          <li>五指标：TTFT / ITL / 吞吐 / P99 / 成本</li>
+          <li>MHA · MQA · GQA · MLA 与跨 token 压缩</li>
+          <li>连续批处理、投机解码、并行与分离式服务</li>
+          <li>配套 11 讲中文导读 + 23+ 可视化</li>
+        </ul>
+        <div class="book-actions">
+          <a class="primary" href="book.zh.html">打开中文版</a>
+          <a href="book.html">英文原著</a>
+          <a href="md.html?src=guides/lectures/README.md">课程导读</a>
+        </div>
+      </article>
 
-  <ul class="link-list">
-    <li><a href="md.html?src=guides/README.md"><span class="idx">▶</span><span>学习路径总览（中文）<span class="desc">—— 先读这个，了解全貌与推荐路线</span></span></a></li>
-    <li><a href="md.html?src=guides/00-学习路径.md"><span class="idx">▶</span><span>完整学习路线 + 章节对照表<span class="desc">—— 书籍章节 ↔ 讲座 ↔ 导读 三栏对照</span></span></a></li>
-    <li><a href="md.html?src=guides/00-术语表.md"><span class="idx">▶</span><span>中英术语表<span class="desc">—— KV Cache、PagedAttention、roofline 等关键术语</span></span></a></li>
-    <li><a href="md.html?src=guides/00-环境搭建.md"><span class="idx">▶</span><span>环境搭建指南<span class="desc">—— notebook、benchmark、Capstone、本地预览</span></span></a></li>
-  </ul>
+      <article class="book">
+        <div class="book-meta">
+          <span class="chip">Interview Notes</span>
+          <span class="chip warm">面试导向 · 14 章</span>
+        </div>
+        <h3>《Efficient LLM Inference》口袋笔记</h3>
+        <p class="why">偏「怎么答」：精炼要点 + 数字 + 公式，每章 5 道模拟问答，约 70 题覆盖推理工程师高频考点。</p>
+        <ul class="topics">
+          <li>硬件、Transformer 推理机制、KV 优化</li>
+          <li>量化 · 投机解码 · FlashAttention · 并行</li>
+          <li>长上下文、边缘推理、推理时计算扩展</li>
+          <li>可观测性、成本建模与未来方向</li>
+        </ul>
+        <div class="book-actions">
+          <a class="primary" href="md.html?src=llm-notes/README.md">打开目录</a>
+          <a href="md.html?src=llm-notes/01-推理问题.md">从第 1 章开始</a>
+          <a href="md.html?src=llm-notes/附录.md">附录速查</a>
+        </div>
+      </article>
 
-  <h2 class="section-title"><span class="num">02</span>核心内容</h2>
-  <div class="card-grid">
-    <a class="card" href="book.zh.html">
-      <div class="tag">中文 · 27 章</div>
-      <h3>📖 推理工程书籍（中文版）</h3>
-      <p>由 <code>_part_01</code>–<code>_part_07</code> 拼合的中文译本。封面、目录与第 5 章起为中文；第 0–4 章暂用英文原文。</p>
-      <div class="arrow">打开中文书 →</div>
-    </a>
-    <a class="card" href="book.html">
-      <div class="tag">Book · EN</div>
-      <h3>📖 推理工程书籍（英文原著）</h3>
-      <p>完整英文原著，27 章 + 4 个 Breadcrumb。从 Roofline 到 vLLM 解剖、并行、多模态与三个 Capstone。</p>
-      <div class="arrow">打开英文书 →</div>
-    </a>
-    <a class="card" href="visual-walkthroughs.html">
-      <div class="tag">Visual · 23+ 篇</div>
-      <h3>🎬 可视化 Walkthrough 索引</h3>
-      <p>全部交互式可视化讲解的总目录：FFT、Mamba、FlashAttention、RadixAttention 等。</p>
-      <div class="arrow">打开索引 →</div>
-    </a>
-    <a class="card" href="md.html?src=lecture-notes/l13-production-inference-systems/01-production-systems.zh.md">
-      <div class="tag">Notes · 4 篇</div>
-      <h3>📝 生产推理系统笔记</h3>
-      <p>冷启动、金丝雀、缓存感知路由、结构化输出、分离式服务等生产主题（附中文翻译）。</p>
-      <div class="arrow">阅读笔记 →</div>
-    </a>
-  </div>
+      <article class="book">
+        <div class="book-meta">
+          <span class="chip">Philip Kiely</span>
+          <span class="chip warm">产品 / 生产 · 8 章</span>
+        </div>
+        <h3>《Inference Engineering》（Baseten）</h3>
+        <p class="why">从 CUDA 到 Kubernetes 的工程全景：运行时 / 基础设施 / 工具三层，强调多模态与真实部署。</p>
+        <ul class="topics">
+          <li>模型选择、延迟吞吐与规模化先决条件</li>
+          <li>GPU 世代、CUDA、推理引擎与软件栈</li>
+          <li>量化 / 缓存 / 并行 / 分离式等关键技术</li>
+          <li>VLM · ASR/TTS · 容器化 · 多云生产</li>
+        </ul>
+        <div class="book-actions">
+          <a class="primary" href="md.html?src=inference-engineering/README.md">打开目录</a>
+          <a href="md.html?src=inference-engineering/00-前言.md">从前言开始</a>
+          <a href="md.html?src=inference-engineering/08-生产.md">生产章节</a>
+        </div>
+      </article>
+    </div>
+  </section>
 
-  <h2 class="section-title"><span class="num">03</span>每讲中文导读</h2>
-  <p class="lead">11 讲内容的中文导读，每篇包含：本讲讲了什么、前置知识、配套资源、对应书籍章节、实践作业。站点内通过 Markdown 渲染页展示排版效果。</p>
-  <table>
-    <thead><tr><th>#</th><th>主题</th><th>导读</th></tr></thead>
-    <tbody>
-      <tr><td>01</td><td>推理工程导论</td><td><a href="md.html?src=guides/lectures/01-推理工程导论.md">阅读 →</a></td></tr>
-      <tr><td>02</td><td>KV Cache 的善与恶</td><td><a href="md.html?src=guides/lectures/02-KV-Cache-的善与恶.md">阅读 →</a></td></tr>
-      <tr><td>03</td><td>注意力变体 Part 1（MHA/MQA/GQA/MLA）</td><td><a href="md.html?src=guides/lectures/03-注意力变体-Part1.md">阅读 →</a></td></tr>
-      <tr><td>04</td><td>注意力变体 Part 2（滑窗/SSM/Mamba）</td><td><a href="md.html?src=guides/lectures/04-注意力变体-Part2.md">阅读 →</a></td></tr>
-      <tr><td>05</td><td>FlashAttention 1/2/3</td><td><a href="md.html?src=guides/lectures/05-FlashAttention.md">阅读 →</a></td></tr>
-      <tr><td>06</td><td>vLLM 一步的解剖</td><td><a href="md.html?src=guides/lectures/06-vLLM-Step-的解剖.md">阅读 →</a></td></tr>
-      <tr><td>07</td><td>量化</td><td><a href="md.html?src=guides/lectures/07-量化.md">阅读 →</a></td></tr>
-      <tr><td>08</td><td>投机解码</td><td><a href="md.html?src=guides/lectures/08-投机解码.md">阅读 →</a></td></tr>
-      <tr><td>09</td><td>Bonus：推理与 YC</td><td><a href="md.html?src=guides/lectures/09-Bonus-推理与YC.md">阅读 →</a></td></tr>
-      <tr><td>10</td><td>硬件实验（Jetson/RPi/Modal）</td><td><a href="md.html?src=guides/lectures/10-硬件实验.md">阅读 →</a></td></tr>
-      <tr><td>11</td><td>Capstone 项目</td><td><a href="md.html?src=guides/lectures/11-Capstone-项目.md">阅读 →</a></td></tr>
-    </tbody>
-  </table>
+  <section id="map">
+    <div class="section-head">
+      <div>
+        <span class="section-num">02 / 知识地图</span>
+        <h2>你会学到哪些知识点</h2>
+      </div>
+      <p>按主题跳进最合适的入口。每张卡片都是可点击链接。</p>
+    </div>
 
-  <div class="note">
-    <strong>提示：</strong>导读与学习路径通过 <code>md.html</code> 渲染为排版网页（标题、加粗、表格等）。源 Markdown 仍保留在仓库中，也可在 GitHub 页面直接阅读。
-  </div>
+    <div class="map">
+      <a href="book.zh.html#ch03-the-roofline">
+        <div class="label">基础</div>
+        <strong>Roofline 与五指标</strong>
+        <span>TTFT、ITL、吞吐、P99、成本与算术强度</span>
+      </a>
+      <a href="md.html?src=guides/lectures/02-KV-Cache-的善与恶.md">
+        <div class="label">显存</div>
+        <strong>KV Cache</strong>
+        <span>为何 decode 吃带宽，缓存如何成为瓶颈与杠杆</span>
+      </a>
+      <a href="md.html?src=guides/lectures/03-注意力变体-Part1.md">
+        <div class="label">注意力</div>
+        <strong>MHA / MQA / GQA / MLA</strong>
+        <span>跨头压缩：用更少 KV 换吞吐</span>
+      </a>
+      <a href="md.html?src=guides/lectures/04-注意力变体-Part2.md">
+        <div class="label">长序列</div>
+        <strong>滑窗 · SSM · Mamba</strong>
+        <span>跨 token 压缩与线性时间序列模型</span>
+      </a>
+      <a href="md.html?src=guides/lectures/05-FlashAttention.md">
+        <div class="label">内核</div>
+        <strong>FlashAttention 1/2/3</strong>
+        <span>Tiling、online softmax、与硬件对齐的内核</span>
+      </a>
+      <a href="md.html?src=guides/lectures/06-vLLM-Step-的解剖.md">
+        <div class="label">Serving</div>
+        <strong>PagedAttention · vLLM</strong>
+        <span>分页 KV、前缀缓存、连续批处理的一步解剖</span>
+      </a>
+      <a href="md.html?src=guides/lectures/07-量化.md">
+        <div class="label">精度</div>
+        <strong>量化 GPTQ / AWQ</strong>
+        <span>权重量化如何抬升 decode 吞吐</span>
+      </a>
+      <a href="md.html?src=guides/lectures/08-投机解码.md">
+        <div class="label">加速</div>
+        <strong>投机解码</strong>
+        <span>Draft / Verify、树验证、MTP、EAGLE</span>
+      </a>
+      <a href="md.html?src=llm-notes/09-并行.md">
+        <div class="label">扩展</div>
+        <strong>张量 / 流水线 / 专家并行</strong>
+        <span>多卡与 MoE 上的并行策略</span>
+      </a>
+      <a href="md.html?src=lecture-notes/l13-production-inference-systems/03-disaggregated-serving-deep-dive.zh.md">
+        <div class="label">架构</div>
+        <strong>分离式 Prefill / Decode</strong>
+        <span>拆分阶段、缓存感知路由与扩缩容</span>
+      </a>
+      <a href="md.html?src=inference-engineering/07-多模态.md">
+        <div class="label">多模态</div>
+        <strong>VLM · ASR · TTS · 视频</strong>
+        <span>不止文本：多模态推理的工程差异</span>
+      </a>
+      <a href="md.html?src=inference-engineering/08-生产.md">
+        <div class="label">生产</div>
+        <strong>容器化 · 多云 · 自动扩缩</strong>
+        <span>把引擎放进可运维的生产环境</span>
+      </a>
+    </div>
+  </section>
 
-  <h2 class="section-title"><span class="num">04</span>原始讲座资料</h2>
-  <p class="lead">所有原始资料（PDF、Jupyter notebook、实验代码、Links.txt）原样保留在仓库的 <code>lectures/</code> 目录中，未做删改。</p>
-  <ul class="link-list">
-    <li><a href="https://github.com/VanGong1999/ai-inference/tree/main/lectures"><span class="idx">🗂</span><span>lectures/ 原始资料目录<span class="desc">—— 按 00–11 编号整理的 13 个原始讲座目录</span></span></a></li>
-  </ul>
+  <section id="path">
+    <div class="section-head">
+      <div>
+        <span class="section-num">03 / 导航与导读</span>
+        <h2>从路线图进入细节</h2>
+      </div>
+      <p>先建立地图，再按讲座深入；生产笔记补齐书本之外的线上系统题。</p>
+    </div>
+
+    <div class="split">
+      <div class="panel">
+        <h3>11 讲中文导读</h3>
+        <p class="sub">每讲：讲了什么 · 前置知识 · 资源 · 作业</p>
+        <div class="rows">
+          <a class="row" href="md.html?src=guides/lectures/01-推理工程导论.md"><span class="idx">01</span><span>推理工程导论</span><span class="go">阅读</span></a>
+          <a class="row" href="md.html?src=guides/lectures/02-KV-Cache-的善与恶.md"><span class="idx">02</span><span>KV Cache 的善与恶</span><span class="go">阅读</span></a>
+          <a class="row" href="md.html?src=guides/lectures/03-注意力变体-Part1.md"><span class="idx">03</span><span>注意力变体 Part 1</span><span class="go">阅读</span></a>
+          <a class="row" href="md.html?src=guides/lectures/04-注意力变体-Part2.md"><span class="idx">04</span><span>注意力变体 Part 2</span><span class="go">阅读</span></a>
+          <a class="row" href="md.html?src=guides/lectures/05-FlashAttention.md"><span class="idx">05</span><span>FlashAttention</span><span class="go">阅读</span></a>
+          <a class="row" href="md.html?src=guides/lectures/06-vLLM-Step-的解剖.md"><span class="idx">06</span><span>vLLM 一步的解剖</span><span class="go">阅读</span></a>
+          <a class="row" href="md.html?src=guides/lectures/07-量化.md"><span class="idx">07</span><span>量化</span><span class="go">阅读</span></a>
+          <a class="row" href="md.html?src=guides/lectures/08-投机解码.md"><span class="idx">08</span><span>投机解码</span><span class="go">阅读</span></a>
+          <a class="row" href="md.html?src=guides/lectures/09-Bonus-推理与YC.md"><span class="idx">09</span><span>Bonus：推理与 YC</span><span class="go">阅读</span></a>
+          <a class="row" href="md.html?src=guides/lectures/10-硬件实验.md"><span class="idx">10</span><span>硬件实验</span><span class="go">阅读</span></a>
+          <a class="row" href="md.html?src=guides/lectures/11-Capstone-项目.md"><span class="idx">11</span><span>Capstone 项目</span><span class="go">阅读</span></a>
+        </div>
+        <p class="note">全部导读索引：<a href="md.html?src=guides/lectures/README.md">guides/lectures</a> · 术语表：<a href="md.html?src=guides/00-术语表.md">00-术语表</a></p>
+      </div>
+
+      <div class="panel">
+        <h3>从这里开始</h3>
+        <p class="sub">路线、环境、可视化与生产笔记</p>
+        <div class="start-grid">
+          <a href="md.html?src=guides/README.md">
+            <strong>学习路径总览</strong>
+            <span>先读这个，建立全貌</span>
+          </a>
+          <a href="md.html?src=guides/00-学习路径.md">
+            <strong>章节对照表</strong>
+            <span>书籍 ↔ 讲座 ↔ 导读</span>
+          </a>
+          <a href="md.html?src=guides/00-环境搭建.md">
+            <strong>环境搭建</strong>
+            <span>Notebook / Capstone / 预览</span>
+          </a>
+          <a href="visual-walkthroughs.html">
+            <strong>可视化 Walkthroughs</strong>
+            <span>23+ 交互式讲解</span>
+          </a>
+          <a href="md.html?src=lecture-notes/l13-production-inference-systems/README.md">
+            <strong>生产系统笔记</strong>
+            <span>4 篇中英对照</span>
+          </a>
+          <a href="https://github.com/VanGong1999/ai-inference/tree/main/lectures">
+            <strong>原始讲座资料</strong>
+            <span>PDF / Notebook / 代码</span>
+          </a>
+        </div>
+
+        <h3 style="margin-top:22px">生产笔记速链</h3>
+        <p class="sub">冷启动、结构化输出、分离式服务、面试终答</p>
+        <div class="rows">
+          <a class="row" href="md.html?src=lecture-notes/l13-production-inference-systems/01-production-systems.zh.md"><span class="idx">01</span><span>生产系统设计</span><span class="go">中文</span></a>
+          <a class="row" href="md.html?src=lecture-notes/l13-production-inference-systems/02-structured-output-and-evals.zh.md"><span class="idx">02</span><span>结构化输出与评测</span><span class="go">中文</span></a>
+          <a class="row" href="md.html?src=lecture-notes/l13-production-inference-systems/03-disaggregated-serving-deep-dive.zh.md"><span class="idx">03</span><span>分离式服务深挖</span><span class="go">中文</span></a>
+          <a class="row" href="md.html?src=lecture-notes/l13-production-inference-systems/04-final-system-design-interview-answer.zh.md"><span class="idx">04</span><span>系统设计面试终答</span><span class="go">中文</span></a>
+        </div>
+      </div>
+    </div>
+  </section>
 
   <footer>
-    <p>基于 Vizuara《Inference Engineering》课程整理 · 中文导读层为新增内容，英文原文保留。</p>
+    <p>三本书 + 课程导读 + Walkthrough · 中文导航层叠加于英文原文之上</p>
     <p><a href="https://github.com/VanGong1999/ai-inference">GitHub 仓库</a></p>
   </footer>
 

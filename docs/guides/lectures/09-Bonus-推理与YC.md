@@ -26,7 +26,7 @@
 
 | 资源 | 说明 |
 |---|---|
-| [Inference Ideas Journal](../../ai-chip-ideas-guide/) | 推理想法日志（本讲核心材料） |
+| [Inference Ideas Journal](../../ai-chip-ideas-guide/index.zh.html) | 推理想法日志（本讲核心材料） |
 | [Miro 课程笔记](https://miro.com/app/board/uXjVHaJujV8=/?share_link_id=874832732792) | 本讲板书与笔记 |
 
 ## 对应书籍章节

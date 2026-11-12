@@ -2,6 +2,12 @@
 
 欢迎来到本仓库的**中文导读层**。这里的所有内容都是**新增的中文导航**，用于帮助你理解英文原文（书籍、可视化 Walkthrough、笔记）。英文原文本身保持原样，未做任何删改。
 
+> 📖 姊妹中文书：
+> - [`../llm-notes/README.md`](../llm-notes/README.md)：《Efficient LLM Inference — Interview Pocket Notes》中文全译本（面试导向，14 章 + 附录 + 约 70 道模拟问答）
+> - [`../inference-engineering/README.md`](../inference-engineering/README.md)：Philip Kiely《Inference Engineering》中文全译本（产品 / 生产 / 多模态导向）
+>
+> 二者与本导读层的系统学习路线互补。
+
 ## 导读层包含什么
 
 | 文件 | 作用 |
@@ -9,14 +15,14 @@
 | [`00-学习路径.md`](00-学习路径.md) | 完整学习路线 + 书籍章节 ↔ 讲座 ↔ 导读 三栏对照表 |
 | [`00-术语表.md`](00-术语表.md) | 中英对照术语表（KV Cache、PagedAttention、roofline 等） |
 | [`00-环境搭建.md`](00-环境搭建.md) | 如何打开 notebook、跑 benchmark、搭 Capstone 环境、本地预览 |
-| [`lectures/`](lectures/) | 11 篇每讲中文导读 |
+| [`lectures/README.md`](lectures/README.md) | 11 篇每讲中文导读 |
 
 ## 建议的阅读顺序
 
 ### 第 0 步：了解全貌
 
 - 先读本文件与 [`00-学习路径.md`](00-学习路径.md)，建立对整个学科的地图认知。
-- 打开 [`../book.zh.html`](../book.zh.html)（中文版）或 [`../book.zh.html`](../book.zh.html)（英文原著）的目录页，浏览 27 章的结构。
+- 打开 [`../book.zh.html`](../book.zh.html)（中文版）或 [`../book.html`](../book.html)（英文原著）的目录页，浏览 27 章的结构。
 
 ### 第 1 步：打基础（书籍 ch0–ch4）
 
@@ -59,7 +65,7 @@
 - **ch19** vLLM 一步的解剖
 - **ch20** 推理引擎全景（2026）
 
-配套笔记（含中文翻译）：[`../lecture-notes/l13-production-inference-systems/`](../lecture-notes/l13-production-inference-systems/)
+配套笔记（含中文翻译）：[`../lecture-notes/l13-production-inference-systems/README.md`](../lecture-notes/l13-production-inference-systems/README.md)
 
 ### 第 5 步：前沿与实战（书籍 ch21–ch26 + 讲座 10/11）
 

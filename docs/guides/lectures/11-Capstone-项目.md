@@ -46,9 +46,9 @@ Score =
 
 | 资源 | 说明 |
 |---|---|
-| [InferTutor Arena Capstone（本地）](../../../lectures/10-hardware-labs/infertutor-arena-capstone-main/) | Capstone 主仓库（代码本地拷贝） |
-| [InferTutor_Arena_Capstone.pdf](../../../lectures/10-hardware-labs/infertutor-arena-capstone-main/InferTutor_Arena_Capstone.pdf) | 作业 PDF（本地，不入库） |
-| [Modal_vLLM_Runbook.pdf](../../../lectures/10-hardware-labs/infertutor-arena-capstone-main/Modal_vLLM_Runbook.pdf) | Runbook PDF（本地，不入库） |
+| [InferTutor Arena Capstone](https://github.com/VanGong1999/ai-inference/tree/main/lectures/10-hardware-labs/infertutor-arena-capstone-main) | Capstone 主仓库（代码） |
+| InferTutor_Arena_Capstone.pdf | 作业 PDF（本地保留，体积原因未入库） |
+| Modal_vLLM_Runbook.pdf / [Markdown 版](https://github.com/VanGong1999/ai-inference/blob/main/lectures/10-hardware-labs/infertutor-arena-capstone-main/Modal_vLLM_Runbook.md) | Runbook（PDF 本地；仓库内有 Markdown） |
 
 ### 原始资料
 

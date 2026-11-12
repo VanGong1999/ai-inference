@@ -71,6 +71,9 @@ https://vanguong1999.github.io/ai-inference/
 - 中文书籍：`https://vanguong1999.github.io/ai-inference/book.zh.html`
 - 英文书籍：`https://vanguong1999.github.io/ai-inference/book.html`
 - 导读渲染：`https://vanguong1999.github.io/ai-inference/md.html?src=guides/README.md`
+- 面试笔记：`https://vanguong1999.github.io/ai-inference/md.html?src=llm-notes/README.md`
+- Kiely 书：`https://vanguong1999.github.io/ai-inference/md.html?src=inference-engineering/README.md`
+- 生产笔记：`https://vanguong1999.github.io/ai-inference/md.html?src=lecture-notes/l13-production-inference-systems/README.md`
 - Walkthrough 索引：`https://vanguong1999.github.io/ai-inference/visual-walkthroughs.html`
 
 ## 5. 验证清单
@@ -78,7 +81,10 @@ https://vanguong1999.github.io/ai-inference/
 部署后逐项检查：
 
 - [ ] 中文门户首页正常渲染（标题、卡片、链接）。
-- [ ] `book.html` 正常加载，27 章插图（`figures/`）显示正常。
+- [ ] `book.html` / `book.zh.html` 正常加载，27 章插图（`figures/`）显示正常。
+- [ ] `md.html?src=llm-notes/README.md` 可打开，且目录内各章 Markdown 可互相跳转。
+- [ ] `md.html?src=inference-engineering/README.md` 可打开，且目录内各章 Markdown 可互相跳转。
+- [ ] `md.html?src=lecture-notes/l13-production-inference-systems/README.md` 列出全部 4 篇笔记。
 - [ ] `visual-walkthroughs.html` 中所有内部链接可用（已从绝对路径改为相对路径）。
 - [ ] 各 walkthrough HTML（FFT、Mamba、FlashAttention、RadixAttention 等）正常打开。
 - [ ] 根 `README.md` 与 `docs/guides/*.md` 在 GitHub 仓库页面正常渲染。

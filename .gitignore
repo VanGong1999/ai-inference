@@ -17,3 +17,6 @@ venv/
 
 # Large upstream trees kept for local builds only (do not push)
 lectures/05-flash-attention/flash-attention-main/
+
+Inference Engineering.pdf
+Inference Engineering.epub
