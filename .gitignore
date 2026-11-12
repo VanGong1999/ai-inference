@@ -14,3 +14,6 @@ venv/
 
 # PDFs (too large for GitHub; keep local only)
 *.pdf
+
+# Large upstream trees kept for local builds only (do not push)
+lectures/05-flash-attention/flash-attention-main/

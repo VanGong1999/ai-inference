@@ -90,4 +90,4 @@ https://vanguong1999.github.io/ai-inference/
 | 首页 404 | 确认 Pages 目录选的是 `/docs`，且仓库根存在 `docs/index.html` |
 | 插图不显示 | 确认 `docs/figures/` 已提交，链接为相对路径 |
 | Markdown 导读在 Pages 上显示为纯文本 | 正常现象，`.nojekyll` 禁用了 Jekyll；在 GitHub 仓库页面阅读即可 |
-| 内部链接跳到旧站点 | 确认 `docs/*.html` 中已无 `vizuaraai.github.io/convolution-musical-journey` 前缀（第三方外部链接除外） |
+| 内部链接跳到旧站点 | 确认 `docs/` 与导读中 walkthrough 已指向本地路径（`dna-of-a-transformer/` 等），不再依赖 `vizuaraai.github.io` |

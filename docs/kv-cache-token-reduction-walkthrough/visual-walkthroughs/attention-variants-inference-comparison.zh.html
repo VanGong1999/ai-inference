@@ -1,0 +1,1805 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>注意力推理优化</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --purple: #7c5cfc;
+  --blue: #3b82f6;
+  --green: #10b981;
+  --orange: #f59e0b;
+  --red: #ef4444;
+  --pink: #ec4899;
+  --bg: #ffffff;
+  --bg-alt: #faf9f7;
+  --border: #e8e5e0;
+  --text: #1a1a1a;
+  --text-secondary: #6b7280;
+  --card-shadow: 0 1px 2px rgba(0,0,0,0.04);
+  --max-w: 860px;
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: 'Inter', -apple-system, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  line-height: 1.7;
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* NAV */
+.nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  background: rgba(255,255,255,0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 24px;
+}
+.nav-inner {
+  max-width: var(--max-w); margin: 0 auto;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.nav-brand { font-family: 'Instrument Serif', serif; font-size: 18px; color: var(--purple); }
+.nav-links { display: flex; gap: 24px; }
+.nav-links a {
+  font-size: 13px; color: var(--text-secondary); text-decoration: none;
+  font-weight: 500; transition: color 0.2s;
+}
+.nav-links a:hover { color: var(--purple); }
+
+/* LAYOUT */
+.container { max-width: var(--max-w); margin: 0 auto; padding: 0 24px; }
+section { padding: 80px 0; }
+section.alt { background: var(--bg-alt); }
+.hero-section { padding-top: 140px; padding-bottom: 80px; }
+
+/* TYPOGRAPHY */
+h1 {
+  font-family: 'Instrument Serif', serif;
+  font-size: clamp(36px, 5vw, 52px);
+  line-height: 1.15;
+  font-weight: 400;
+  background: linear-gradient(135deg, var(--purple), var(--blue));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 20px;
+}
+h2 {
+  font-family: 'Instrument Serif', serif;
+  font-size: clamp(28px, 4vw, 38px);
+  font-weight: 400;
+  line-height: 1.2;
+  margin-bottom: 12px;
+}
+h3 {
+  font-family: 'Instrument Serif', serif;
+  font-size: 24px;
+  font-weight: 400;
+  margin-bottom: 10px;
+  color: var(--text);
+}
+h4 {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  margin-bottom: 8px;
+}
+.subtitle {
+  font-size: 17px;
+  color: var(--text-secondary);
+  line-height: 1.7;
+  max-width: 640px;
+  font-weight: 400;
+}
+.part-label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--purple);
+  margin-bottom: 8px;
+}
+p { margin-bottom: 16px; }
+strong { font-weight: 600; }
+
+/* CARDS */
+.card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 28px;
+  box-shadow: var(--card-shadow);
+  margin-bottom: 20px;
+}
+.card-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin: 24px 0;
+}
+@media (max-width: 600px) {
+  .card-grid { grid-template-columns: 1fr; }
+}
+
+/* CALLOUT */
+.callout {
+  border-left: 3px solid var(--purple);
+  background: rgba(124,92,252,0.04);
+  border-radius: 0 12px 12px 0;
+  padding: 20px 24px;
+  margin: 24px 0;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.callout.blue { border-left-color: var(--blue); background: rgba(59,130,246,0.04); }
+.callout.green { border-left-color: var(--green); background: rgba(16,185,129,0.04); }
+.callout.orange { border-left-color: var(--orange); background: rgba(245,158,11,0.04); }
+.callout.red { border-left-color: var(--red); background: rgba(239,68,68,0.04); }
+
+/* CODE / MONO */
+code, .mono {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+}
+code {
+  background: #f3f2ef;
+  padding: 2px 7px;
+  border-radius: 5px;
+}
+.formula {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
+  background: #f8f7f5;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 24px;
+  margin: 16px 0;
+  text-align: center;
+  color: var(--purple);
+  font-weight: 500;
+}
+
+/* TABLES */
+.table-wrap {
+  overflow-x: auto;
+  margin: 24px 0;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+th {
+  background: #f8f7f5;
+  font-weight: 600;
+  text-align: left;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+}
+td {
+  padding: 12px 16px;
+  border-bottom: 1px solid #f0eeeb;
+  vertical-align: top;
+}
+tr:last-child td { border-bottom: none; }
+tr:nth-child(even) td { background: rgba(250,249,247,0.5); }
+td:first-child { font-weight: 600; white-space: nowrap; }
+
+/* BAR CHARTS */
+.bar-chart { margin: 24px 0; }
+.bar-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 10px;
+  gap: 12px;
+}
+.bar-label {
+  width: 140px;
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: right;
+}
+.bar-track {
+  flex: 1;
+  height: 28px;
+  background: #f3f2ef;
+  border-radius: 8px;
+  overflow: hidden;
+  position: relative;
+}
+.bar-fill {
+  height: 100%;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  padding-left: 10px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 600;
+  color: white;
+  transition: width 1s ease;
+  min-width: fit-content;
+}
+.bar-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--text-secondary);
+  width: 80px;
+  flex-shrink: 0;
+  text-align: right;
+}
+
+/* QUADRANT */
+.quadrant-wrap {
+  margin: 32px 0;
+  display: flex;
+  justify-content: center;
+}
+.quadrant {
+  width: 520px;
+  max-width: 100%;
+  aspect-ratio: 1;
+  position: relative;
+  border-left: 2px solid var(--text);
+  border-bottom: 2px solid var(--text);
+}
+.quadrant-xlabel, .quadrant-ylabel {
+  position: absolute;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.quadrant-xlabel { bottom: -32px; left: 50%; transform: translateX(-50%); }
+.quadrant-ylabel {
+  left: -44px; top: 50%;
+  transform: translateY(-50%) rotate(-90deg);
+  white-space: nowrap;
+}
+.quadrant-label {
+  position: absolute;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.quadrant-label.low-x { bottom: -18px; left: 4px; }
+.quadrant-label.high-x { bottom: -18px; right: 0; }
+.quadrant-label.low-y { left: -28px; bottom: 4px; font-size: 9px; }
+.quadrant-label.high-y { left: -28px; top: 4px; font-size: 9px; }
+
+.q-item {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.q-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid white;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+}
+.q-name {
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  padding: 2px 8px;
+  background: white;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+}
+
+/* BUBBLE CHART */
+.bubble-chart-wrap {
+  width: 600px;
+  max-width: 100%;
+  aspect-ratio: 1;
+  position: relative;
+  border-left: 2px solid var(--text);
+  border-bottom: 2px solid var(--text);
+  background: #faf9f7;
+  border-radius: 0 12px 0 0;
+}
+.bubble-xlabel {
+  position: absolute;
+  bottom: -32px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.bubble-ylabel {
+  position: absolute;
+  left: -44px;
+  top: 50%;
+  transform: translateY(-50%) rotate(-90deg);
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.bubble-axis-low-x { position: absolute; bottom: -18px; left: 4px; font-size: 9px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; }
+.bubble-axis-high-x { position: absolute; bottom: -18px; right: 0; font-size: 9px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; }
+.bubble-axis-low-y { position: absolute; left: -28px; bottom: 4px; font-size: 9px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; }
+.bubble-axis-high-y { position: absolute; left: -28px; top: 4px; font-size: 9px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; }
+.bubble-item {
+  position: absolute;
+  transform: translate(-50%, 50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  z-index: 1;
+  transition: transform 0.2s;
+}
+.bubble-item:hover { z-index: 10; transform: translate(-50%, 50%) scale(1.12); }
+.bubble-circle {
+  border-radius: 50%;
+  border: 2px solid;
+  transition: box-shadow 0.2s;
+}
+.bubble-item:hover .bubble-circle {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+}
+.bubble-label {
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-align: center;
+  line-height: 1.2;
+  margin-top: 2px;
+  color: var(--text);
+}
+
+/* KV VISUAL */
+.kv-visual {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin: 24px 0;
+}
+.kv-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.kv-row-label {
+  width: 60px;
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: right;
+}
+.kv-blocks {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.kv-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.kv-cell {
+  width: 28px;
+  height: 16px;
+  border-radius: 3px;
+  font-size: 8px;
+  font-weight: 600;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.kv-cell.k { background: var(--blue); }
+.kv-cell.v { background: var(--green); }
+.kv-cell.q { background: var(--purple); opacity: 0.7; }
+.kv-cell.shared {
+  width: 100%;
+  border: 2px dashed;
+}
+.kv-group-label {
+  font-size: 9px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+/* ATTENTION FAN */
+.fan-visual {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 32px;
+  margin: 24px 0;
+  padding: 24px;
+  background: #faf9f7;
+  border-radius: 12px;
+}
+.fan-col {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+}
+.fan-token {
+  width: 36px;
+  height: 20px;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 600;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.fan-token.active { background: var(--purple); }
+.fan-token.past { background: #d4d0c8; }
+.fan-token.attended { background: var(--blue); }
+.fan-token.window { background: var(--orange); }
+.fan-token.state { background: var(--green); width: 56px; height: 56px; border-radius: 12px; font-size: 11px; }
+.fan-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-top: 6px;
+}
+.fan-arrow {
+  font-size: 20px;
+  color: var(--text-secondary);
+}
+
+/* TIMELINE */
+.timeline {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  margin: 24px 0;
+  padding: 20px 24px;
+  background: #faf9f7;
+  border-radius: 12px;
+  height: 120px;
+}
+.timeline-bar {
+  flex: 1;
+  background: var(--red);
+  border-radius: 4px 4px 0 0;
+  min-width: 16px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 4px;
+  font-size: 8px;
+  font-weight: 700;
+  color: white;
+  opacity: 0.6;
+  transition: height 0.5s ease;
+}
+.timeline-bar:nth-child(n+6) { opacity: 0.7; }
+.timeline-bar:nth-child(n+10) { opacity: 0.8; }
+.timeline-bar:nth-child(n+14) { opacity: 0.9; }
+.timeline-bar:last-child { opacity: 1; }
+
+/* DECISION */
+.decision-item {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  padding: 16px 0;
+  border-bottom: 1px solid #f0eeeb;
+}
+.decision-item:last-child { border-bottom: none; }
+.decision-if {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  width: 240px;
+}
+.decision-then {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--purple);
+}
+.decision-arrow {
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+/* MHA/GQA/MQA VISUAL */
+.attn-compare {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  margin: 28px 0;
+}
+.attn-variant {
+  background: #faf9f7;
+  border-radius: 12px;
+  padding: 20px 24px;
+}
+.attn-variant-title {
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.attn-variant-title .badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 6px;
+  color: white;
+}
+.head-blocks {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: stretch;
+}
+.head-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 8px 6px;
+  border-radius: 8px;
+  border: 1px dashed transparent;
+}
+.head-group.grouped {
+  border-color: #d0ccc4;
+  background: rgba(255,255,255,0.6);
+}
+.head-cell {
+  width: 22px;
+  height: 14px;
+  border-radius: 3px;
+  font-size: 7px;
+  font-weight: 700;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.head-cell.q { background: var(--purple); }
+.head-cell.k { background: var(--blue); }
+.head-cell.v { background: var(--green); }
+.head-pair-label {
+  font-size: 8px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+/* GROWING GRID */
+.kv-growth {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  margin: 20px 0;
+  padding: 16px;
+  background: #faf9f7;
+  border-radius: 12px;
+}
+.kv-growth-col {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: center;
+}
+.kv-growth-cell {
+  width: 32px;
+  height: 10px;
+  border-radius: 2px;
+}
+.kv-growth-label {
+  font-size: 9px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+  font-weight: 500;
+}
+
+/* FADE IN ANIMATIONS */
+.fade-in {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+.fade-in.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* DIVIDER */
+.divider {
+  height: 1px;
+  background: var(--border);
+  margin: 40px 0;
+}
+
+/* FOOTER */
+footer {
+  background: var(--bg-alt);
+  border-top: 1px solid var(--border);
+  padding: 40px 24px;
+  text-align: center;
+}
+.footer-brand {
+  font-family: 'Instrument Serif', serif;
+  font-size: 20px;
+  color: var(--purple);
+  margin-bottom: 6px;
+}
+.footer-sub {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* NUMBERED LIST */
+.num-list { margin: 16px 0; }
+.num-item {
+  display: flex;
+  gap: 14px;
+  margin-bottom: 14px;
+  align-items: flex-start;
+}
+.num-circle {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--purple);
+  color: white;
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.num-text { font-size: 14px; line-height: 1.6; }
+
+/* TAG */
+.tag {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 6px;
+  margin-right: 4px;
+  margin-bottom: 4px;
+}
+.tag.purple { background: rgba(124,92,252,0.1); color: var(--purple); }
+.tag.blue { background: rgba(59,130,246,0.1); color: var(--blue); }
+.tag.green { background: rgba(16,185,129,0.1); color: var(--green); }
+.tag.orange { background: rgba(245,158,11,0.1); color: var(--orange); }
+.tag.red { background: rgba(239,68,68,0.1); color: var(--red); }
+.tag.pink { background: rgba(236,72,153,0.1); color: var(--pink); }
+
+/* RESPONSIVE */
+@media (max-width: 640px) {
+  .nav-links { display: none; }
+  .bar-label { width: 80px; font-size: 11px; }
+  .bar-value { width: 60px; font-size: 11px; }
+  .quadrant { width: 100%; }
+  .decision-item { flex-direction: column; gap: 6px; }
+  .decision-if { width: auto; }
+  .attn-variant { padding: 16px; }
+  section { padding: 48px 0; }
+}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="nav">
+  <div class="nav-inner">
+    <div class="nav-brand">注意力变体</div>
+    <div class="nav-links">
+      <a href="#memory">内存</a>
+      <a href="#compute">计算</a>
+      <a href="#complete">完整图景</a>
+    </div>
+  </div>
+</nav>
+
+<!-- PRESENTS -->
+<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:100px 24px 32px;background:#fff;">
+  <img src="vizlogo.png" alt="Vizuara AI Labs" style="width:80px;height:80px;border-radius:16px;margin-bottom:16px;">
+  <div style="font-family:'Inter',sans-serif;font-size:13px;letter-spacing:3px;text-transform:uppercase;color:#6b7280;font-weight:500;">Vizuara AI Labs</div>
+  <div style="font-family:'Instrument Serif',serif;font-style:italic;font-size:18px;color:#1a1a1a;margin-top:6px;">倾情呈现</div>
+</div>
+
+<!-- HERO -->
+<section class="hero-section">
+  <div class="container fade-in">
+    <h1>注意力推理<br>优化</h1>
+    <p class="subtitle">不同的注意力变体如何在推理过程中优化内存和计算，以及为什么两者都很重要。</p>
+  </div>
+</section>
+
+<!-- INTRO -->
+<section class="alt">
+  <div class="container">
+    <div class="fade-in">
+      <h4 style="color:var(--purple);">为什么内存和计算都很重要</h4>
+      <h2>两种资源，一个瓶颈</h2>
+      <p>在推理（自回归生成）过程中，每个新 token 都需要 <strong>两样东西</strong>：</p>
+      <div class="num-list">
+        <div class="num-item">
+          <div class="num-circle">1</div>
+          <div class="num-text"><strong>内存</strong>，用于存储过去的上下文（KV 缓存或循环状态）。它随着每个 token 的生成而增长，并决定了你可以同时服务多少个序列。</div>
+        </div>
+        <div class="num-item">
+          <div class="num-circle">2</div>
+          <div class="num-text"><strong>计算</strong>，用于将新 token 与所有过去的上下文进行处理。这决定了每个 token 生成需要多长时间，以及延迟是否会在长序列下退化。</div>
+        </div>
+      </div>
+      <p>在短序列下，两者都不是问题。在长序列（100K+ token）下，<strong>两者</strong>都成为瓶颈。不同的技术优化不同的维度。有些减少内存，有些减少计算，有些两者都减少。</p>
+    </div>
+
+    <div class="fade-in" style="margin-top:48px;">
+      <h3 style="text-align:center; margin-bottom:24px;">优化全景图</h3>
+      <div class="quadrant-wrap">
+        <div class="quadrant">
+          <div class="quadrant-xlabel">内存优化</div>
+          <div class="quadrant-ylabel">计算优化</div>
+          <div class="quadrant-label low-x">低</div>
+          <div class="quadrant-label high-x">高</div>
+          <div class="quadrant-label low-y">低</div>
+          <div class="quadrant-label high-y">高</div>
+
+          <!-- Grid lines -->
+          <div style="position:absolute;left:50%;top:0;bottom:0;border-left:1px dashed #e0ddd8;"></div>
+          <div style="position:absolute;top:50%;left:0;right:0;border-top:1px dashed #e0ddd8;"></div>
+
+          <!-- Items -->
+          <div class="q-item" style="left:12%;bottom:15%;">
+            <div class="q-dot" style="background:var(--red);"></div>
+            <div class="q-name">完整 MHA</div>
+          </div>
+          <div class="q-item" style="left:55%;bottom:15%;">
+            <div class="q-dot" style="background:var(--blue);"></div>
+            <div class="q-name">MQA</div>
+          </div>
+          <div class="q-item" style="left:42%;bottom:22%;">
+            <div class="q-dot" style="background:var(--blue);"></div>
+            <div class="q-name">GQA</div>
+          </div>
+          <div class="q-item" style="left:52%;bottom:28%;">
+            <div class="q-dot" style="background:var(--pink);"></div>
+            <div class="q-name">MLA</div>
+          </div>
+          <div class="q-item" style="left:45%;bottom:58%;">
+            <div class="q-dot" style="background:var(--orange);"></div>
+            <div class="q-name">滑动窗口</div>
+          </div>
+          <div class="q-item" style="left:82%;bottom:78%;">
+            <div class="q-dot" style="background:var(--green);"></div>
+            <div class="q-name">线性注意力</div>
+          </div>
+          <div class="q-item" style="left:78%;bottom:85%;">
+            <div class="q-dot" style="background:var(--green);"></div>
+            <div class="q-name">SSM (S4)</div>
+          </div>
+          <div class="q-item" style="left:85%;bottom:90%;">
+            <div class="q-dot" style="background:var(--green);"></div>
+            <div class="q-name">Mamba</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- BUBBLE CHART: Memory × Compute × Quality -->
+    <div class="fade-in" style="margin-top:64px;">
+      <h3 style="text-align:center; margin-bottom:8px;">完整的权衡：内存 &times; 计算 &times; 质量</h3>
+      <p style="text-align:center;color:var(--text-secondary);font-size:14px;margin-bottom:24px;">
+        二维视角隐藏了一个关键维度：<strong>模型质量</strong>。这里，气泡大小表示质量 &mdash; 越大越好。注意 SSM 是如何缩小的。
+      </p>
+
+      <div style="display:flex;justify-content:center;">
+        <div class="bubble-chart-wrap">
+          <!-- Axes -->
+          <div class="bubble-ylabel">计算效率 &rarr;</div>
+          <div class="bubble-xlabel">内存效率 &rarr;</div>
+          <div class="bubble-axis-low-x">低</div>
+          <div class="bubble-axis-high-x">高</div>
+          <div class="bubble-axis-low-y">低</div>
+          <div class="bubble-axis-high-y">高</div>
+
+          <!-- Grid -->
+          <div style="position:absolute;left:50%;top:0;bottom:0;border-left:1px dashed #e8e5e0;"></div>
+          <div style="position:absolute;top:50%;left:0;right:0;border-top:1px dashed #e8e5e0;"></div>
+          <div style="position:absolute;left:25%;top:0;bottom:0;border-left:1px dashed #f0eeea;"></div>
+          <div style="position:absolute;left:75%;top:0;bottom:0;border-left:1px dashed #f0eeea;"></div>
+          <div style="position:absolute;top:25%;left:0;right:0;border-top:1px dashed #f0eeea;"></div>
+          <div style="position:absolute;top:75%;left:0;right:0;border-top:1px dashed #f0eeea;"></div>
+
+          <!-- Quadrant labels -->
+          <div style="position:absolute;right:12px;top:12px;font-size:10px;font-weight:600;color:#10b98140;text-transform:uppercase;letter-spacing:1px;">最佳权衡</div>
+          <div style="position:absolute;left:12px;bottom:12px;font-size:10px;font-weight:600;color:#ef444440;text-transform:uppercase;letter-spacing:1px;">最差权衡</div>
+
+          <!-- Bubbles: positioned by (memoryEff%, computeEff%), sized by quality -->
+          <!-- Full MHA: mem=8%, comp=8%, quality=98 → size=54px -->
+          <div class="bubble-item" style="left:8%;bottom:8%;" data-tip="完整 MHA——质量最佳，效率最差">
+            <div class="bubble-circle" style="width:54px;height:54px;background:rgba(239,68,68,0.15);border-color:var(--red);"></div>
+            <div class="bubble-label">完整 MHA</div>
+          </div>
+
+          <!-- GQA: mem=38%, comp=10%, quality=93 → size=50px -->
+          <div class="bubble-item" style="left:38%;bottom:10%;">
+            <div class="bubble-circle" style="width:50px;height:50px;background:rgba(59,130,246,0.12);border-color:var(--blue);"></div>
+            <div class="bubble-label">GQA</div>
+          </div>
+
+          <!-- MQA: mem=52%, comp=10%, quality=82 → size=44px -->
+          <div class="bubble-item" style="left:52%;bottom:10%;">
+            <div class="bubble-circle" style="width:44px;height:44px;background:rgba(59,130,246,0.12);border-color:var(--blue);"></div>
+            <div class="bubble-label">MQA</div>
+          </div>
+
+          <!-- MLA: mem=58%, comp=12%, quality=92 → size=50px -->
+          <div class="bubble-item" style="left:58%;bottom:14%;">
+            <div class="bubble-circle" style="width:50px;height:50px;background:rgba(236,72,153,0.12);border-color:var(--pink);"></div>
+            <div class="bubble-label">MLA</div>
+          </div>
+
+          <!-- GQA+Sliding: mem=52%, comp=55%, quality=80 → size=42px -->
+          <div class="bubble-item" style="left:50%;bottom:52%;">
+            <div class="bubble-circle" style="width:42px;height:42px;background:rgba(245,158,11,0.12);border-color:var(--orange);"></div>
+            <div class="bubble-label">GQA +<br>滑动窗口</div>
+          </div>
+
+          <!-- Linear Attn: mem=80%, comp=78%, quality=50 → size=28px -->
+          <div class="bubble-item" style="left:78%;bottom:76%;">
+            <div class="bubble-circle" style="width:28px;height:28px;background:rgba(16,185,129,0.12);border-color:var(--green);"></div>
+            <div class="bubble-label">线性<br>注意力</div>
+          </div>
+
+          <!-- SSM (S4): mem=85%, comp=84%, quality=45 → size=24px -->
+          <div class="bubble-item" style="left:84%;bottom:82%;">
+            <div class="bubble-circle" style="width:24px;height:24px;background:rgba(16,185,129,0.12);border-color:var(--green);"></div>
+            <div class="bubble-label">SSM (S4)</div>
+          </div>
+
+          <!-- Mamba: mem=88%, comp=88%, quality=72 → size=38px -->
+          <div class="bubble-item" style="left:86%;bottom:86%;">
+            <div class="bubble-circle" style="width:38px;height:38px;background:rgba(16,185,129,0.15);border-color:var(--green);"></div>
+            <div class="bubble-label" style="font-weight:700;">Mamba</div>
+          </div>
+
+          <!-- Hybrid (Jamba): mem=72%, comp=68%, quality=88 → size=48px -->
+          <div class="bubble-item" style="left:70%;bottom:66%;">
+            <div class="bubble-circle" style="width:48px;height:48px;background:rgba(124,92,252,0.12);border-color:var(--purple);box-shadow:0 0 0 3px rgba(124,92,252,0.08);"></div>
+            <div class="bubble-label" style="font-weight:700;color:var(--purple);">混合架构<br>(Jamba)</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Size legend -->
+      <div style="display:flex;align-items:center;justify-content:center;gap:24px;margin-top:20px;flex-wrap:wrap;">
+        <div style="font-size:11px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:1px;">气泡大小 = 模型质量</div>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div style="display:flex;align-items:center;gap:4px;">
+            <div style="width:16px;height:16px;border-radius:50%;border:2px solid #ccc;"></div>
+            <span style="font-size:10px;color:var(--text-secondary);">较低</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:4px;">
+            <div style="width:28px;height:28px;border-radius:50%;border:2px solid #aaa;"></div>
+            <span style="font-size:10px;color:var(--text-secondary);">中等</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:4px;">
+            <div style="width:40px;height:40px;border-radius:50%;border:2px solid #888;"></div>
+            <span style="font-size:10px;color:var(--text-secondary);">较高</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quality trade-off callout -->
+      <div class="callout" style="margin-top:32px;">
+        <strong>SSM 无法完全弥合的质量差距。</strong> Mamba 和线性注意力实现了恒定的内存和计算 &mdash; 但注意力进行 <em>精确的 token 到 token 查找</em>的能力（例如，"列表中的第 3 项是什么？"）是损失性状态压缩从根本上难以做到的。这就是为什么最好的生产级模型（Jamba、DeepSeek）使用 <strong>混合架构</strong>：少数几个注意力层用于精确检索 + 大量 SSM/线性层用于高效的长程上下文。
+      </div>
+
+      <!-- Disadvantages of SSMs -->
+      <div style="margin-top:32px;">
+        <h3>SSM 的短板在哪里</h3>
+        <div class="card-grid" style="margin-top:16px;">
+          <div class="card" style="border-left:3px solid var(--red);">
+            <h4>上下文学习（In-Context Learning）</h4>
+            <p>Transformer 可以从提示中的示例学习新任务。SSM 在这里很吃力 &mdash; 固定大小的状态无法像对原始 token 的注意力那样存储任意的输入-输出映射。</p>
+          </div>
+          <div class="card" style="border-left:3px solid var(--red);">
+            <h4>精确检索（Exact Retrieval）</h4>
+            <p>"复制第 5 个词"或"电话号码是多少？"需要精确查找。注意力可以轻松做到这一点。SSM 将过去的 token 压缩成固定状态 &mdash; 单个 token 可能无法恢复。</p>
+          </div>
+          <div class="card" style="border-left:3px solid var(--orange);">
+            <h4>多跳推理（Multi-hop Reasoning）</h4>
+            <p>"A 是 B，B 是 C，因此 A 是 C"需要同时持有多个事实并将它们组合起来。SSM 状态的有损压缩使得链式推理比使用完整注意力更难。</p>
+          </div>
+          <div class="card" style="border-left:3px solid var(--orange);">
+            <h4>硬件生态（Hardware Ecosystem）</h4>
+            <p>Transformer 拥有多年的 GPU 内核优化（FlashAttention、PagedAttention 等）。SSM 内核更新、更不成熟，意味着理论上的 FLOPs 优势并不总能转化为实际的墙钟加速。</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PART 1: MEMORY ============ -->
+<section id="memory">
+  <div class="container">
+    <div class="fade-in">
+      <div class="part-label">第 1 部分</div>
+      <h2>内存 &mdash; KV 缓存问题</h2>
+    </div>
+
+    <!-- 1.1 KV Cache Explained -->
+    <div class="fade-in" style="margin-top:48px;">
+      <h3>1.1 &mdash; KV 缓存详解</h3>
+      <p>在解码过程中，每个新 token 的查询（query）必须关注 <strong>所有过去的键（key）和值（value）</strong>。每一步都重新计算它们会很浪费，因此我们 <em>缓存</em>每个先前 token 的 K 和 V 投影。</p>
+      <p>KV 缓存随序列长度 <strong>线性增长</strong>。对于每一层：</p>
+      <div class="formula">每层 KV 缓存 = 2 &times; N &times; n_heads &times; d_head &times; dtype_bytes</div>
+
+      <div class="kv-growth">
+        <div class="kv-growth-col">
+          <div class="kv-growth-cell" style="background:var(--blue);"></div>
+          <div class="kv-growth-cell" style="background:var(--green);"></div>
+          <div class="kv-growth-label">t=1</div>
+        </div>
+        <div class="kv-growth-col">
+          <div class="kv-growth-cell" style="background:var(--blue);"></div>
+          <div class="kv-growth-cell" style="background:var(--green);"></div>
+          <div class="kv-growth-cell" style="background:var(--blue);"></div>
+          <div class="kv-growth-cell" style="background:var(--green);"></div>
+          <div class="kv-growth-label">t=2</div>
+        </div>
+        <div class="kv-growth-col">
+          <div class="kv-growth-cell" style="background:var(--blue);"></div>
+          <div class="kv-growth-cell" style="background:var(--green);"></div>
+          <div class="kv-growth-cell" style="background:var(--blue);"></div>
+          <div class="kv-growth-cell" style="background:var(--green);"></div>
+          <div class="kv-growth-cell" style="background:var(--blue);"></div>
+          <div class="kv-growth-cell" style="background:var(--green);"></div>
+          <div class="kv-growth-label">t=3</div>
+        </div>
+        <div class="kv-growth-col">
+          <div class="kv-growth-cell" style="background:var(--blue);"></div>
+          <div class="kv-growth-cell" style="background:var(--green);"></div>
+          <div class="kv-growth-cell" style="background:var(--blue);"></div>
+          <div class="kv-growth-cell" style="background:var(--green);"></div>
+          <div class="kv-growth-cell" style="background:var(--blue);"></div>
+          <div class="kv-growth-cell" style="background:var(--green);"></div>
+          <div class="kv-growth-cell" style="background:var(--blue);"></div>
+          <div class="kv-growth-cell" style="background:var(--green);"></div>
+          <div class="kv-growth-label">t=4</div>
+        </div>
+        <div style="display:flex;align-items:center;padding:0 8px;color:var(--text-secondary);font-weight:600;">...</div>
+        <div class="kv-growth-col">
+          <div class="kv-growth-cell" style="background:var(--blue);"></div>
+          <div class="kv-growth-cell" style="background:var(--green);"></div>
+          <div class="kv-growth-cell" style="background:var(--blue);"></div>
+          <div class="kv-growth-cell" style="background:var(--green);"></div>
+          <div class="kv-growth-cell" style="background:var(--blue);"></div>
+          <div class="kv-growth-cell" style="background:var(--green);"></div>
+          <div class="kv-growth-cell" style="background:var(--blue);"></div>
+          <div class="kv-growth-cell" style="background:var(--green);"></div>
+          <div class="kv-growth-cell" style="background:var(--blue);"></div>
+          <div class="kv-growth-cell" style="background:var(--green);"></div>
+          <div class="kv-growth-cell" style="background:var(--blue);"></div>
+          <div class="kv-growth-cell" style="background:var(--green);"></div>
+          <div class="kv-growth-label">t=N</div>
+        </div>
+      </div>
+      <p style="font-size:13px;color:var(--text-secondary);">
+        <span style="display:inline-block;width:10px;height:10px;background:var(--blue);border-radius:2px;margin-right:4px;vertical-align:middle;"></span> 键向量 &nbsp;&nbsp;
+        <span style="display:inline-block;width:10px;height:10px;background:var(--green);border-radius:2px;margin-right:4px;vertical-align:middle;"></span> 值向量 &nbsp;&mdash;&nbsp; 缓存随每个 token 增长
+      </p>
+
+      <div class="callout blue" style="margin-top:24px;">
+        <strong>Llama 3 8B 示例：</strong> 2 &times; 100K &times; 8 &times; 128 &times; 32 &times; 2 字节 &asymp; <strong>12.5 GB</strong> 的 KV 缓存，对应单个 100K token 序列在所有层上的开销。
+      </div>
+    </div>
+
+    <!-- 1.2 MHA -->
+    <div class="fade-in" style="margin-top:56px;">
+      <h3>1.2 &mdash; MHA（多头注意力）&mdash; 基线</h3>
+      <p>标准的多头注意力：H 个头中的每一个都有自己的独立 K 和 V 投影。每个头为每个过去的 token 存储自己的键和值向量。</p>
+      <div class="formula">每层 KV 缓存 = 2 &times; H &times; d_head &times; N = 2dN</div>
+      <div class="attn-variant" style="margin:20px 0;">
+        <div class="attn-variant-title">MHA &mdash; H=8 个头，每个头有自己的 K、V <span class="badge" style="background:var(--red);">32 个 KV 对</span></div>
+        <div class="head-blocks">
+          <div class="head-group" style="border-color:transparent;">
+            <div class="head-cell q">Q<sub>1</sub></div><div class="head-cell k">K<sub>1</sub></div><div class="head-cell v">V<sub>1</sub></div>
+          </div>
+          <div class="head-group" style="border-color:transparent;">
+            <div class="head-cell q">Q<sub>2</sub></div><div class="head-cell k">K<sub>2</sub></div><div class="head-cell v">V<sub>2</sub></div>
+          </div>
+          <div class="head-group" style="border-color:transparent;">
+            <div class="head-cell q">Q<sub>3</sub></div><div class="head-cell k">K<sub>3</sub></div><div class="head-cell v">V<sub>3</sub></div>
+          </div>
+          <div class="head-group" style="border-color:transparent;">
+            <div class="head-cell q">Q<sub>4</sub></div><div class="head-cell k">K<sub>4</sub></div><div class="head-cell v">V<sub>4</sub></div>
+          </div>
+          <div class="head-group" style="border-color:transparent;">
+            <div class="head-cell q">Q<sub>5</sub></div><div class="head-cell k">K<sub>5</sub></div><div class="head-cell v">V<sub>5</sub></div>
+          </div>
+          <div class="head-group" style="border-color:transparent;">
+            <div class="head-cell q">Q<sub>6</sub></div><div class="head-cell k">K<sub>6</sub></div><div class="head-cell v">V<sub>6</sub></div>
+          </div>
+          <div class="head-group" style="border-color:transparent;">
+            <div class="head-cell q">Q<sub>7</sub></div><div class="head-cell k">K<sub>7</sub></div><div class="head-cell v">V<sub>7</sub></div>
+          </div>
+          <div class="head-group" style="border-color:transparent;">
+            <div class="head-cell q">Q<sub>8</sub></div><div class="head-cell k">K<sub>8</sub></div><div class="head-cell v">V<sub>8</sub></div>
+          </div>
+        </div>
+        <p style="margin-top:12px;font-size:12px;color:var(--text-secondary);">每个头独立缓存自己的 K 和 V &mdash; 表达力最强，内存开销最大。</p>
+      </div>
+    </div>
+
+    <!-- 1.3 MQA -->
+    <div class="fade-in" style="margin-top:56px;">
+      <h3>1.3 &mdash; MQA（多查询注意力）&mdash; 共享所有 K、V</h3>
+      <p><strong>Shazeer 2019。</strong> 所有查询头共享 <em>一组</em> K 和 V 投影。大幅减少 KV 缓存。</p>
+      <div class="formula">每层 KV 缓存 = 2 &times; 1 &times; d_head &times; N &nbsp;&rarr;&nbsp; 减少 H&times;</div>
+      <div class="attn-variant" style="margin:20px 0;">
+        <div class="attn-variant-title">MQA &mdash; 所有查询头共享 1 组 K、V <span class="badge" style="background:var(--blue);">1 个 KV 对</span></div>
+        <div class="head-blocks">
+          <div class="head-group grouped" style="padding:8px 16px;">
+            <div style="display:flex;gap:4px;">
+              <div class="head-cell q">Q<sub>1</sub></div>
+              <div class="head-cell q">Q<sub>2</sub></div>
+              <div class="head-cell q">Q<sub>3</sub></div>
+              <div class="head-cell q">Q<sub>4</sub></div>
+              <div class="head-cell q">Q<sub>5</sub></div>
+              <div class="head-cell q">Q<sub>6</sub></div>
+              <div class="head-cell q">Q<sub>7</sub></div>
+              <div class="head-cell q">Q<sub>8</sub></div>
+            </div>
+            <div style="display:flex;gap:4px;margin-top:4px;">
+              <div class="head-cell k" style="width:100%;">K<sub>1</sub></div>
+            </div>
+            <div style="display:flex;gap:4px;">
+              <div class="head-cell v" style="width:100%;">V<sub>1</sub></div>
+            </div>
+            <div class="head-pair-label">所有 Q 头共享一组 K、V</div>
+          </div>
+        </div>
+        <p style="margin-top:12px;font-size:12px;color:var(--text-secondary);">
+          KV 缓存 <strong>缩小 32&times;</strong>（当 H=32 时）。质量略有下降。用于 PaLM、Falcon、StarCoder。
+        </p>
+      </div>
+    </div>
+
+    <!-- 1.4 GQA -->
+    <div class="fade-in" style="margin-top:56px;">
+      <h3>1.4 &mdash; GQA（分组查询注意力）&mdash; 折中方案</h3>
+      <p><strong>Ainslie et al. 2023。</strong> 查询头被分成 G 组。每组共享一组 K、V。在 MHA 的质量和 MQA 的效率之间取得平衡。</p>
+      <div class="formula">每层 KV 缓存 = 2 &times; G &times; d_head &times; N &nbsp;&rarr;&nbsp; 减少 (H/G)&times;</div>
+      <div class="attn-variant" style="margin:20px 0;">
+        <div class="attn-variant-title">GQA (G=4) &mdash; 4 组，每组共享 K、V <span class="badge" style="background:var(--green);">4 个 KV 对</span></div>
+        <div class="head-blocks">
+          <div class="head-group grouped">
+            <div style="display:flex;gap:3px;">
+              <div class="head-cell q">Q<sub>1</sub></div><div class="head-cell q">Q<sub>2</sub></div>
+            </div>
+            <div class="head-cell k" style="width:100%;">K<sub>1</sub></div>
+            <div class="head-cell v" style="width:100%;">V<sub>1</sub></div>
+            <div class="head-pair-label">第 1 组</div>
+          </div>
+          <div class="head-group grouped">
+            <div style="display:flex;gap:3px;">
+              <div class="head-cell q">Q<sub>3</sub></div><div class="head-cell q">Q<sub>4</sub></div>
+            </div>
+            <div class="head-cell k" style="width:100%;">K<sub>2</sub></div>
+            <div class="head-cell v" style="width:100%;">V<sub>2</sub></div>
+            <div class="head-pair-label">第 2 组</div>
+          </div>
+          <div class="head-group grouped">
+            <div style="display:flex;gap:3px;">
+              <div class="head-cell q">Q<sub>5</sub></div><div class="head-cell q">Q<sub>6</sub></div>
+            </div>
+            <div class="head-cell k" style="width:100%;">K<sub>3</sub></div>
+            <div class="head-cell v" style="width:100%;">V<sub>3</sub></div>
+            <div class="head-pair-label">第 3 组</div>
+          </div>
+          <div class="head-group grouped">
+            <div style="display:flex;gap:3px;">
+              <div class="head-cell q">Q<sub>7</sub></div><div class="head-cell q">Q<sub>8</sub></div>
+            </div>
+            <div class="head-cell k" style="width:100%;">K<sub>4</sub></div>
+            <div class="head-cell v" style="width:100%;">V<sub>4</sub></div>
+            <div class="head-pair-label">第 4 组</div>
+          </div>
+        </div>
+        <p style="margin-top:12px;font-size:12px;color:var(--text-secondary);">
+          质量损失远小于 MQA。用于 Llama 2 70B、Llama 3、Gemma、Mistral。
+        </p>
+      </div>
+
+      <!-- Side-by-side summary -->
+      <div class="attn-compare">
+        <div class="card" style="padding:20px 24px;">
+          <h4 style="margin-bottom:16px;">可视化小结：MHA vs GQA vs MQA</h4>
+          <div style="display:flex;flex-direction:column;gap:14px;">
+            <div style="display:flex;align-items:center;gap:12px;">
+              <span style="font-size:12px;font-weight:700;width:48px;text-align:right;">MHA</span>
+              <div style="display:flex;gap:3px;">
+                <div style="width:20px;height:20px;border-radius:4px;background:var(--blue);display:flex;align-items:center;justify-content:center;font-size:7px;color:white;font-weight:700;">KV</div>
+                <div style="width:20px;height:20px;border-radius:4px;background:var(--blue);display:flex;align-items:center;justify-content:center;font-size:7px;color:white;font-weight:700;">KV</div>
+                <div style="width:20px;height:20px;border-radius:4px;background:var(--blue);display:flex;align-items:center;justify-content:center;font-size:7px;color:white;font-weight:700;">KV</div>
+                <div style="width:20px;height:20px;border-radius:4px;background:var(--blue);display:flex;align-items:center;justify-content:center;font-size:7px;color:white;font-weight:700;">KV</div>
+                <div style="width:20px;height:20px;border-radius:4px;background:var(--blue);display:flex;align-items:center;justify-content:center;font-size:7px;color:white;font-weight:700;">KV</div>
+                <div style="width:20px;height:20px;border-radius:4px;background:var(--blue);display:flex;align-items:center;justify-content:center;font-size:7px;color:white;font-weight:700;">KV</div>
+                <div style="width:20px;height:20px;border-radius:4px;background:var(--blue);display:flex;align-items:center;justify-content:center;font-size:7px;color:white;font-weight:700;">KV</div>
+                <div style="width:20px;height:20px;border-radius:4px;background:var(--blue);display:flex;align-items:center;justify-content:center;font-size:7px;color:white;font-weight:700;">KV</div>
+              </div>
+              <span style="font-size:11px;color:var(--text-secondary);font-weight:500;">&mdash; 8 个 KV 对</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;">
+              <span style="font-size:12px;font-weight:700;width:48px;text-align:right;">GQA-4</span>
+              <div style="display:flex;gap:3px;">
+                <div style="width:20px;height:20px;border-radius:4px;background:var(--green);display:flex;align-items:center;justify-content:center;font-size:7px;color:white;font-weight:700;">KV</div>
+                <div style="width:20px;height:20px;border-radius:4px;background:var(--green);display:flex;align-items:center;justify-content:center;font-size:7px;color:white;font-weight:700;">KV</div>
+                <div style="width:20px;height:20px;border-radius:4px;background:var(--green);display:flex;align-items:center;justify-content:center;font-size:7px;color:white;font-weight:700;">KV</div>
+                <div style="width:20px;height:20px;border-radius:4px;background:var(--green);display:flex;align-items:center;justify-content:center;font-size:7px;color:white;font-weight:700;">KV</div>
+              </div>
+              <span style="font-size:11px;color:var(--text-secondary);font-weight:500;">&mdash; 4 个 KV 对</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;">
+              <span style="font-size:12px;font-weight:700;width:48px;text-align:right;">MQA</span>
+              <div style="display:flex;gap:3px;">
+                <div style="width:20px;height:20px;border-radius:4px;background:var(--orange);display:flex;align-items:center;justify-content:center;font-size:7px;color:white;font-weight:700;">KV</div>
+              </div>
+              <span style="font-size:11px;color:var(--text-secondary);font-weight:500;">&mdash; 1 个 KV 对</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 1.5 MLA -->
+    <div class="fade-in" style="margin-top:56px;">
+      <h3>1.5 &mdash; MLA（多头潜在注意力）&mdash; DeepSeek 的方案</h3>
+      <p><strong>DeepSeek-V2, 2024。</strong> 不再直接缓存 K 和 V，而是将它们压缩成一个低秩的 <em>潜在（latent）向量</em>。在解码时，再从压缩表示扩展回 K 和 V。</p>
+
+      <div style="display:flex;align-items:center;justify-content:center;gap:16px;margin:28px 0;flex-wrap:wrap;">
+        <div style="background:var(--purple);color:white;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:600;">x<sub>t</sub></div>
+        <div style="color:var(--text-secondary);font-size:18px;">&rarr;</div>
+        <div style="background:var(--orange);color:white;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:600;">压缩</div>
+        <div style="color:var(--text-secondary);font-size:18px;">&rarr;</div>
+        <div style="background:var(--green);color:white;padding:14px 22px;border-radius:10px;font-size:14px;font-weight:700;">c<sub>t</sub> <span style="font-size:11px;opacity:0.8;">（小）</span></div>
+        <div style="color:var(--text-secondary);font-size:18px;">&rarr;</div>
+        <div style="background:var(--blue);color:white;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:600;">扩展回 K、V</div>
+      </div>
+
+      <div class="formula">每个 token 的缓存 = d<sub>c</sub> &nbsp;&nbsp;其中 d<sub>c</sub> &lt;&lt; 2 &times; H &times; d_head</div>
+      <p>在某些配置下比 GQA 更节省内存。权衡：解压需要额外的计算，但内存节省非常显著。</p>
+    </div>
+
+    <!-- 1.6 Memory Comparison -->
+    <div class="fade-in" style="margin-top:56px;">
+      <h3>1.6 &mdash; 内存对比</h3>
+      <p style="margin-bottom:20px;">在 N=100K token、d=2048、H=32、d_head=64、FP16 下的 KV 缓存大小对比：</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>变体</th>
+              <th>每 token 每层 KV 缓存</th>
+              <th style="text-align:right;">在 N=100K 时</th>
+              <th style="text-align:right;">缩减倍数</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="tag red">MHA</span></td>
+              <td><code>2 &times; H &times; d_head = 2d</code></td>
+              <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:13px;">400 MB</td>
+              <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:13px;">1&times;</td>
+            </tr>
+            <tr>
+              <td><span class="tag green">GQA-8</span></td>
+              <td><code>2 &times; G &times; d_head</code></td>
+              <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:13px;">100 MB</td>
+              <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:13px;">4&times;</td>
+            </tr>
+            <tr>
+              <td><span class="tag green">GQA-4</span></td>
+              <td><code>2 &times; G &times; d_head</code></td>
+              <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:13px;">50 MB</td>
+              <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:13px;">8&times;</td>
+            </tr>
+            <tr>
+              <td><span class="tag blue">MQA</span></td>
+              <td><code>2 &times; d_head</code></td>
+              <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:13px;">12.5 MB</td>
+              <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:13px;">32&times;</td>
+            </tr>
+            <tr>
+              <td><span class="tag pink">MLA</span></td>
+              <td><code>d<sub>c</sub>（压缩后）</code></td>
+              <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:13px;">~25 MB</td>
+              <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:13px;">~16&times;</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="bar-chart" style="margin-top:28px;">
+        <div class="bar-row">
+          <div class="bar-label">MHA</div>
+          <div class="bar-track"><div class="bar-fill" style="width:100%;background:var(--red);">400 MB</div></div>
+          <div class="bar-value">1&times;</div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-label">GQA-8</div>
+          <div class="bar-track"><div class="bar-fill" style="width:25%;background:var(--green);">100 MB</div></div>
+          <div class="bar-value">4&times;</div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-label">GQA-4</div>
+          <div class="bar-track"><div class="bar-fill" style="width:12.5%;background:var(--green);">50 MB</div></div>
+          <div class="bar-value">8&times;</div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-label">MLA</div>
+          <div class="bar-track"><div class="bar-fill" style="width:6.25%;background:var(--pink);">~25 MB</div></div>
+          <div class="bar-value">~16&times;</div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-label">MQA</div>
+          <div class="bar-track"><div class="bar-fill" style="width:3.125%;background:var(--blue);">12.5 MB</div></div>
+          <div class="bar-value">32&times;</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PART 2: COMPUTE ============ -->
+<section id="compute" class="alt">
+  <div class="container">
+    <div class="fade-in">
+      <div class="part-label">第 2 部分</div>
+      <h2>计算 &mdash; FLOPs 问题</h2>
+    </div>
+
+    <!-- 2.1 Why FLOPs Matter -->
+    <div class="fade-in" style="margin-top:48px;">
+      <h3>2.1 &mdash; 为什么 FLOPs 对推理很重要</h3>
+      <p>在解码过程中，生成每个新 token 都需要对 <strong>所有过去的键</strong>计算注意力分数。每个 token 的注意力解码开销为：</p>
+      <div class="formula">每个 token 的 FLOPs = 2 &times; N &times; d &nbsp;&nbsp;（与 N 个键做点积 + 对 N 个值做加权求和）</div>
+      <p>在 N=100K、d=2048 时，每个新 token 仅注意力就花费 <strong>约 410M FLOPs</strong>。而且每生成一个 token 都会让它变得 <em>更糟</em> &mdash; 因为 N 在不断增长。</p>
+
+      <div style="margin:28px 0;">
+        <p style="font-size:13px;font-weight:600;color:var(--text-secondary);margin-bottom:8px;">token 生成延迟随序列长度增长：</p>
+        <div class="timeline">
+          <div class="timeline-bar" style="height:10%;">1</div>
+          <div class="timeline-bar" style="height:14%;">2</div>
+          <div class="timeline-bar" style="height:18%;">3</div>
+          <div class="timeline-bar" style="height:22%;">4</div>
+          <div class="timeline-bar" style="height:26%;">5</div>
+          <div class="timeline-bar" style="height:30%;">6</div>
+          <div class="timeline-bar" style="height:34%;">7</div>
+          <div class="timeline-bar" style="height:38%;">8</div>
+          <div class="timeline-bar" style="height:42%;">9</div>
+          <div class="timeline-bar" style="height:46%;">10</div>
+          <div class="timeline-bar" style="height:52%;">11</div>
+          <div class="timeline-bar" style="height:58%;">12</div>
+          <div class="timeline-bar" style="height:64%;">13</div>
+          <div class="timeline-bar" style="height:70%;">14</div>
+          <div class="timeline-bar" style="height:76%;">15</div>
+          <div class="timeline-bar" style="height:82%;">16</div>
+          <div class="timeline-bar" style="height:88%;">17</div>
+          <div class="timeline-bar" style="height:94%;">18</div>
+          <div class="timeline-bar" style="height:100%;">19</div>
+        </div>
+        <p style="font-size:11px;color:var(--text-secondary);text-align:center;">每根柱子 = 一个生成的 token。高度 = 相对延迟。使用完整注意力时，每个新 token 都比上一个耗时更长。</p>
+      </div>
+    </div>
+
+    <!-- 2.2 Full Attention -->
+    <div class="fade-in" style="margin-top:56px;">
+      <h3>2.2 &mdash; 完整注意力 &mdash; 每个 token O(Nd)</h3>
+      <p>每个新查询关注所有 N 个缓存的键，然后对 N 个值计算加权和。</p>
+      <div class="formula">q &middot; K<sup>T</sup> = O(Nd) &nbsp;&nbsp;+&nbsp;&nbsp; attn &middot; V = O(Nd) &nbsp;&nbsp;&rarr;&nbsp;&nbsp; 总计：O(Nd)</div>
+      <div class="fan-visual">
+        <div class="fan-col">
+          <div class="fan-token active">新</div>
+          <div class="fan-label">查询</div>
+        </div>
+        <div class="fan-arrow">&rarr;</div>
+        <div class="fan-col">
+          <div class="fan-token attended">t<sub>1</sub></div>
+          <div class="fan-token attended">t<sub>2</sub></div>
+          <div class="fan-token attended">t<sub>3</sub></div>
+          <div class="fan-token attended">t<sub>4</sub></div>
+          <div style="color:var(--text-secondary);font-size:12px;font-weight:600;">...</div>
+          <div class="fan-token attended">t<sub>N</sub></div>
+          <div class="fan-label">所有过去的键</div>
+        </div>
+      </div>
+      <p style="font-size:13px;color:var(--text-secondary);">完全扇出：新查询触及 <em>每一个</em>过去的键。开销随 N 线性增长。</p>
+    </div>
+
+    <!-- 2.3 Sliding Window -->
+    <div class="fade-in" style="margin-top:56px;">
+      <h3>2.3 &mdash; 滑动窗口注意力 &mdash; 每个 token O(Wd)</h3>
+      <p>只关注最后 W 个 token（例如 W=4096）。FLOPs 是 <strong>固定</strong>的，与总序列长度无关。KV 缓存被限制在一个大小为 W 的循环缓冲区中。</p>
+      <div class="formula">每个 token 的 FLOPs = O(Wd) &nbsp;&mdash;&nbsp; 固定，不随 N 增长</div>
+      <div class="fan-visual">
+        <div class="fan-col">
+          <div class="fan-token active">新</div>
+          <div class="fan-label">查询</div>
+        </div>
+        <div class="fan-arrow">&rarr;</div>
+        <div class="fan-col">
+          <div class="fan-token past" style="opacity:0.3;">t<sub>1</sub></div>
+          <div class="fan-token past" style="opacity:0.3;">t<sub>2</sub></div>
+          <div style="color:#ccc;font-size:12px;font-weight:600;">...</div>
+          <div class="fan-token window">t<sub>N-3</sub></div>
+          <div class="fan-token window">t<sub>N-2</sub></div>
+          <div class="fan-token window">t<sub>N-1</sub></div>
+          <div class="fan-token window">t<sub>N</sub></div>
+          <div class="fan-label">仅最后 W 个键</div>
+        </div>
+      </div>
+      <p>权衡：无法直接访问 W 个 token 之前的信息。但层的堆叠可以扩展有效的感受野。用于 <strong>Mistral 7B</strong>（W=4096）。</p>
+    </div>
+
+    <!-- 2.4 Linear Attention -->
+    <div class="fade-in" style="margin-top:56px;">
+      <h3>2.4 &mdash; 线性注意力 &mdash; 每个 token O(d&sup2;)</h3>
+      <p>关键洞见：重排计算顺序。不是 (Q&middot;K<sup>T</sup>)&middot;V，而是计算 Q&middot;(K<sup>T</sup>&middot;V)。维护一个汇总所有过去上下文的运行状态。</p>
+      <div class="formula">
+        状态：S = &Sigma; &phi;(K)<sup>T</sup> &middot; V &nbsp;&nbsp;形状 (d&times;d)<br>
+        输出：&phi;(q) &middot; S &nbsp;&nbsp;&rarr;&nbsp;&nbsp; 每个 token O(d&sup2;)
+      </div>
+      <div class="fan-visual">
+        <div class="fan-col">
+          <div class="fan-token active">新</div>
+          <div class="fan-label">查询</div>
+        </div>
+        <div class="fan-arrow">&rarr;</div>
+        <div class="fan-col">
+          <div class="fan-token state">S<br><span style="font-size:8px;">(d&times;d)</span></div>
+          <div class="fan-label">压缩状态</div>
+        </div>
+      </div>
+      <p>FLOPs <strong>完全与 N 无关</strong>。内存固定为 d&times;d。权衡：没有 softmax 意味着在需要精确检索的任务上存在质量差距。</p>
+    </div>
+
+    <!-- 2.5 SSM (S4) -->
+    <div class="fade-in" style="margin-top:56px;">
+      <h3>2.5 &mdash; SSM（S4）&mdash; 每个 token O(E&middot;n)</h3>
+      <p>状态空间模型：一种线性递推，以固定参数逐个处理 token。</p>
+      <div class="formula">
+        h<sub>t</sub> = A&middot;h<sub>t-1</sub> + B&middot;x<sub>t</sub> &nbsp;&nbsp;&nbsp; y<sub>t</sub> = C&middot;h<sub>t</sub>
+      </div>
+      <div class="card-grid">
+        <div class="card">
+          <h4>解码开销</h4>
+          <p style="font-family:'JetBrains Mono',monospace;font-size:14px;color:var(--purple);margin:0;">O(E&middot;n) 状态更新<br>+ O(E&middot;d) 投影</p>
+        </div>
+        <div class="card">
+          <h4>状态大小</h4>
+          <p style="font-family:'JetBrains Mono',monospace;font-size:14px;color:var(--green);margin:0;">h: (E &times; n) &mdash; 固定<br>不随 N 增长</p>
+        </div>
+      </div>
+      <p>训练时：使用 FFT 卷积技巧实现 O(N log N)。权衡：固定的参数 A、B、C 意味着模型无法做基于内容的过滤 &mdash; 每个 token 都以相同方式处理。</p>
+    </div>
+
+    <!-- 2.6 Mamba -->
+    <div class="fade-in" style="margin-top:56px;">
+      <h3>2.6 &mdash; Mamba（选择性 SSM）&mdash; 每个 token O(E&middot;n + E&middot;d)</h3>
+      <p>与 S4 相同的递推，但 B、C 和 &Delta; 是 <strong>依赖于输入的</strong>。模型现在可以根据内容选择性地记住或遗忘。</p>
+      <div class="formula">
+        B<sub>t</sub>, C<sub>t</sub>, &Delta;<sub>t</sub> = f(x<sub>t</sub>) &nbsp;&nbsp;&mdash;&nbsp;&nbsp; 参数随每个 token 变化
+      </div>
+      <div class="card-grid">
+        <div class="card">
+          <h4>解码开销</h4>
+          <p style="font-family:'JetBrains Mono',monospace;font-size:14px;color:var(--purple);margin:0;">约 6Ed + 10En FLOPs<br>选择性的少量额外开销</p>
+        </div>
+        <div class="card">
+          <h4>状态大小</h4>
+          <p style="font-family:'JetBrains Mono',monospace;font-size:14px;color:var(--green);margin:0;">h: (E&times;n) + 卷积缓冲<br>E&times;(k-1) &mdash; 固定</p>
+        </div>
+      </div>
+      <p>训练时：无法使用 FFT（参数随每一步变化）&rarr; 使用并行扫描 O(N log N)。权衡：对过去进行有损压缩，但选择性有助于保留重要信息。</p>
+    </div>
+
+    <!-- 2.7 Compute Comparison -->
+    <div class="fade-in" style="margin-top:56px;">
+      <h3>2.7 &mdash; 计算对比</h3>
+      <p style="margin-bottom:20px;">在 N=100K、d=2048 时每个 token 的解码 FLOPs：</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>变体</th>
+              <th>每个 token 解码 FLOPs</th>
+              <th>随 N 增长？</th>
+              <th style="text-align:right;">在 N=100K 时</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="tag red">完整注意力</span></td>
+              <td><code>O(Nd)</code></td>
+              <td>是 &mdash; 线性</td>
+              <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:13px;">~410M</td>
+            </tr>
+            <tr>
+              <td><span class="tag orange">滑动窗口</span></td>
+              <td><code>O(Wd)</code></td>
+              <td>否（以 W 为上限）</td>
+              <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:13px;">~16.8M</td>
+            </tr>
+            <tr>
+              <td><span class="tag green">线性注意力</span></td>
+              <td><code>O(d&sup2;)</code></td>
+              <td>否</td>
+              <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:13px;">~8.4M</td>
+            </tr>
+            <tr>
+              <td><span class="tag green">SSM (S4)</span></td>
+              <td><code>O(Ed + En)</code></td>
+              <td>否</td>
+              <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:13px;">~34M</td>
+            </tr>
+            <tr>
+              <td><span class="tag green">Mamba</span></td>
+              <td><code>O(Ed + En)</code></td>
+              <td>否</td>
+              <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:13px;">~34M</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="bar-chart" style="margin-top:28px;">
+        <div class="bar-row">
+          <div class="bar-label">完整注意力</div>
+          <div class="bar-track"><div class="bar-fill" style="width:100%;background:var(--red);">410M FLOPs</div></div>
+          <div class="bar-value">O(Nd)</div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-label">SSM / Mamba</div>
+          <div class="bar-track"><div class="bar-fill" style="width:8.3%;background:var(--green);">34M</div></div>
+          <div class="bar-value">O(Ed+En)</div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-label">滑动窗口</div>
+          <div class="bar-track"><div class="bar-fill" style="width:4.1%;background:var(--orange);">16.8M</div></div>
+          <div class="bar-value">O(Wd)</div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-label">线性注意力</div>
+          <div class="bar-track"><div class="bar-fill" style="width:2.05%;background:var(--green);">8.4M</div></div>
+          <div class="bar-value">O(d&sup2;)</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2.8 Does Compute Matter? -->
+    <div class="fade-in" style="margin-top:56px;">
+      <h3>2.8 &mdash; 计算对推理延迟真的重要吗？</h3>
+      <p><strong>重要 &mdash; 但真实情况更加微妙。</strong></p>
+      <p>在 <strong>预填充（prefill）</strong>阶段，计算在所有 token 上并行进行。在 <strong>解码（decode）</strong>阶段，计算是串行的：一次一个 token，每个都必须完成后下一个才能开始。因此每个 token 的解码延迟与每个 token 的 FLOPs 成正比。</p>
+
+      <p>但这里有一个关键洞见。在 N=100K、使用完整注意力时：</p>
+
+      <div class="card-grid" style="margin:20px 0;">
+        <div class="card" style="border-left:3px solid var(--blue);">
+          <h4>计算时间</h4>
+          <p style="font-family:'JetBrains Mono',monospace;font-size:16px;color:var(--blue);margin:0;">~4 &mu;s</p>
+          <p style="font-size:12px;color:var(--text-secondary);margin:0;">410M FLOPs，在 100 TFLOPS 下</p>
+        </div>
+        <div class="card" style="border-left:3px solid var(--red);">
+          <h4>内存读取时间</h4>
+          <p style="font-family:'JetBrains Mono',monospace;font-size:16px;color:var(--red);margin:0;">~390 &mu;s</p>
+          <p style="font-size:12px;color:var(--text-secondary);margin:0;">781 MB KV 缓存，在 2 TB/s 下</p>
+        </div>
+      </div>
+
+      <p>内存读取比计算耗时 <strong>长约 100&times;</strong>。解码从根本上说是 <em>内存带宽受限（memory-bound）</em>，而不是算力受限。</p>
+
+      <div class="callout red">
+        <strong>关键洞见：</strong> 解码是内存带宽受限，而不是算力受限。这就是为什么 MQA/GQA（减少内存读取）比单纯减少 FLOPs 更能加速推理。减小 KV 缓存大小意味着从高带宽内存（HBM）读取更少的字节，直接降低每个 token 的延迟。
+      </div>
+
+      <p>话虽如此，对于非常长的序列，两者都很重要。而对于吞吐量受限的场景（许多并发用户），内存容量决定了你可以把多少请求批处理在一起。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PART 3: THE COMPLETE PICTURE ============ -->
+<section id="complete">
+  <div class="container">
+    <div class="fade-in">
+      <div class="part-label">第 3 部分</div>
+      <h2>完整图景</h2>
+    </div>
+
+    <!-- 3.1 Grand Comparison -->
+    <div class="fade-in" style="margin-top:48px;">
+      <h3>3.1 &mdash; 总对比</h3>
+      <p>所有注意力变体在内存、计算、质量和实际使用上的对比：</p>
+
+      <div class="table-wrap" style="margin-top:20px;">
+        <table>
+          <thead>
+            <tr>
+              <th>变体</th>
+              <th>KV 缓存 / 状态</th>
+              <th>解码 FLOPs</th>
+              <th>增长？</th>
+              <th>质量</th>
+              <th>用于</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="tag red">MHA + 完整</span></td>
+              <td><code>2Nd</code></td>
+              <td><code>O(Nd)</code></td>
+              <td>两者都增长</td>
+              <td>最佳</td>
+              <td>GPT-3</td>
+            </tr>
+            <tr>
+              <td><span class="tag green">GQA + 完整</span></td>
+              <td><code>2GdN</code></td>
+              <td><code>O(Nd)</code></td>
+              <td>两者都增长</td>
+              <td>接近最佳</td>
+              <td>Llama 3、Gemma</td>
+            </tr>
+            <tr>
+              <td><span class="tag blue">MQA + 完整</span></td>
+              <td><code>2d<sub>h</sub>N</code></td>
+              <td><code>O(Nd)</code></td>
+              <td>两者都增长</td>
+              <td>良好</td>
+              <td>PaLM、Falcon</td>
+            </tr>
+            <tr>
+              <td><span class="tag pink">MLA + 完整</span></td>
+              <td><code>d<sub>c</sub>N</code></td>
+              <td><code>O(Nd)</code></td>
+              <td>两者都增长</td>
+              <td>接近最佳</td>
+              <td>DeepSeek V2</td>
+            </tr>
+            <tr>
+              <td><span class="tag orange">GQA + 滑动窗口</span></td>
+              <td><code>2Gd&middot;W</code></td>
+              <td><code>O(Wd)</code></td>
+              <td style="color:var(--green);font-weight:700;">都不增长！</td>
+              <td>良好</td>
+              <td>Mistral 7B</td>
+            </tr>
+            <tr>
+              <td><span class="tag green">线性注意力</span></td>
+              <td><code>d&sup2;</code></td>
+              <td><code>O(d&sup2;)</code></td>
+              <td style="color:var(--green);font-weight:700;">都不增长</td>
+              <td>较低</td>
+              <td>研究</td>
+            </tr>
+            <tr>
+              <td><span class="tag green">SSM (S4)</span></td>
+              <td><code>En</code></td>
+              <td><code>O(En)</code></td>
+              <td style="color:var(--green);font-weight:700;">都不增长</td>
+              <td>较低</td>
+              <td>S4 / S5</td>
+            </tr>
+            <tr>
+              <td><span class="tag green">Mamba</span></td>
+              <td><code>En + E(k-1)</code></td>
+              <td><code>O(Ed+En)</code></td>
+              <td style="color:var(--green);font-weight:700;">都不增长</td>
+              <td>良好</td>
+              <td>Mamba、Jamba</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 3.2 Which to Choose -->
+    <div class="fade-in" style="margin-top:56px;">
+      <h3>3.2 &mdash; 如何选择？</h3>
+
+      <div class="card" style="margin-top:20px;">
+        <div class="decision-item">
+          <div class="decision-if">需要最高的质量？</div>
+          <div class="decision-arrow">&rarr;</div>
+          <div class="decision-then">MHA + 完整注意力 <span style="font-size:12px;color:var(--text-secondary);font-weight:400;">&mdash; 付出内存代价</span></div>
+        </div>
+        <div class="decision-item">
+          <div class="decision-if">需要在标准硬件上支持长上下文？</div>
+          <div class="decision-arrow">&rarr;</div>
+          <div class="decision-then">GQA + 滑动窗口 <span style="font-size:12px;color:var(--text-secondary);font-weight:400;">&mdash; Mistral 的方案</span></div>
+        </div>
+        <div class="decision-item">
+          <div class="decision-if">需要以恒定内存支持非常长的上下文？</div>
+          <div class="decision-arrow">&rarr;</div>
+          <div class="decision-then">Mamba 或混合架构 <span style="font-size:12px;color:var(--text-secondary);font-weight:400;">&mdash; 状态固定，不增长</span></div>
+        </div>
+        <div class="decision-item">
+          <div class="decision-if">需要高吞吐量（很多用户）？</div>
+          <div class="decision-arrow">&rarr;</div>
+          <div class="decision-then">MQA 或 GQA <span style="font-size:12px;color:var(--text-secondary);font-weight:400;">&mdash; 减少每个请求的 KV 缓存</span></div>
+        </div>
+        <div class="decision-item">
+          <div class="decision-if">当前的最佳实践？</div>
+          <div class="decision-arrow">&rarr;</div>
+          <div class="decision-then">GQA + 组合方案 <span style="font-size:12px;color:var(--text-secondary);font-weight:400;">&mdash; Llama 3 的方案</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3.3 Real Model Comparison -->
+    <div class="fade-in" style="margin-top:56px;">
+      <h3>3.3 &mdash; 真实模型，真实数据</h3>
+      <p>在 N=100K token、batch=1、FP16 下对实际生产模型的具体对比：</p>
+
+      <div class="table-wrap" style="margin-top:20px;">
+        <table>
+          <thead>
+            <tr>
+              <th>模型</th>
+              <th>参数量</th>
+              <th>架构</th>
+              <th>每层 KV 缓存 / 状态</th>
+              <th>在 N=100K 时总计</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="font-weight:600;">Llama 3 70B</td>
+              <td>70B</td>
+              <td><span class="tag green">GQA</span>（8 个 KV 头）</td>
+              <td><code>2 &times; 8 &times; 128 &times; N</code><br><span style="font-size:12px;color:var(--text-secondary);">= 每层 2048&middot;N</span></td>
+              <td style="font-family:'JetBrains Mono',monospace;font-size:13px;">~16.4 GB<br><span style="font-size:11px;color:var(--red);">（80 层）</span></td>
+            </tr>
+            <tr>
+              <td style="font-weight:600;">Mistral 7B</td>
+              <td>7B</td>
+              <td><span class="tag orange">GQA + 滑动窗口</span>（W=4096）</td>
+              <td><code>2 &times; 8 &times; 128 &times; W</code><br><span style="font-size:12px;color:var(--text-secondary);">= 每层 2048&middot;4096</span></td>
+              <td style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--green);font-weight:600;">~0.5 GB<br><span style="font-size:11px;color:var(--text-secondary);">（32 层，封顶）</span></td>
+            </tr>
+            <tr>
+              <td style="font-weight:600;">DeepSeek-V2</td>
+              <td>236B</td>
+              <td><span class="tag pink">MLA</span>（d<sub>c</sub>=512）</td>
+              <td><code>512 &times; N</code><br><span style="font-size:12px;color:var(--text-secondary);">= 每个 token 一个压缩向量</span></td>
+              <td style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--green);font-weight:600;">~5.9 GB<br><span style="font-size:11px;color:var(--text-secondary);">（60 层）</span></td>
+            </tr>
+            <tr>
+              <td style="font-weight:600;">Falcon 180B</td>
+              <td>180B</td>
+              <td><span class="tag blue">MQA</span>（1 个 KV 头）</td>
+              <td><code>2 &times; 1 &times; 256 &times; N</code><br><span style="font-size:12px;color:var(--text-secondary);">= 每层 512&middot;N</span></td>
+              <td style="font-family:'JetBrains Mono',monospace;font-size:13px;">~6.1 GB<br><span style="font-size:11px;color:var(--text-secondary);">（80 层）</span></td>
+            </tr>
+            <tr>
+              <td style="font-weight:600;">Jamba</td>
+              <td>52B</td>
+              <td><span class="tag green">Mamba</span> + <span class="tag green">GQA</span> 混合架构</td>
+              <td>
+                <span style="font-size:12px;color:var(--text-secondary);">Mamba 层：</span> <code>E&times;n</code> 固定<br>
+                <span style="font-size:12px;color:var(--text-secondary);">注意力层（每 8 层中 1 层）：</span> <code>2GdN</code>
+              </td>
+              <td style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--green);font-weight:600;">~1.2 GB<br><span style="font-size:11px;color:var(--text-secondary);">（大部分是固定状态）</span></td>
+            </tr>
+            <tr>
+              <td style="font-weight:600;">Mamba 2.8B</td>
+              <td>2.8B</td>
+              <td><span class="tag green">Mamba</span>（纯 SSM）</td>
+              <td><code>E&times;n + E&times;(k-1)</code><br><span style="font-size:12px;color:var(--text-secondary);">E=5120，n=16 &rarr; 每层约 164KB</span></td>
+              <td style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--green);font-weight:700;">~10 MB<br><span style="font-size:11px;color:var(--text-secondary);">（64 层，固定）</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout" style="margin-top:24px;">
+        <strong>DeepSeek-V2 的洞见。</strong> 尽管拥有 236B 参数，DeepSeek-V2 的 MLA 将每个 token 的 KV 表示压缩成一个 512 维的向量（而 Llama 使用 GQA 时为 2048 维）。这是 <strong>4&times; 的缩减</strong> &mdash; 使一个 236B 模型的 KV 缓存比一个 70B 模型更小。MLA 通过学习键和值的低秩压缩，然后在解码过程中即时重建完整的注意力头来实现这一点。
+      </div>
+
+      <div class="card-grid" style="margin-top:24px;">
+        <div class="card">
+          <h4>关键要点：内存</h4>
+          <p>在 100K token 时，纯 MHA 模型变得不切实际。GQA、MLA 和滑动窗口让长上下文变得可行。Mamba/混合架构则让它变得 <em>轻而易举</em>。</p>
+        </div>
+        <div class="card">
+          <h4>关键要点：计算</h4>
+          <p>完整注意力的 O(Nd) 解码开销意味着在 N=100K 时约 410M FLOPs/token。滑动窗口将其封顶在约 16.8M。SSM/Mamba：约 2.7M &mdash; 比完整注意力 <strong>便宜 150&times;</strong>。</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Finale -->
+    <div class="fade-in" style="margin-top:56px;">
+      <div class="callout" style="font-size:15px;line-height:1.8;">
+        <strong>内存和计算是同一枚硬币的两面。</strong> 最好的推理系统两者都优化 &mdash; 用 GQA 缩小 KV 缓存，用滑动窗口封顶计算，并且越来越多地使用混合架构，将少数几个注意力层（用于精确回忆）与 Mamba 层（用于高效的长程上下文）结合起来。DeepSeek-V2 的 MLA 表明，巧妙的压缩可以让你以极小的内存代价获得接近 MHA 的质量。
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-brand">VIZUARA AI LABS</div>
+  <div class="footer-sub">LLM 推理工程工作坊 &mdash; 可视化走读系列</div>
+</footer>
+
+<script>
+// Intersection Observer for fade-in animations
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+    }
+  });
+}, {
+  threshold: 0.1,
+  rootMargin: '0px 0px -40px 0px'
+});
+
+document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+
+// Smooth scroll for nav links
+document.querySelectorAll('.nav-links a').forEach(link => {
+  link.addEventListener('click', (e) => {
+    e.preventDefault();
+    const target = document.querySelector(link.getAttribute('href'));
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  });
+});
+</script>
+</body>
+</html>

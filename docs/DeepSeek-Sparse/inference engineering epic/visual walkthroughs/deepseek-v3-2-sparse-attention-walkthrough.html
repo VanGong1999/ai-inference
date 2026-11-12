@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DeepSeek V3.2 Sparse Attention - Visual Walkthrough</title>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --paper:#fffdfa;--wash:#f6f3ee;--ink:#171717;--muted:#6f747d;--line:#e7e1d7;--panel:#fff;
+  --blue:#2f78ee;--green:#12936b;--amber:#dc8a1d;--rose:#df4b6f;--violet:#6f5be8;--teal:#089aa1;
+  --shadow:0 22px 70px rgba(34,30,22,.08);--max:1120px;
+}
+html{scroll-behavior:smooth}
+body{font-family:Figtree,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--paper);color:var(--ink);font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}
+.nav{position:fixed;inset:0 0 auto;z-index:30;background:rgba(255,253,250,.88);backdrop-filter:blur(18px);border-bottom:1px solid var(--line)}
+.nav-inner{max-width:var(--max);margin:0 auto;padding:13px 24px;display:flex;align-items:center;justify-content:space-between;gap:18px}
+.brand{font-weight:900;color:var(--violet)}.links{display:flex;gap:14px;flex-wrap:wrap;justify-content:flex-end}.links a{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);text-decoration:none;font-weight:900}.links a:hover{color:var(--violet)}
+.wrap{max-width:var(--max);margin:0 auto;padding:0 24px}section{padding:78px 0;border-bottom:1px solid var(--line)}section.alt{background:var(--wash)}
+.hero{padding-top:118px;min-height:92vh;display:flex;align-items:center}.eyebrow{font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--violet);font-weight:900;margin-bottom:12px}
+h1{font-size:clamp(46px,8vw,96px);line-height:.9;font-weight:900;letter-spacing:0;max-width:920px}h2{font-size:clamp(31px,4.6vw,56px);line-height:.96;font-weight:900;letter-spacing:0;margin-bottom:12px}
+p{color:#4f535d}.lead{font-size:20px;max-width:790px;margin-top:22px;color:#515560}.tiny{font:800 11px JetBrains Mono,monospace;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.legend{display:flex;gap:12px;flex-wrap:wrap;margin-top:28px}.legend span{display:inline-flex;align-items:center;gap:7px;font-weight:900;font-size:12px;color:#565b66}.sw{width:18px;height:11px;border-radius:3px}.sw.blue{background:var(--blue)}.sw.green{background:var(--green)}.sw.amber{background:var(--amber)}.sw.rose{background:var(--rose)}.sw.violet{background:var(--violet)}.sw.teal{background:var(--teal)}
+.stage{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:22px;box-shadow:var(--shadow);margin-top:24px}.stage-head{display:flex;justify-content:space-between;align-items:center;gap:16px;border-bottom:1px solid var(--line);padding-bottom:14px;margin-bottom:20px}.stage-head b{font-size:12px;text-transform:uppercase;letter-spacing:.14em}.stage-head span{font:800 11px JetBrains Mono,monospace;color:var(--muted)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.card{border:1px solid var(--line);border-radius:8px;background:#fff;padding:18px}.card b{display:block;font-size:13px;text-transform:uppercase;letter-spacing:.12em;margin-bottom:8px}.card p{font-size:14px}.note{border-left:3px solid var(--violet);background:#f7f5ff;padding:16px 18px;border-radius:0 8px 8px 0;margin-top:18px}.note p{font-size:14px;margin:0}
+.formula{font:800 13px JetBrains Mono,monospace;color:#303240;background:#faf7f1;border:1px solid var(--line);border-radius:8px;padding:14px;margin-top:14px;overflow:auto;text-align:center}.formula strong{color:var(--violet)}
+.flow{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap}.arrow{font-weight:900;color:var(--muted);font-size:22px;text-align:center}.box{border:2px solid currentColor;border-radius:8px;min-width:120px;min-height:86px;padding:11px;display:grid;place-items:center;text-align:center;background:#fff}.box b{font:900 12px JetBrains Mono,monospace;text-transform:none;letter-spacing:0;margin:0}.box span{font-size:11px;color:#5a606b;font-weight:800}.blue{color:var(--blue);background:#eef5ff}.green{color:var(--green);background:#eafaf3}.amber{color:var(--amber);background:#fff6e7}.rose{color:var(--rose);background:#fff0f4}.violet{color:var(--violet);background:#f3f1ff}.teal{color:var(--teal);background:#e9fbfb}
+.tokens{display:flex;gap:7px;align-items:center;justify-content:center;flex-wrap:wrap}.tok{width:54px;height:44px;border:2px solid #d7d2c9;background:#fff;border-radius:7px;display:flex;align-items:center;justify-content:center;font:900 11px JetBrains Mono,monospace;color:#5b606b;position:relative}.tok:after{content:attr(data-label);position:absolute;bottom:-18px;left:50%;transform:translateX(-50%);font:800 9px JetBrains Mono,monospace;color:#9aa0aa;white-space:nowrap}.tok.new{border-color:var(--blue);background:#eaf2ff;color:var(--blue)}.tok.keep{border-color:var(--rose);background:#fff0f4;color:var(--rose)}.tok.scan{border-color:var(--amber);background:#fff6e8;color:#9f5f11}.tok.fade{opacity:.25}.tok.self{border-color:var(--violet);background:#f3f1ff;color:var(--violet)}
+.vec-row{display:grid;gap:8px}.vec{border:2px solid currentColor;border-radius:8px;background:#fff;padding:12px}.vec-title{font:900 12px JetBrains Mono,monospace;text-align:center;margin-bottom:8px}.bars{display:grid;gap:5px}.bar{height:10px;border-radius:999px;background:currentColor;opacity:.28}.bar:nth-child(2){width:72%;opacity:.5}.bar:nth-child(3){width:54%;opacity:.75}.bar:nth-child(4){width:88%;opacity:.38}.bar:nth-child(5){width:63%;opacity:.64}.bar:nth-child(6){width:80%;opacity:.48}
+.map{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:12px;align-items:center;margin-top:16px}.mat{border:2px solid var(--line);border-radius:8px;padding:10px;background:#fff;min-width:112px;text-align:center}.mat b{font:900 12px JetBrains Mono,monospace}.mat span{display:block;font-size:11px;color:var(--muted);font-weight:800;margin-top:5px}
+.cache{display:grid;gap:8px}.cache-row{display:grid;grid-template-columns:100px 1fr;gap:10px;align-items:center}.cache-row b{font:900 11px JetBrains Mono,monospace;color:#4f5560}.slots{display:flex;gap:5px;flex-wrap:wrap}.slot{min-height:28px;min-width:42px;border-radius:6px;border:1px solid #d9d2c8;background:#ebe8e1;display:grid;place-items:center;font:900 10px JetBrains Mono,monospace;color:#555b66}.slot.ckv{background:#e1f7ef;border-color:#91d7bd;color:var(--green)}.slot.idx{background:#fff0d9;border-color:#efba74;color:#9f5f11}.slot.q{background:#eaf2ff;border-color:#9ec2ff;color:var(--blue)}.slot.sel{background:#ffe0e8;border-color:#ef96ad;color:var(--rose)}.slot.off{opacity:.22}.slot.wide{min-width:76px}
+.vector-list{display:grid;gap:10px;margin-top:14px}.vector-item{display:grid;grid-template-columns:62px 1fr;gap:10px;align-items:center;border:1px solid var(--line);border-radius:8px;background:#fff;padding:10px}.vector-item b{font:900 11px JetBrains Mono,monospace;color:#4f5560;margin:0;text-transform:none;letter-spacing:0}.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}.tile{height:26px;border-radius:5px;border:1px solid currentColor;background:currentColor;opacity:.22}.tile:nth-child(2){opacity:.42}.tile:nth-child(3){opacity:.68}.tile:nth-child(4){opacity:.34}.tiles.ckv{color:var(--green)}.tiles.idx{color:var(--amber)}
+.score-table{width:100%;border-collapse:collapse;font-size:13px;margin-top:12px}.score-table th,.score-table td{border-bottom:1px solid var(--line);padding:10px;text-align:left;vertical-align:middle}.score-table th{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:#555b66}.score-table td:first-child{font-weight:900}.meter{height:13px;border-radius:999px;background:#eee8dd;overflow:hidden}.fill{height:100%;border-radius:999px;background:linear-gradient(90deg,var(--amber),#f5bd68)}.fill.sel{background:linear-gradient(90deg,var(--rose),#ee8ca2)}
+.equation-grid{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:12px;align-items:center;margin-top:16px}.score-chip{display:grid;place-items:center;border-radius:8px;border:2px solid var(--rose);background:#fff0f4;color:var(--rose);padding:14px;font:900 13px JetBrains Mono,monospace;text-align:center}
+.compare-table{width:100%;border-collapse:collapse;font-size:13px}.compare-table th,.compare-table td{border-bottom:1px solid var(--line);padding:13px 10px;vertical-align:top;text-align:left}.compare-table th{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:#555b66}.compare-table td:first-child{font-weight:900;color:var(--violet)}
+.roof{position:relative;height:330px;border:1px solid var(--line);border-radius:8px;background:linear-gradient(180deg,#fff,#faf7f1);overflow:hidden;margin-top:16px}.roof:before{content:"";position:absolute;left:54px;right:28px;bottom:54px;height:2px;background:#cfc8bc}.roof:after{content:"";position:absolute;left:54px;top:28px;bottom:54px;width:2px;background:#cfc8bc}.roofline{position:absolute;left:58px;bottom:58px;width:42%;height:3px;background:var(--amber);transform:rotate(-28deg);transform-origin:left center}.roofcap{position:absolute;left:39%;right:8%;top:92px;height:3px;background:var(--violet)}.roof-label{position:absolute;font:900 11px JetBrains Mono,monospace;color:var(--muted);background:rgba(255,255,255,.78);padding:5px 7px;border-radius:999px;border:1px solid var(--line)}.roof-label.y{left:12px;top:80px;writing-mode:vertical-rl;transform:rotate(180deg)}.roof-label.x{right:34px;bottom:16px}.roof-label.mem{left:118px;bottom:150px;color:#9f5f11}.roof-label.comp{right:70px;top:72px;color:var(--violet)}.point{position:absolute;width:16px;height:16px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 0 2px currentColor}.point.mla{color:var(--green);left:205px;bottom:108px;background:var(--green)}.point.dsa{color:var(--rose);left:420px;bottom:146px;background:var(--rose)}.point-note{position:absolute;font:900 11px JetBrains Mono,monospace;color:#4f5560;background:#fff;border:1px solid var(--line);border-radius:7px;padding:7px}.point-note.mla{left:122px;bottom:70px}.point-note.dsa{left:438px;bottom:158px}
+.hbm-list{display:grid;gap:10px;margin-top:14px}.hbm-row{display:grid;grid-template-columns:120px 1fr 105px;gap:10px;align-items:center;border:1px solid var(--line);border-radius:8px;padding:10px;background:#fff}.hbm-row b{font:900 11px JetBrains Mono,monospace;color:#4f5560}.hbm-row span{font:900 11px JetBrains Mono,monospace;color:var(--muted);text-align:right}.hbm-track{height:18px;border-radius:999px;background:#eee8dd;overflow:hidden}.hbm-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,var(--green),#72d8bb)}.hbm-fill.idx{background:linear-gradient(90deg,var(--amber),#f4bd68)}.hbm-fill.sel{background:linear-gradient(90deg,var(--rose),#ef8aa1)}
+.fade-in{opacity:0;transform:translateY(14px);transition:opacity .55s ease,transform .55s ease}.fade-in.visible{opacity:1;transform:translateY(0)}
+footer{padding:34px 24px;text-align:center;background:var(--wash);font-size:12px;color:var(--muted)}
+@media(max-width:860px){.links{display:none}.hero{min-height:auto}.grid2,.grid3,.grid4,.map,.equation-grid{grid-template-columns:1fr}.stage{padding:16px;overflow:hidden}.stage-head{align-items:flex-start;flex-direction:column}.arrow{transform:rotate(90deg)}.cache-row{grid-template-columns:76px 1fr}.hbm-row{grid-template-columns:1fr}.hbm-row span{text-align:left}.vector-item{grid-template-columns:56px 1fr}.tok{width:46px}.compare-table,.score-table{display:block;max-width:100%;overflow-x:auto;white-space:normal}.compare-table th,.compare-table td{min-width:130px}.roof{height:300px}.point.mla{left:118px}.point.dsa{left:235px}.point-note.mla{left:78px}.point-note.dsa{left:205px}.roofcap{left:42%}}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <div class="brand">DeepSeek Sparse Attention</div>
+    <div class="links">
+      <a href="#setup">Setup</a><a href="#index">Indexer</a><a href="#new-token">New Token</a><a href="#scores">Scores</a><a href="#mla">MLA Read</a><a href="#cache">Cache</a><a href="#benefit">Benefit</a><a href="#roofline">Roofline</a><a href="#formula">Formula</a>
+    </div>
+  </div>
+</nav>
+
+<section class="hero">
+  <div class="wrap fade-in">
+    <div class="eyebrow">Visual walkthrough</div>
+    <h1>DeepSeek V3.2 Sparse Attention</h1>
+    <p class="lead">A continuation of the MLA story: we still cache the compressed latent vector, but we add a small learned index so a new token can first choose which past tokens are worth reading.</p>
+    <div class="legend">
+      <span><i class="sw blue"></i>new token query</span><span><i class="sw green"></i>MLA latent cache</span><span><i class="sw amber"></i>index key cache</span><span><i class="sw rose"></i>selected tokens</span><span><i class="sw violet"></i>MLA attention</span>
+    </div>
+  </div>
+</section>
+
+<section id="setup" class="alt">
+  <div class="wrap">
+    <div class="fade-in">
+      <div class="eyebrow">Toy setup</div>
+      <h2>Use the same kind of small dimensions as the MLA chapter.</h2>
+      <div class="stage">
+        <div class="stage-head"><b>Prompt already processed</b><span>"The next day is" is in cache</span></div>
+        <div class="grid2">
+          <div class="card">
+            <b>Toy dimensions</b>
+            <p>We will keep the numbers tiny so every matrix has a visible shape.</p>
+            <div class="formula">d_model = 8, n_heads = 2, d_head = 4, d_latent = 4, d_index = 4, top-k = 2</div>
+          </div>
+          <div class="card">
+            <b>The story</b>
+            <p>The model has already processed four tokens: <strong>The</strong>, <strong>next</strong>, <strong>day</strong>, <strong>is</strong>. Now a new token <strong>bright</strong> enters, and we want to compute its attention efficiently.</p>
+            <div class="tokens" style="margin:20px 0 34px">
+              <div class="tok">The</div><div class="tok">next</div><div class="tok">day</div><div class="tok">is</div><div class="tok new" data-label="new">bright</div>
+            </div>
+          </div>
+        </div>
+        <div class="grid2" style="margin-top:18px">
+          <div class="card">
+            <b>What MLA already taught us</b>
+            <p>For each old token, MLA stores a compressed latent vector instead of full K and V. In this toy example, each cached latent vector has 4 numbers.</p>
+            <div class="vector-list">
+              <div class="vector-item"><b>The</b><div class="tiles ckv"><i class="tile"></i><i class="tile"></i><i class="tile"></i><i class="tile"></i></div></div>
+              <div class="vector-item"><b>next</b><div class="tiles ckv"><i class="tile"></i><i class="tile"></i><i class="tile"></i><i class="tile"></i></div></div>
+              <div class="vector-item"><b>day</b><div class="tiles ckv"><i class="tile"></i><i class="tile"></i><i class="tile"></i><i class="tile"></i></div></div>
+              <div class="vector-item"><b>is</b><div class="tiles ckv"><i class="tile"></i><i class="tile"></i><i class="tile"></i><i class="tile"></i></div></div>
+            </div>
+            <div class="formula">cKV cache shape = 4 tokens x 4 latent numbers</div>
+          </div>
+          <div class="card">
+            <b>What DSA adds</b>
+            <p>DeepSeek Sparse Attention adds a second small cached vector per token: an index key. This is not the content memory. It is a lookup vector used to decide which old tokens to read.</p>
+            <div class="vector-list">
+              <div class="vector-item"><b>The</b><div class="tiles idx"><i class="tile"></i><i class="tile"></i><i class="tile"></i><i class="tile"></i></div></div>
+              <div class="vector-item"><b>next</b><div class="tiles idx"><i class="tile"></i><i class="tile"></i><i class="tile"></i><i class="tile"></i></div></div>
+              <div class="vector-item"><b>day</b><div class="tiles idx"><i class="tile"></i><i class="tile"></i><i class="tile"></i><i class="tile"></i></div></div>
+              <div class="vector-item"><b>is</b><div class="tiles idx"><i class="tile"></i><i class="tile"></i><i class="tile"></i><i class="tile"></i></div></div>
+            </div>
+            <div class="formula">index K cache shape = 4 tokens x 4 index numbers</div>
+          </div>
+        </div>
+        <div class="note"><p>Each row is one token. Each colored tile is one number in the cached vector. In a real model these vectors are much wider, but the structure is the same: one compressed content vector and one index-key vector per cached token.</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="index">
+  <div class="wrap">
+    <div class="fade-in">
+      <div class="eyebrow">What is learned?</div>
+      <h2>The indexer is just learned projections into a search space.</h2>
+      <div class="stage">
+        <div class="stage-head"><b>Old token side</b><span>make one search key per cached token</span></div>
+        <div class="map">
+          <div class="vec blue"><div class="vec-title">old hidden state h_s<br>shape 1 x 8</div><div class="bars"><i class="bar"></i><i class="bar"></i><i class="bar"></i><i class="bar"></i><i class="bar"></i><i class="bar"></i></div></div>
+          <div class="arrow">&rarr;</div>
+          <div class="mat"><b>W_k^I</b><span>8 x 4 learned matrix</span></div>
+          <div class="arrow">&rarr;</div>
+          <div class="vec amber"><div class="vec-title">index key k_s^I<br>shape 1 x 4</div><div class="bars"><i class="bar"></i><i class="bar"></i><i class="bar"></i><i class="bar"></i></div></div>
+        </div>
+        <div class="note"><p><strong>Learned index key</strong> means exactly this: take the token's hidden vector and multiply it by a trained matrix. The result is a smaller vector whose job is lookup, not final attention content.</p></div>
+        <div class="stage" style="box-shadow:none;margin-top:18px">
+          <div class="stage-head"><b>New token side</b><span>make a search query for the current token</span></div>
+          <div class="map">
+            <div class="vec blue"><div class="vec-title">new hidden state h_bright<br>shape 1 x 8</div><div class="bars"><i class="bar"></i><i class="bar"></i><i class="bar"></i><i class="bar"></i><i class="bar"></i><i class="bar"></i></div></div>
+            <div class="arrow">&rarr;</div>
+            <div class="mat"><b>W_q^I</b><span>8 x 4 learned matrix</span></div>
+            <div class="arrow">&rarr;</div>
+            <div class="vec violet"><div class="vec-title">index query q_bright^I<br>shape 1 x 4</div><div class="bars"><i class="bar"></i><i class="bar"></i><i class="bar"></i><i class="bar"></i></div></div>
+          </div>
+        </div>
+        <div class="grid3" style="margin-top:18px">
+          <div class="card"><b>Why not token IDs?</b><p>Token IDs only say which symbol appeared. Hidden states contain context: what the token means in this sentence and what role it may play.</p></div>
+          <div class="card"><b>Why a vector?</b><p>A vector can store many soft features at once: topic, entity, instruction, variable name, answer anchor, or constraint.</p></div>
+          <div class="card"><b>Why learned?</b><p>The matrices <code>W_k^I</code> and <code>W_q^I</code> are trained so useful past tokens get high scores when future tokens need them.</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="new-token" class="alt">
+  <div class="wrap">
+    <div class="fade-in">
+      <div class="eyebrow">Decode step</div>
+      <h2>Now the new token "bright" comes in.</h2>
+      <div class="stage">
+        <div class="stage-head"><b>What gets computed fresh?</b><span>parallel projections for the current token</span></div>
+        <div class="grid3">
+          <div class="card">
+            <b>1. MLA query</b>
+            <p>Just like MLA, we compute a fresh query for the new token.</p>
+            <div class="formula">Q_bright = x_bright * W_q</div>
+            <div class="slots" style="margin-top:12px"><i class="slot q wide">Q bright</i></div>
+          </div>
+          <div class="card">
+            <b>2. MLA latent vector</b>
+            <p>We down-project the new token into the latent cache space.</p>
+            <div class="formula">cKV_bright = x_bright * W_dkv</div>
+            <div class="slots" style="margin-top:12px"><i class="slot ckv wide">cKV bright</i></div>
+          </div>
+          <div class="card">
+            <b>3. Index query and key</b>
+            <p>For DSA, we also create lookup vectors for search.</p>
+            <div class="formula">qI_bright = h_bright * W_q^I<br>kI_bright = h_bright * W_k^I</div>
+            <div class="slots" style="margin-top:12px"><i class="slot idx wide">qI</i><i class="slot idx wide">kI</i></div>
+          </div>
+        </div>
+        <div class="note"><p>The new token contributes to the normal MLA cache and the index cache. But before expensive attention reads everything, the indexer asks which tokens should be read.</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="scores">
+  <div class="wrap">
+    <div class="fade-in">
+      <div class="eyebrow">Selection</div>
+      <h2>The lightning indexer scores old tokens with dot products.</h2>
+      <div class="stage">
+        <div class="stage-head"><b>One score per visible token</b><span>toy top-k = 2</span></div>
+        <div class="equation-grid">
+          <div class="vec violet"><div class="vec-title">qI_bright</div><div class="bars"><i class="bar"></i><i class="bar"></i><i class="bar"></i><i class="bar"></i></div></div>
+          <div class="arrow">&middot;</div>
+          <div class="vec amber"><div class="vec-title">kI_s</div><div class="bars"><i class="bar"></i><i class="bar"></i><i class="bar"></i><i class="bar"></i></div></div>
+          <div class="arrow">=</div>
+          <div class="score-chip">score(bright, s)</div>
+        </div>
+        <div class="note"><p>A dot product is a similarity test. If the query vector for <strong>bright</strong> points in the same direction as an old token's index key, the score is high. High score means: this old token is probably useful to read.</p></div>
+        <div class="grid2" style="margin-top:18px">
+          <div class="card">
+            <b>Dot products against the index cache</b>
+            <table class="score-table">
+              <thead><tr><th>Past token</th><th>Score</th><th>Meaning</th></tr></thead>
+              <tbody>
+                <tr><td>The</td><td><div class="meter"><div class="fill" style="width:28%"></div></div></td><td>low relevance</td></tr>
+                <tr><td>next</td><td><div class="meter"><div class="fill sel" style="width:78%"></div></div></td><td>selected</td></tr>
+                <tr><td>day</td><td><div class="meter"><div class="fill sel" style="width:91%"></div></div></td><td>selected</td></tr>
+                <tr><td>is</td><td><div class="meter"><div class="fill" style="width:44%"></div></div></td><td>not top-k</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="card">
+            <b>Top-k shortlist</b>
+            <p>The selector keeps only the highest scoring token positions. In the real V3.2 config, k is much larger, for example 2048. In this toy example, k = 2.</p>
+            <div class="tokens" style="margin:24px 0 34px">
+              <div class="tok fade">The</div><div class="tok keep">next</div><div class="tok keep">day</div><div class="tok fade">is</div><div class="tok self" data-label="current">bright</div>
+            </div>
+            <div class="formula">selected positions = [next, day]</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="mla" class="alt">
+  <div class="wrap">
+    <div class="fade-in">
+      <div class="eyebrow">MLA after selection</div>
+      <h2>Only now do we apply the expensive MLA read.</h2>
+      <div class="stage">
+        <div class="stage-head"><b>Same MLA machinery, smaller read set</b><span>read selected cKV entries</span></div>
+        <div class="flow">
+          <div class="box green"><b>selected cKV</b><span>next, day</span></div>
+          <div class="arrow">&rarr;</div>
+          <div class="box violet"><b>up-project</b><span>W_uk and W_uv</span></div>
+          <div class="arrow">&rarr;</div>
+          <div class="box violet"><b>K and V</b><span>only selected tokens</span></div>
+          <div class="arrow">&rarr;</div>
+          <div class="box blue"><b>Q_bright</b><span>attends to them</span></div>
+        </div>
+        <div class="grid2" style="margin-top:18px">
+          <div class="card">
+            <b>Without DSA</b>
+            <p>MLA would use the latent cache for every visible token, then compute attention scores against all of them.</p>
+            <div class="cache" style="margin-top:14px">
+              <div class="cache-row"><b>read</b><div class="slots"><i class="slot ckv">The</i><i class="slot ckv">next</i><i class="slot ckv">day</i><i class="slot ckv">is</i></div></div>
+            </div>
+          </div>
+          <div class="card">
+            <b>With DSA</b>
+            <p>The indexer has already chosen the most useful positions. MLA reads only those selected latent vectors for the expensive attention calculation.</p>
+            <div class="cache" style="margin-top:14px">
+              <div class="cache-row"><b>read</b><div class="slots"><i class="slot off">The</i><i class="slot sel">next</i><i class="slot sel">day</i><i class="slot off">is</i></div></div>
+            </div>
+          </div>
+        </div>
+        <div class="formula">Attention for bright = softmax(Q_bright dot K_selected^T) * V_selected</div>
+        <div class="note"><p>This is the cleanest mental model: <strong>the indexer chooses positions</strong>; <strong>MLA reads the compressed content at those positions</strong>.</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="cache">
+  <div class="wrap">
+    <div class="fade-in">
+      <div class="eyebrow">What is cached?</div>
+      <h2>After processing "bright", two caches are updated.</h2>
+      <div class="stage">
+        <div class="stage-head"><b>Cache state after the step</b><span>content memory plus lookup memory</span></div>
+        <div class="grid2">
+          <div class="card">
+            <b>MLA latent cache</b>
+            <p>This is the actual compressed content memory. It is used later to reconstruct K and V when a future token attends.</p>
+            <div class="cache" style="margin-top:14px">
+              <div class="cache-row"><b>cKV</b><div class="slots"><i class="slot ckv">The</i><i class="slot ckv">next</i><i class="slot ckv">day</i><i class="slot ckv">is</i><i class="slot ckv">bright</i></div></div>
+            </div>
+          </div>
+          <div class="card">
+            <b>Indexer key cache</b>
+            <p>This is the search memory. It is scanned by future tokens to decide which cKV entries are worth reading.</p>
+            <div class="cache" style="margin-top:14px">
+              <div class="cache-row"><b>index K</b><div class="slots"><i class="slot idx">The</i><i class="slot idx">next</i><i class="slot idx">day</i><i class="slot idx">is</i><i class="slot idx">bright</i></div></div>
+            </div>
+          </div>
+        </div>
+        <div class="note"><p><strong>Important:</strong> DSA does not delete the non-selected tokens from memory. "The" and "is" were not read for this one step, but they remain cached and may be selected by a future token.</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="benefit" class="alt">
+  <div class="wrap">
+    <div class="fade-in">
+      <div class="eyebrow">Inference benefit</div>
+      <h2>DSA does not beat MLA by shrinking the cache. It beats MLA by reading less during long-context decode.</h2>
+      <div class="stage">
+        <div class="stage-head"><b>Decode stage</b><span>one new token at a time</span></div>
+        <div class="grid2">
+          <div class="card">
+            <b>MLA-only decode at long context</b>
+            <p>MLA has a small cache per token, but a new token still has to score and read across the full visible history.</p>
+            <div class="formula">for one new token: read ~L cached content vectors</div>
+            <div class="cache" style="margin-top:14px">
+              <div class="cache-row"><b>read</b><div class="slots"><i class="slot ckv">1</i><i class="slot ckv">2</i><i class="slot ckv">3</i><i class="slot ckv">...</i><i class="slot ckv">128K</i></div></div>
+            </div>
+          </div>
+          <div class="card">
+            <b>DSA decode at long context</b>
+            <p>The indexer scans lightweight search keys, then the expensive MLA attention reads only the selected top-k content vectors.</p>
+            <div class="formula">for one new token: cheap scan over L + heavy read over k</div>
+            <div class="cache" style="margin-top:14px">
+              <div class="cache-row"><b>read</b><div class="slots"><i class="slot off">1</i><i class="slot sel">hit</i><i class="slot off">3</i><i class="slot off">...</i><i class="slot sel">hit</i></div></div>
+            </div>
+          </div>
+        </div>
+        <div class="note"><p><strong>This is the key inference distinction:</strong> MLA reduces cache bytes per token. DSA reduces the number of content tokens touched by the expensive attention read. The DSA cache can be slightly larger than MLA because of the index keys, but the long-context decode step can be much cheaper.</p></div>
+        <div class="grid3" style="margin-top:18px">
+          <div class="card">
+            <b>DeepSeek V3.2 top-k</b>
+            <p>The released configuration selects <strong>2048</strong> key-value tokens for each query token.</p>
+            <div class="formula">k = 2048</div>
+          </div>
+          <div class="card">
+            <b>At 128K context</b>
+            <p>The selected content set is only about <strong>1.6%</strong> of the full context.</p>
+            <div class="formula">2048 / 128000 = 1.6%</div>
+          </div>
+          <div class="card">
+            <b>Raw content-read reduction</b>
+            <p>The main MLA attention read touches about <strong>62.5x fewer</strong> content entries.</p>
+            <div class="formula">128000 / 2048 = 62.5x</div>
+          </div>
+        </div>
+        <div class="stage" style="box-shadow:none;margin-top:18px">
+          <div class="stage-head"><b>Approximate cache bytes</b><span>one request, 128K context, 61 layers</span></div>
+          <div class="note"><p><strong>Keep the dimensions simple:</strong> <strong>512</strong> is the MLA latent dimension in DeepSeek V3.2, so each token stores a 512-number compressed content vector. <strong>128</strong> is the index dimension, so each token stores a 128-number lookup vector. Because both are stored in FP8, each number is about 1 byte.</p></div>
+          <div class="grid2">
+            <div class="card">
+              <b>MLA cache</b>
+              <p>For each token, DeepSeek's MLA content memory stores a <strong>512-number latent vector</strong>. This is the latent dimension.</p>
+              <div class="formula">512 latent numbers * 1 byte = 512B</div>
+              <p>Quantization also needs a few scale numbers, and the implementation keeps a small position part.</p>
+              <div class="formula">512B latent + 16B scales + 128B position = 656B</div>
+              <div class="formula">656 * 128K * 61 ~= 4.77 GiB</div>
+            </div>
+            <div class="card">
+              <b>DSA cache</b>
+              <p>The index key is smaller because it is not content memory. It is only a lookup label. In V3.2, the index key has <strong>128 numbers</strong>. This is the index dimension.</p>
+              <div class="formula">128 index numbers * 1 byte ~= 128B</div>
+              <p>Add a tiny scale overhead, and the lookup entry is roughly 132B.</p>
+              <div class="formula">656B MLA content + ~132B index key ~= 788B</div>
+              <div class="formula">(656 + ~132) * 128K * 61 ~= 5.73 GiB</div>
+            </div>
+          </div>
+          <div class="note"><p>So yes: DSA can use more cache memory than MLA alone. The win is that, at long context, HBM bandwidth and attention compute are dominated by repeatedly reading the history during decode. DSA pays a small lookup-cache cost to avoid reading nearly all content vectors in the heavy attention path.</p></div>
+        </div>
+        <div class="grid3" style="margin-top:18px">
+          <div class="card"><b>Why not 62.5x end-to-end?</b><p>The indexer still scans the sequence, top-k has overhead, kernels have overhead, and other model layers still run. So the end-to-end speedup is much smaller than the raw content-read reduction.</p></div>
+          <div class="card"><b>Which complexity?</b><p><code>O(L^2) -> O(Lk)</code> is the main attention work over a length-L sequence: L query positions times either L past tokens or k selected tokens. In single-token decode, the same statement becomes <code>O(L) -> O(k)</code> for the heavy MLA attention read.</p></div>
+          <div class="card"><b>Best workshop wording</b><p>Do not say DSA makes the KV cache smaller than MLA. Say: <strong>MLA makes the cache compact; DSA makes long-context attention reads sparse.</strong></p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="roofline">
+  <div class="wrap">
+    <div class="fade-in">
+      <div class="eyebrow">Roofline view</div>
+      <h2>Resident cache can increase while HBM traffic per decode token decreases.</h2>
+      <div class="stage">
+        <div class="stage-head"><b>Decode is memory-bound</b><span>bytes moved per generated token matter</span></div>
+        <div class="grid2">
+          <div class="card">
+            <b>Resident cache size</b>
+            <p>This is how much memory the request occupies while it is alive. DSA can be larger than MLA because every token stores both content memory and a lookup key.</p>
+            <div class="formula">MLA resident cache &lt; DSA resident cache</div>
+          </div>
+          <div class="card">
+            <b>HBM traffic per decode step</b>
+            <p>This is how many bytes the GPU must pull from HBM to generate the next token. DSA can be much lower because it reads all lightweight index keys but only top-k heavy content vectors.</p>
+            <div class="formula">DSA transferred bytes per token &lt; MLA transferred bytes per token</div>
+          </div>
+        </div>
+        <div class="stage" style="box-shadow:none;margin-top:18px">
+          <div class="stage-head"><b>Approximate one-layer HBM reads at L = 128K</b><span>decode, one new token</span></div>
+          <div class="note"><p><strong>Simple version:</strong> MLA content uses the <strong>512-dimensional latent vector</strong>. The indexer uses the <strong>128-dimensional index vector</strong>. After FP8 storage and small metadata, this becomes about <strong>656B</strong> for one MLA content entry and about <strong>132B</strong> for one index entry.</p></div>
+          <div class="grid2">
+            <div class="card">
+              <b>Left: MLA-only decode</b>
+              <p>For this new token, the attention kernel must pull the content memory for every visible past token from HBM.</p>
+              <div class="hbm-list">
+                <div class="hbm-row"><b>content cKV</b><div class="hbm-track"><div class="hbm-fill" style="width:100%"></div></div><span>128K * 656B</span></div>
+                <div class="hbm-row"><b>index keys</b><div class="hbm-track"><div class="hbm-fill idx" style="width:0%"></div></div><span>none</span></div>
+                <div class="hbm-row"><b>selected cKV</b><div class="hbm-track"><div class="hbm-fill sel" style="width:100%"></div></div><span>all tokens</span></div>
+              </div>
+              <div class="formula">total ~= 656 bytes * 128K ~= 84 MB per layer</div>
+            </div>
+            <div class="card">
+              <b>Right: DSA-over-MLA decode</b>
+              <p>For this new token, the indexer pulls small lookup keys for all past tokens, then the MLA attention kernel pulls content for only the selected 2048 tokens.</p>
+              <div class="hbm-list">
+                <div class="hbm-row"><b>index keys</b><div class="hbm-track"><div class="hbm-fill idx" style="width:100%"></div></div><span>128K * ~132B</span></div>
+                <div class="hbm-row"><b>content cKV</b><div class="hbm-track"><div class="hbm-fill" style="width:1.6%"></div></div><span>2048 * 656B</span></div>
+                <div class="hbm-row"><b>selected cKV</b><div class="hbm-track"><div class="hbm-fill sel" style="width:1.6%"></div></div><span>top-k only</span></div>
+              </div>
+              <div class="formula">total ~= 132 bytes * 128K + 656 bytes * 2048 ~= 18 MB per layer</div>
+            </div>
+          </div>
+          <div class="grid2" style="margin-top:18px">
+            <div class="card"><b>Across 61 layers</b><p>Ignoring other model work, metadata, writes, and kernel overhead, the attention-cache read estimate becomes roughly:</p><div class="formula">MLA: 84 MB * 61 ~= 5.1 GB per generated token</div></div>
+            <div class="card"><b>Across 61 layers</b><p>The DSA estimate becomes roughly:</p><div class="formula">DSA: 18 MB * 61 ~= 1.1 GB per generated token</div></div>
+          </div>
+          <div class="note"><p>This is the exact mechanism: DSA stores more total cache, but each generated token transfers fewer bytes from HBM in the long-context attention path. It replaces a large content-cache read with a small index-key scan plus a small selected-content read.</p></div>
+        </div>
+        <div class="roof">
+          <div class="roofline"></div><div class="roofcap"></div>
+          <div class="roof-label y">performance</div><div class="roof-label x">arithmetic intensity</div>
+          <div class="roof-label mem">memory-bound slope</div><div class="roof-label comp">compute roof</div>
+          <div class="point mla"></div><div class="point-note mla">MLA decode<br>many content bytes</div>
+          <div class="point dsa"></div><div class="point-note dsa">DSA decode<br>fewer HBM bytes</div>
+        </div>
+        <div class="grid3" style="margin-top:18px">
+          <div class="card"><b>MLA roofline story</b><p>MLA reduces bytes per cached token. For similar attention work, fewer bytes raises arithmetic intensity and moves decode away from the worst memory-bound region.</p></div>
+          <div class="card"><b>DSA roofline story</b><p>DSA changes the algorithm. In decode, the heavy attention part goes from <code>O(L)</code> to <code>O(k)</code> for the selected content read, plus a cheaper <code>O(L)</code> index scan. Memory-bound time drops because HBM traffic drops.</p></div>
+          <div class="card"><b>Classroom wording</b><p>For DSA, say: <strong>the cache footprint may increase, but per-token HBM traffic in long-context decode decreases.</strong> That is why inference can speed up.</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="formula" class="alt">
+  <div class="wrap">
+    <div class="fade-in">
+      <div class="eyebrow">Memory formulas</div>
+      <h2>Separate cache size from read cost.</h2>
+      <div class="stage">
+        <div class="stage-head"><b>KV cache formulas</b><span>l layers, b batch, s sequence length</span></div>
+        <table class="compare-table">
+          <thead><tr><th>Method</th><th>Cache formula</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td>MHA</td><td><code>l * b * s * n * h * 2 * bytes</code></td><td>Store K and V for every head.</td></tr>
+            <tr><td>MQA</td><td><code>l * b * s * 1 * h * 2 * bytes</code></td><td>All query heads share one KV head.</td></tr>
+            <tr><td>GQA</td><td><code>l * b * s * n_kv * h * 2 * bytes</code></td><td>Groups of query heads share KV heads.</td></tr>
+            <tr><td>MLA</td><td><code>l * b * s * d_latent * bytes</code> plus small position terms</td><td>Cache compressed latent content instead of full K and V.</td></tr>
+            <tr><td>DSA over MLA</td><td><code>MLA cache + l * b * s * d_index * index_bytes</code></td><td>Add a lookup cache. The expensive MLA read uses only top-k selected tokens.</td></tr>
+            <tr><td>Sliding window</td><td><code>l * b * W * cache_per_token</code></td><td>If old tokens are evicted, sequence length becomes window size W.</td></tr>
+          </tbody>
+        </table>
+        <div class="grid3" style="margin-top:18px">
+          <div class="card"><b>MLA saves memory per token</b><p>It stores smaller content memory: cKV instead of full K and V.</p></div>
+          <div class="card"><b>DSA saves read work</b><p>It chooses k positions, so the expensive attention read does not touch all s tokens.</p></div>
+          <div class="card"><b>Indexer adds memory</b><p>DSA adds the index key cache, but this lookup cache is designed to be small and fast.</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>DeepSeek V3.2 Sparse Attention visual walkthrough</footer>
+<script>
+const io=new IntersectionObserver((entries)=>{entries.forEach(e=>{if(e.isIntersecting)e.target.classList.add('visible')})},{threshold:.12});
+document.querySelectorAll('.fade-in').forEach(el=>io.observe(el));
+</script>
+</body>
+</html>

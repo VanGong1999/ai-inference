@@ -1,0 +1,2111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-RE8S55WP7D"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-RE8S55WP7D');
+</script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Transformer 的 DNA</title>
+  <meta name="description" content="致敬 Andrej Karpathy 的 MicroGPT——一个交互式可视化指南，带你了解这份 243 行、零依赖的 GPT 实现。" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0a0a0a; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+  <script type="text/babel">
+const { useState, useEffect, useRef, useCallback } = React;
+
+// ─── Color Palette ──────────────────────────────────────────────────────────
+const C = {
+  bg: "#0a0a0a",
+  surface: "#141414",
+  border: "#222222",
+  borderLight: "#333333",
+  text: "#f5f5f7",
+  textSec: "#86868b",
+  textTer: "#6e6e73",
+  accent: "#c8a2ff",
+  accentDim: "rgba(200,162,255,0.12)",
+  accentGlow: "rgba(200,162,255,0.06)",
+  hlBg: "rgba(200,162,255,0.07)",
+  hlBorder: "rgba(200,162,255,0.4)",
+  green: "#6ee7b7",
+  blue: "#93c5fd",
+  orange: "#fdba74",
+  pink: "#f9a8d4",
+};
+
+// ─── Highlighted Code Component ─────────────────────────────────────────────
+function HighlightedCode({ code, activeLines, label, startLine }) {
+  const lines = code.split("\n");
+  const codeRef = useRef(null);
+  const activeSet = new Set(activeLines || []);
+  const base = startLine || 1;
+
+  return (
+    <div
+      style={{
+        background: C.surface,
+        border: `1px solid ${C.border}`,
+        borderRadius: 16,
+        overflow: "hidden",
+        flex: "1 1 340px",
+        minWidth: 300,
+      }}
+    >
+      <div
+        style={{
+          padding: "12px 20px",
+          borderBottom: `1px solid ${C.border}`,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#ff5f57" }} />
+          <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#febc2e" }} />
+          <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#28c840" }} />
+          <span style={{ marginLeft: 8, fontSize: 11, color: C.textTer, fontFamily: "'SF Mono', monospace" }}>
+            {label || "microgpt.py"}
+          </span>
+        </div>
+        <span style={{ fontSize: 10, color: C.textTer, fontFamily: "'SF Mono', monospace", opacity: 0.5 }}>
+          L{base}–{base + lines.length - 1} / 243
+        </span>
+      </div>
+      <div
+        ref={codeRef}
+        style={{
+          margin: 0,
+          padding: "12px 0",
+          fontSize: 12,
+          lineHeight: 1.7,
+          fontFamily: "'SF Mono', 'Fira Code', monospace",
+          overflow: "hidden",
+        }}
+      >
+        {lines.map((line, i) => {
+          const isActive = activeSet.has(i);
+          const lineNum = base + i;
+          return (
+            <div
+              key={i}
+              style={{
+                display: "flex",
+                borderLeft: `2px solid ${isActive ? C.hlBorder : "transparent"}`,
+                background: isActive ? C.hlBg : "transparent",
+                transition: "all 0.35s cubic-bezier(0.4, 0, 0.2, 1)",
+                minHeight: "1.7em",
+              }}
+            >
+              <span
+                style={{
+                  display: "inline-block",
+                  width: 38,
+                  minWidth: 38,
+                  textAlign: "right",
+                  paddingRight: 14,
+                  paddingLeft: 10,
+                  color: isActive ? C.accent : C.textTer,
+                  opacity: isActive ? 0.9 : 0.3,
+                  fontSize: 11,
+                  userSelect: "none",
+                  transition: "all 0.35s cubic-bezier(0.4, 0, 0.2, 1)",
+                  flexShrink: 0,
+                }}
+              >
+                {lineNum}
+              </span>
+              <span
+                style={{
+                  color: isActive ? C.text : C.textSec,
+                  transition: "color 0.35s cubic-bezier(0.4, 0, 0.2, 1)",
+                  whiteSpace: "pre",
+                  paddingRight: 20,
+                }}
+              >
+                {line || " "}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── DNA Helix Animation ────────────────────────────────────────────────────
+function DNAHelix() {
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    let frame;
+    const animate = () => { setTick(t => t + 1); frame = requestAnimationFrame(animate); };
+    frame = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
+  const w = 320, h = 200;
+  const pairs = 14;
+  const colors = [C.accent, C.blue, C.green, C.orange, C.pink, C.accent];
+  const t = tick * 0.018;
+
+  const strandPoints = (side) => {
+    const pts = [];
+    for (let i = 0; i <= 80; i++) {
+      const frac = i / 80;
+      const x = frac * w;
+      const phase = frac * Math.PI * 3.5 + t;
+      const y = h / 2 + Math.sin(phase + (side === "back" ? Math.PI : 0)) * 40;
+      pts.push(`${x.toFixed(1)},${y.toFixed(1)}`);
+    }
+    return pts.join(" ");
+  };
+
+  const rungs = [];
+  for (let i = 0; i < pairs; i++) {
+    const frac = (i + 0.5) / pairs;
+    const x = frac * w;
+    const phase = frac * Math.PI * 3.5 + t;
+    const y1 = h / 2 + Math.sin(phase) * 40;
+    const y2 = h / 2 + Math.sin(phase + Math.PI) * 40;
+    const depth = Math.cos(phase);
+    const col = colors[i % colors.length];
+    rungs.push({ x, y1, y2, depth, col, i });
+  }
+
+  const backRungs = rungs.filter(r => r.depth < 0).sort((a, b) => a.depth - b.depth);
+  const frontRungs = rungs.filter(r => r.depth >= 0).sort((a, b) => a.depth - b.depth);
+
+  return (
+    <div style={{ display: "flex", justifyContent: "center", marginBottom: 32 }}>
+      <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{ overflow: "visible" }}>
+        <defs>
+          <filter id="glow">
+            <feGaussianBlur stdDeviation="3" result="blur" />
+            <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+          <linearGradient id="strandGrad1" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor={C.accent} stopOpacity="0" />
+            <stop offset="15%" stopColor={C.accent} stopOpacity="1" />
+            <stop offset="85%" stopColor={C.blue} stopOpacity="1" />
+            <stop offset="100%" stopColor={C.blue} stopOpacity="0" />
+          </linearGradient>
+          <linearGradient id="strandGrad2" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor={C.green} stopOpacity="0" />
+            <stop offset="15%" stopColor={C.green} stopOpacity="0.7" />
+            <stop offset="85%" stopColor={C.accent} stopOpacity="0.7" />
+            <stop offset="100%" stopColor={C.accent} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+
+        {/* Back strand */}
+        <polyline points={strandPoints("back")} fill="none" stroke="url(#strandGrad2)" strokeWidth="2.5" opacity="0.35" />
+
+        {/* Back rungs */}
+        {backRungs.map(r => {
+          const op = 0.12 + Math.abs(r.depth) * 0.15;
+          return (
+            <g key={`b-${r.i}`}>
+              <line x1={r.x} y1={r.y1} x2={r.x} y2={r.y2} stroke={r.col} strokeWidth="1.5" opacity={op} />
+              <circle cx={r.x} cy={r.y1} r="2.5" fill={r.col} opacity={op} />
+              <circle cx={r.x} cy={r.y2} r="2.5" fill={r.col} opacity={op} />
+            </g>
+          );
+        })}
+
+        {/* Front strand */}
+        <polyline points={strandPoints("front")} fill="none" stroke="url(#strandGrad1)" strokeWidth="2.5" opacity="0.9" filter="url(#glow)" />
+
+        {/* Front rungs */}
+        {frontRungs.map(r => {
+          const op = 0.4 + r.depth * 0.6;
+          return (
+            <g key={`f-${r.i}`}>
+              <line x1={r.x} y1={r.y1} x2={r.x} y2={r.y2} stroke={r.col} strokeWidth="2" opacity={op} />
+              <circle cx={r.x} cy={r.y1} r="3.5" fill={r.col} opacity={op} filter="url(#glow)" />
+              <circle cx={r.x} cy={r.y2} r="3.5" fill={r.col} opacity={op} filter="url(#glow)" />
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
+// ─── Section Data ───────────────────────────────────────────────────────────
+const SECTIONS = [
+  {
+    id: "hero",
+    label: "简介",
+    startLine: 1,
+    title: "Transformer 的 DNA",
+    subtitle: "致敬 Andrej Karpathy 的 MicroGPT。",
+    description:
+      "Andrej Karpathy 将完整的 GPT 算法——训练（training）与推理（inference）——浓缩为纯净、零依赖的 Python。没有 PyTorch。没有 NumPy。没有矩阵库。只有标准库与数学。这是理解语言模型实际工作原理的最原子化的方式。",
+    detail:
+      "每一行都是算法本身。其他一切——在所有其他代码库中——都只是效率优化。",
+    code: `"""
+以纯净、零依赖的 Python 训练与推理
+一个 GPT 的最原子化方式。
+本文件即完整算法。
+其他一切都只是效率优化。
+@karpathy
+"""
+
+import os
+import math
+import random
+random.seed(42)`,
+    stats: [
+      { value: "243", label: "代码行数" },
+      { value: "0", label: "依赖项" },
+      { value: "1", label: "完整 GPT" },
+    ],
+  },
+  {
+    id: "data",
+    label: "数据",
+    startLine: 13,
+    title: "数据流水线",
+    subtitle: "从原始文本到离散 token",
+    description:
+      "旅程始于一个名字数据集。每个文档都是一个简单的字符串。分词器（tokenizer）将每个唯一字符映射为一个整数，并附加一个特殊的 BOS（序列开始，Beginning of Sequence）token。这种字符级分词是最简单的——但足以支撑一个可用的语言模型。",
+    detail:
+      "词表（vocabulary）由数据集中所有唯一字符按字母顺序排序构建而成。每个字符成为从 0 到 n−1 的一个 token ID。BOS token 获得最后一个 ID，因此 vocab_size = unique_chars + 1。",
+    code: `# 加载并打乱文档
+docs = [l.strip() for l in open('input.txt')
+        .read().strip().split('\\n')
+        if l.strip()]
+random.shuffle(docs)
+
+# 构建字符级分词器
+uchars = sorted(set(''.join(docs)))
+BOS = len(uchars)
+vocab_size = len(uchars) + 1`,
+    diagram: "tokenizer",
+    hlMap: {
+      0: [],
+      1: [0, 1, 2, 3, 4],
+      2: [6, 7],
+      3: [8, 9],
+    },
+    animStates: 4,
+    animInterval: 2800,
+  },
+  {
+    id: "autograd",
+    label: "Autograd",
+    startLine: 29,
+    title: "Autograd 引擎",
+    subtitle: "从零实现自动微分",
+    description:
+      "Value 类是一个微型 autograd 引擎。每个 Value 封装一个标量，记录由哪些运算创建，并存储局部梯度。backward() 方法以逆拓扑顺序遍历计算图，应用链式法则为每个参数计算梯度。",
+    detail:
+      "这是让学习成为可能的基础。每一次算术运算——加法、乘法、幂、exp、log、relu——都会在有向无环图中创建一个新节点。前向传播构建图；反向传播让梯度流经其中。",
+    code: `class Value:
+  def __init__(self, data, children=(),
+               local_grads=()):
+    self.data = data
+    self.grad = 0
+    self._children = children
+    self._local_grads = local_grads
+
+  def __add__(self, other):
+    other = other if isinstance(other, Value) \\
+            else Value(other)
+    return Value(self.data + other.data,
+                 (self, other), (1, 1))
+
+  def __mul__(self, other):
+    other = other if isinstance(other, Value) \\
+            else Value(other)
+    return Value(self.data * other.data,
+      (self, other),
+      (other.data, self.data))
+
+  def backward(self):
+    topo = []
+    visited = set()
+    def build_topo(v):
+      if v not in visited:
+        visited.add(v)
+        for child in v._children:
+          build_topo(child)
+        topo.append(v)
+    build_topo(self)
+    self.grad = 1
+    for v in reversed(topo):
+      for child, lg in zip(
+        v._children, v._local_grads
+      ):
+        child.grad += lg * v.grad`,
+    diagram: "autograd",
+    hlMap: {
+      0: [0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 14, 15, 16, 17, 18, 19],
+      1: [3, 4, 11, 12, 17, 18, 19],
+      2: [21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35],
+    },
+    animStates: 3,
+    animInterval: 3600,
+  },
+  {
+    id: "architecture",
+    label: "架构",
+    startLine: 106,
+    title: "GPT 架构",
+    subtitle: "注意力（attention）、MLP，以及介于两者之间的一切",
+    description:
+      "该模型遵循 GPT-2 的蓝图，并做了刻意的简化：用 RMSNorm 代替 LayerNorm，去掉偏置（bias），用 ReLU 代替 GeLU。token 嵌入与位置嵌入相加，然后经过 transformer 层——每层都包含多头自注意力（multi-head self-attention）和一个前馈 MLP，且每个子模块都带残差连接（residual connection）。",
+    detail:
+      "在 n_embd=16、n_head=4、n_layer=1、block_size=16 的配置下，这是能捕捉核心机制的最小 transformer。每个注意力头（attention head）在一个 4 维子空间上运作，学习 token 关系的不同方面。",
+    code: `def gpt(token_id, pos_id, keys, values):
+  # 1. Token + 位置嵌入
+  tok_emb = state_dict['wte'][token_id]
+  pos_emb = state_dict['wpe'][pos_id]
+  x = [t + p for t, p in zip(tok_emb, pos_emb)]
+
+  # 2. RMSNorm
+  x = rmsnorm(x)
+
+  for li in range(n_layer):
+    # 3. 多头自注意力（Multi-Head Self-Attention）
+    x_residual = x
+    x = rmsnorm(x)
+    q = linear(x, state_dict[f'layer{li}.attn_wq'])
+    k = linear(x, state_dict[f'layer{li}.attn_wk'])
+    v = linear(x, state_dict[f'layer{li}.attn_wv'])
+    # ... 注意力计算 ...
+    x = linear(x_attn, state_dict[f'layer{li}.attn_wo'])
+
+    # 4. 残差 + RMSNorm
+    x = [a + b for a, b in zip(x, x_residual)]
+    x_residual = x
+    x = rmsnorm(x)
+
+    # 5. MLP（fc1 → ReLU → fc2）
+    x = linear(x, state_dict[f'layer{li}.mlp_fc1'])
+    x = [xi.relu() for xi in x]
+    x = linear(x, state_dict[f'layer{li}.mlp_fc2'])
+
+    # 6. 残差
+    x = [a + b for a, b in zip(x, x_residual)]
+
+  # 7. 线性 → Logits
+  logits = linear(x, state_dict['lm_head'])
+  return logits`,
+    diagram: "architecture",
+    hlMap: {
+      0: [1, 2, 3, 4],
+      1: [6, 7],
+      2: [10, 11, 12, 13, 14, 15, 16, 17],
+      3: [19, 20, 21, 22],
+      4: [24, 25, 26, 27],
+      5: [29, 30],
+      6: [32, 33],
+    },
+    animStates: 9,
+    animInterval: 1600,
+  },
+  {
+    id: "attention",
+    label: "注意力",
+    startLine: 116,
+    title: "多头自注意力（Multi-Head Self-Attention）",
+    subtitle: "让 token 相互交流的机制",
+    description:
+      "每个 token 通过可学习的线性投影生成查询（Query）、键（Key）和值（Value）向量。注意力分数通过查询与所有之前的键之间的缩放点积计算（因果掩码是隐式的——我们只关注已经处理过的 token）。分数经 softmax 转化为权重，然后用于聚合值向量。",
+    detail:
+      "「多头」这一特性将嵌入（embedding）拆分为 n_head 个独立的子空间。每个头学习不同的模式：一个可能追踪相邻字符，另一个可能学习元音-辅音模式。各头的输出被拼接并投影回完整的嵌入维度。",
+    code: `# 将输入投影为 Q、K、V
+q = linear(x, state_dict[f'layer{li}.attn_wq'])
+k = linear(x, state_dict[f'layer{li}.attn_wk'])
+v = linear(x, state_dict[f'layer{li}.attn_wv'])
+keys[li].append(k)
+values[li].append(v)
+
+x_attn = []
+for h in range(n_head):
+  hs = h * head_dim
+  q_h = q[hs:hs+head_dim]
+  k_h = [ki[hs:hs+head_dim] for ki in keys[li]]
+  v_h = [vi[hs:hs+head_dim] for vi in values[li]]
+
+  # 缩放点积注意力（因果）
+  # 只关注位置 0..t（过去 + 当前）
+  attn_logits = [
+    sum(q_h[j] * k_h[t][j]
+        for j in range(head_dim))
+    / head_dim**0.5
+    for t in range(len(k_h))
+  ]
+  attn_weights = softmax(attn_logits)
+
+  # 值的加权求和
+  head_out = [
+    sum(attn_weights[t] * v_h[t][j]
+        for t in range(len(v_h)))
+    for j in range(head_dim)
+  ]
+  x_attn.extend(head_out)
+
+# 将拼接后的注意力头投影回去
+x = linear(x_attn, state_dict[f'layer{li}.attn_wo'])`,
+    diagram: "attention",
+    hlMap: {
+      0: [0, 1, 2, 3, 4, 5],
+      1: [8, 9, 10, 11, 12],
+      2: [14, 15, 16, 17, 18, 19, 20, 21, 22, 23],
+      3: [25, 26, 27, 28, 29, 30, 31, 33, 34],
+    },
+    animStates: 4,
+    animInterval: 3200,
+  },
+  {
+    id: "training",
+    label: "训练",
+    startLine: 151,
+    title: "训练循环",
+    subtitle: "前向、反向、优化——重复 1000 次",
+    description:
+      "训练每次处理一个文档。每个 token 预测下一个 token：模型在词表上输出一个概率分布，损失（loss）是正确下一个 token 的负对数似然。计算损失后，backward() 让梯度在整个计算图中传播，Adam 更新每一个参数。",
+    detail:
+      "学习率（learning rate）在 1000 步内从 0.01 线性衰减到 0。Adam 维护梯度的滑动平均（动量 momentum）和梯度平方的滑动平均（自适应学习率），并对初始步骤做偏置校正。每次更新后，梯度会被清零以进入下一次迭代。",
+    code: `for step in range(num_steps):
+  # 1. 对文档分词
+  doc = docs[step % len(docs)]
+  tokens = [BOS] + [uchars.index(ch)
+            for ch in doc] + [BOS]
+
+  # 2. 前向传播——预测每个下一个 token
+  keys = [[] for _ in range(n_layer)]
+  values = [[] for _ in range(n_layer)]
+  losses = []
+  for pos_id in range(n):
+    token_id = tokens[pos_id]
+    target_id = tokens[pos_id + 1]
+    logits = gpt(token_id, pos_id, keys, values)
+    probs = softmax(logits)
+    loss_t = -probs[target_id].log()
+    losses.append(loss_t)
+  loss = (1/n) * sum(losses)
+
+  # 3. 反向传播——计算所有梯度
+  loss.backward()
+
+  # 4. Adam 优化器——更新参数
+  lr_t = learning_rate * (1 - step/num_steps)
+  for i, p in enumerate(params):
+    m[i] = beta1*m[i] + (1-beta1)*p.grad
+    v[i] = beta2*v[i] + (1-beta2)*p.grad**2
+    m_hat = m[i] / (1 - beta1**(step+1))
+    v_hat = v[i] / (1 - beta2**(step+1))
+    p.data -= lr_t * m_hat / \\
+              (v_hat**0.5 + eps_adam)
+    p.grad = 0`,
+    diagram: "training",
+    hlMap: {
+      0: [1, 2, 3, 4],
+      1: [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18],
+      2: [20, 21],
+      3: [23, 24, 25, 26, 27, 28, 29, 30, 31, 32],
+    },
+    animStates: 4,
+    animInterval: 3000,
+  },
+  {
+    id: "inference",
+    label: "推理",
+    startLine: 215,
+    title: "推理",
+    subtitle: "让模型做梦",
+    description:
+      "训练完成后，模型通过从学到的分布中采样来生成新名字。从一个 BOS token 开始，它反复将上一个生成的 token 喂回模型，从经温度（temperature）缩放的概率分布中采样，并在生成另一个 BOS 时停止。温度控制创造性：值越低模型越自信，值越高模型越具探索性。",
+    detail:
+      "温度通过在 softmax 之前除以 logits 起作用。在温度 0.5 时，logits 之间的差异被放大——模型变得更加果断。在温度 1.0 时，直接使用原始的已学习分布。结果是：听起来合理、但训练数据中从未出现过的名字。",
+    code: `temperature = 0.5
+
+for sample_idx in range(20):
+  keys = [[] for _ in range(n_layer)]
+  values = [[] for _ in range(n_layer)]
+  token_id = BOS
+  sample = []
+
+  for pos_id in range(block_size):
+    # 将 token 送入模型
+    logits = gpt(token_id, pos_id,
+                 keys, values)
+
+    # 温度缩放采样
+    probs = softmax(
+      [l / temperature for l in logits]
+    )
+    token_id = random.choices(
+      range(vocab_size),
+      weights=[p.data for p in probs]
+    )[0]
+
+    # 遇到 BOS（名字结束）时停止
+    if token_id == BOS:
+      break
+    sample.append(uchars[token_id])
+
+  print(f"{''.join(sample)}")`,
+    diagram: "inference",
+    hlMap: {
+      0: [0, 2, 3, 4, 5, 6],
+      1: [8, 9, 10, 11],
+      2: [13, 14, 15, 16, 17, 18, 19, 20],
+      3: [22, 23, 24, 25],
+    },
+    animStates: 4,
+    animInterval: 3000,
+  },
+];
+
+// ─── Tokenizer Diagram ─────────────────────────────────────────────────────
+function TokenizerDiagram({ phase }) {
+  const word = "hello";
+  const chars = word.split("");
+  const ids = [7, 4, 11, 11, 14];
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 32, padding: "24px 0" }}>
+      <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 2, color: C.textTer }}>
+        字符级分词
+      </div>
+      <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+        {chars.map((ch, i) => (
+          <div key={i} style={{
+            width: 48, height: 48, display: "flex", alignItems: "center", justifyContent: "center",
+            borderRadius: 8, fontSize: 20, fontWeight: 600, fontFamily: "'SF Mono', 'Fira Code', monospace",
+            background: phase >= 1 ? C.accentDim : C.surface,
+            border: `1px solid ${phase >= 1 ? "rgba(200,162,255,0.3)" : C.border}`,
+            color: phase >= 1 ? C.accent : C.text,
+            transition: "all 0.5s cubic-bezier(0.4, 0, 0.2, 1)", transitionDelay: `${i * 80}ms`,
+          }}>{ch}</div>
+        ))}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, opacity: phase >= 2 ? 1 : 0, transition: "opacity 0.5s" }}>
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M8 3v10M8 13l-3-3M8 13l3-3" stroke={C.textTer} strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+        <span style={{ fontSize: 11, color: C.textTer, letterSpacing: 1, textTransform: "uppercase" }}>映射为整数</span>
+      </div>
+      <div style={{ display: "flex", gap: 4, opacity: phase >= 2 ? 1 : 0, transition: "opacity 0.5s" }}>
+        {ids.map((id, i) => (
+          <div key={i} style={{
+            width: 48, height: 48, display: "flex", alignItems: "center", justifyContent: "center",
+            borderRadius: 8, fontSize: 16, fontWeight: 600, fontFamily: "'SF Mono', 'Fira Code', monospace",
+            background: phase >= 3 ? "rgba(110,231,183,0.1)" : C.surface,
+            border: `1px solid ${phase >= 3 ? "rgba(110,231,183,0.3)" : C.border}`,
+            color: phase >= 3 ? C.green : C.textSec,
+            transition: "all 0.5s cubic-bezier(0.4, 0, 0.2, 1)", transitionDelay: `${i * 80}ms`,
+          }}>{id}</div>
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: 12, opacity: phase >= 3 ? 1 : 0, transition: "opacity 0.6s", marginTop: 4 }}>
+        <div style={{ padding: "6px 14px", borderRadius: 6, background: "rgba(147,197,253,0.1)", border: "1px solid rgba(147,197,253,0.2)", fontSize: 12, color: C.blue, fontFamily: "'SF Mono', monospace" }}>BOS=26</div>
+        <div style={{ padding: "6px 14px", borderRadius: 6, background: C.surface, border: `1px solid ${C.border}`, fontSize: 12, color: C.textSec, fontFamily: "'SF Mono', monospace" }}>vocab=27</div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Autograd Diagram ───────────────────────────────────────────────────────
+function AutogradDiagram({ phase }) {
+  const nodes = [
+    { id: "a", label: "a", value: "2.0", x: 0, y: 0, grad: "−2.0" },
+    { id: "b", label: "b", value: "3.0", x: 0, y: 1, grad: "4.0" },
+    { id: "c", label: "c = a × b", value: "6.0", x: 1, y: 0.5, grad: "−1.0" },
+    { id: "d", label: "d", value: "10.0", x: 0, y: 2, grad: "1.0" },
+    { id: "e", label: "e = c − d", value: "−4.0", x: 2, y: 1, grad: "1.0" },
+  ];
+  const edges = [
+    { from: "a", to: "c" }, { from: "b", to: "c" },
+    { from: "c", to: "e" }, { from: "d", to: "e" },
+  ];
+  const labels = ["构建图", "前向传播", "反向传播"];
+  const nodeMap = {};
+  nodes.forEach((n) => (nodeMap[n.id] = n));
+  const getPos = (n) => ({ px: 60 + n.x * 120, py: 30 + n.y * 56 });
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 20, padding: "24px 0" }}>
+      <div style={{ display: "flex", gap: 8 }}>
+        {labels.map((l, i) => (
+          <div key={i} style={{
+            padding: "5px 14px", borderRadius: 20, fontSize: 11, fontWeight: 500, letterSpacing: 0.5,
+            background: phase === i ? C.accentDim : "transparent",
+            color: phase === i ? C.accent : C.textTer,
+            border: `1px solid ${phase === i ? "rgba(200,162,255,0.3)" : C.border}`,
+            transition: "all 0.4s",
+          }}>{l}</div>
+        ))}
+      </div>
+      <svg width="340" height="180" viewBox="0 0 340 180">
+        {edges.map((e, i) => {
+          const from = getPos(nodeMap[e.from]);
+          const to = getPos(nodeMap[e.to]);
+          return (
+            <line key={i} x1={from.px} y1={from.py} x2={to.px} y2={to.py}
+              stroke={phase === 2 ? C.accent : C.borderLight} strokeWidth={1.5} opacity={0.6}
+              style={{ transition: "all 0.5s" }} />
+          );
+        })}
+        {nodes.map((n) => {
+          const pos = getPos(n);
+          return (
+            <g key={n.id}>
+              <rect x={pos.px - 46} y={pos.py - 18} width={92} height={36} rx={8}
+                fill={phase === 2 ? "rgba(200,162,255,0.08)" : C.surface}
+                stroke={phase === 2 ? "rgba(200,162,255,0.25)" : C.border}
+                strokeWidth={1} style={{ transition: "all 0.5s" }} />
+              <text x={pos.px} y={pos.py - 3} textAnchor="middle" fill={C.textSec}
+                fontSize={10} fontFamily="'SF Mono', monospace">{n.label}</text>
+              <text x={pos.px} y={pos.py + 10} textAnchor="middle"
+                fill={phase >= 1 ? C.green : "transparent"} fontSize={10} fontWeight={600}
+                fontFamily="'SF Mono', monospace" style={{ transition: "fill 0.5s" }}>
+                {phase >= 1 ? n.value : ""}
+              </text>
+              {phase === 2 && (
+                <text x={pos.px + 48} y={pos.py} fill={C.accent} fontSize={9}
+                  fontFamily="'SF Mono', monospace" fontWeight={600}>{"∇"}{n.grad}</text>
+              )}
+            </g>
+          );
+        })}
+      </svg>
+      <div style={{ fontSize: 12, color: C.textTer, maxWidth: 300, textAlign: "center", lineHeight: 1.6 }}>
+        {phase === 0 && "运算创建节点，连接成一个有向无环图"}
+        {phase === 1 && "前向：根据子节点计算每个节点的值"}
+        {phase === 2 && "反向：链式法则按逆拓扑顺序传播梯度"}
+      </div>
+    </div>
+  );
+}
+
+// ─── Architecture Diagram ───────────────────────────────────────────────────
+function ArchitectureDiagram({ phase }) {
+  const layers = [
+    { label: "Token + 位置\n嵌入", color: C.blue, w: 140 },
+    { label: "RMSNorm", color: C.textTer, w: 100 },
+    { label: "多头\n自注意力", color: C.accent, w: 140 },
+    { label: "残差 +\nRMSNorm", color: C.textTer, w: 120 },
+    { label: "MLP\n(fc1 → ReLU → fc2)", color: C.orange, w: 140 },
+    { label: "残差", color: C.textTer, w: 100 },
+    { label: "线性 → Logits", color: C.green, w: 130 },
+  ];
+  const activeIdx = phase < 7 ? phase : -1;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, padding: "16px 0" }}>
+      <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 2, color: C.textTer, marginBottom: 12 }}>
+        数据流
+      </div>
+      {layers.map((l, i) => {
+        const isActive = activeIdx === i;
+        const isPast = activeIdx > i;
+        return (
+          <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+            <div style={{
+              width: l.w, padding: "10px 16px", borderRadius: 10,
+              textAlign: "center", fontSize: 11, fontWeight: 500,
+              lineHeight: 1.4, whiteSpace: "pre-line",
+              background: isActive ? `${l.color}15` : C.surface,
+              border: `1px solid ${isActive ? `${l.color}44` : C.border}`,
+              color: isActive || isPast ? l.color : C.textTer,
+              transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
+              transform: isActive ? "scale(1.05)" : "scale(1)",
+            }}>{l.label}</div>
+            {i < layers.length - 1 && (
+              <svg width="2" height="16" style={{ opacity: 0.3 }}>
+                <line x1="1" y1="0" x2="1" y2="16" stroke={C.textTer} strokeWidth="1" strokeDasharray="3 3" />
+              </svg>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Attention Diagram ──────────────────────────────────────────────────────
+function AttentionDiagram({ phase }) {
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setTick((t) => t + 1), 150);
+    return () => clearInterval(t);
+  }, []);
+
+  const tokens = ["B", "h", "e", "l"];
+  const n = tokens.length;
+  const phaseLabels = ["投影 Q、K、V", "拆分为注意力头", "打分与 Softmax", "聚合与输出"];
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, padding: "24px 0" }}>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center" }}>
+        {phaseLabels.map((l, i) => (
+          <div key={i} style={{
+            padding: "4px 12px", borderRadius: 20, fontSize: 10, fontWeight: 500, letterSpacing: 0.3,
+            background: phase === i ? C.accentDim : "transparent",
+            color: phase === i ? C.accent : C.textTer,
+            border: `1px solid ${phase === i ? "rgba(200,162,255,0.3)" : C.border}`,
+            transition: "all 0.4s",
+          }}>{l}</div>
+        ))}
+      </div>
+      <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 2, color: C.textTer }}>
+        因果注意力模式
+      </div>
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: `32px repeat(${n}, 48px)`,
+        gridTemplateRows: `24px repeat(${n}, 48px)`,
+        gap: 3, alignItems: "center", justifyItems: "center",
+      }}>
+        <div />
+        {tokens.map((t, i) => (
+          <div key={`h-${i}`} style={{ fontSize: 11, color: C.textTer, fontFamily: "'SF Mono', monospace", fontWeight: 600 }}>K:{t}</div>
+        ))}
+        {tokens.map((qt, qi) => (
+          <>
+            <div key={`rl-${qi}`} style={{ fontSize: 11, color: C.textTer, fontFamily: "'SF Mono', monospace", fontWeight: 600 }}>Q:{qt}</div>
+            {tokens.map((kt, ki) => {
+              const canAttend = ki <= qi;
+              const weight = canAttend ? Math.max(0.15, Math.sin((tick + qi * 3 + ki) * 0.15) * 0.4 + 0.5) : 0;
+              return (
+                <div key={`c-${qi}-${ki}`} style={{
+                  width: 48, height: 48, borderRadius: 8,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 10, fontFamily: "'SF Mono', monospace", fontWeight: 600,
+                  background: canAttend ? `rgba(200,162,255,${weight * 0.25})` : C.surface,
+                  border: `1px solid ${canAttend ? `rgba(200,162,255,${weight * 0.4})` : C.border}`,
+                  color: canAttend ? C.accent : C.textTer,
+                  transition: "background 0.3s, border 0.3s",
+                }}>{canAttend ? weight.toFixed(2) : "—"}</div>
+              );
+            })}
+          </>
+        ))}
+      </div>
+      <div style={{ fontSize: 12, color: C.textTer, maxWidth: 320, textAlign: "center", lineHeight: 1.6 }}>
+        每个 token 只能关注它自己和之前的 token——这是因果（自回归）注意力的标志。
+      </div>
+    </div>
+  );
+}
+
+// ─── Training Diagram ───────────────────────────────────────────────────────
+function TrainingDiagram({ phase }) {
+  const [step, setStep] = useState(0);
+  const maxSteps = 60;
+  const lossData = useRef([]);
+  const phaseLabels = ["分词", "前向传播", "反向传播", "Adam 更新"];
+
+  useEffect(() => {
+    lossData.current = [];
+    let loss = 3.3;
+    for (let i = 0; i < maxSteps; i++) {
+      loss = loss * 0.97 + (Math.random() - 0.5) * 0.12;
+      loss = Math.max(1.2, loss);
+      lossData.current.push(loss);
+    }
+  }, []);
+
+  useEffect(() => {
+    const t = setInterval(() => setStep((s) => (s + 1) % (maxSteps + 10)), 120);
+    return () => clearInterval(t);
+  }, []);
+
+  const visibleSteps = Math.min(step, maxSteps);
+  const data = lossData.current.slice(0, visibleSteps);
+  const svgW = 340, svgH = 140, pad = 30;
+  const xScale = (i) => pad + (i / (maxSteps - 1)) * (svgW - pad * 2);
+  const yScale = (v) => pad + ((3.5 - v) / (3.5 - 1.0)) * (svgH - pad * 2);
+  const pathD = data.map((v, i) => `${i === 0 ? "M" : "L"}${xScale(i).toFixed(1)},${yScale(v).toFixed(1)}`).join(" ");
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, padding: "24px 0" }}>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center" }}>
+        {phaseLabels.map((l, i) => (
+          <div key={i} style={{
+            padding: "4px 12px", borderRadius: 20, fontSize: 10, fontWeight: 500, letterSpacing: 0.3,
+            background: phase === i ? C.accentDim : "transparent",
+            color: phase === i ? C.accent : C.textTer,
+            border: `1px solid ${phase === i ? "rgba(200,162,255,0.3)" : C.border}`,
+            transition: "all 0.4s",
+          }}>{l}</div>
+        ))}
+      </div>
+      <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 2, color: C.textTer }}>
+        训练步骤中的损失
+      </div>
+      <svg width={svgW} height={svgH} style={{ overflow: "visible" }}>
+        <line x1={pad} y1={svgH - pad} x2={svgW - pad} y2={svgH - pad} stroke={C.border} strokeWidth={1} />
+        <line x1={pad} y1={pad} x2={pad} y2={svgH - pad} stroke={C.border} strokeWidth={1} />
+        <text x={svgW / 2} y={svgH - 6} textAnchor="middle" fill={C.textTer} fontSize={10}>步骤</text>
+        <text x={8} y={svgH / 2} textAnchor="middle" fill={C.textTer} fontSize={10} transform={`rotate(-90, 8, ${svgH / 2})`}>损失</text>
+        {data.length > 1 && (
+          <>
+            <defs>
+              <linearGradient id="lossGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={C.accent} stopOpacity={0.2} />
+                <stop offset="100%" stopColor={C.accent} stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <path d={`${pathD} L${xScale(data.length - 1).toFixed(1)},${yScale(1.0).toFixed(1)} L${xScale(0).toFixed(1)},${yScale(1.0).toFixed(1)} Z`} fill="url(#lossGrad)" />
+            <path d={pathD} fill="none" stroke={C.accent} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+            <circle cx={xScale(data.length - 1)} cy={yScale(data[data.length - 1])} r={3} fill={C.accent} />
+          </>
+        )}
+      </svg>
+      {data.length > 0 && (
+        <div style={{ fontFamily: "'SF Mono', monospace", fontSize: 13, color: C.accent }}>
+          步骤 {visibleSteps}/{maxSteps} — 损失 {data[data.length - 1]?.toFixed(3)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Inference Diagram ──────────────────────────────────────────────────────
+function InferenceDiagram({ phase }) {
+  const names = ["Emmalyn", "Jaxton", "Kira", "Zephyn", "Alenna", "Brynn", "Corvin", "Deliah"];
+  const [idx, setIdx] = useState(0);
+  const [chars, setChars] = useState([]);
+  const phaseLabels = ["初始化", "运行模型", "采样 token", "检查停止"];
+
+  useEffect(() => {
+    setChars([]);
+    const name = names[idx % names.length];
+    const intervals = [];
+    for (let i = 0; i < name.length; i++) {
+      const t = setTimeout(() => setChars((prev) => [...prev, name[i]]), (i + 1) * 200);
+      intervals.push(t);
+    }
+    const next = setTimeout(() => setIdx((i) => (i + 1) % names.length), name.length * 200 + 1500);
+    intervals.push(next);
+    return () => intervals.forEach(clearTimeout);
+  }, [idx]);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 20, padding: "24px 0" }}>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center" }}>
+        {phaseLabels.map((l, i) => (
+          <div key={i} style={{
+            padding: "4px 12px", borderRadius: 20, fontSize: 10, fontWeight: 500, letterSpacing: 0.3,
+            background: phase === i ? C.accentDim : "transparent",
+            color: phase === i ? C.accent : C.textTer,
+            border: `1px solid ${phase === i ? "rgba(200,162,255,0.3)" : C.border}`,
+            transition: "all 0.4s",
+          }}>{l}</div>
+        ))}
+      </div>
+      <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 2, color: C.textTer }}>
+        自回归生成
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 2, minHeight: 56, flexWrap: "wrap", justifyContent: "center" }}>
+        <div style={{
+          width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center",
+          borderRadius: 8, fontSize: 10, fontWeight: 600, fontFamily: "'SF Mono', monospace",
+          background: "rgba(147,197,253,0.1)", border: "1px solid rgba(147,197,253,0.25)", color: C.blue,
+        }}>BOS</div>
+        <svg width="20" height="2"><line x1="0" y1="1" x2="20" y2="1" stroke={C.borderLight} strokeWidth="1" strokeDasharray="3 2" /></svg>
+        {chars.map((ch, i) => (
+          <div key={`${idx}-${i}`} style={{
+            width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center",
+            borderRadius: 8, fontSize: 20, fontWeight: 600, fontFamily: "'SF Mono', monospace",
+            background: i === chars.length - 1 ? C.accentDim : C.surface,
+            border: `1px solid ${i === chars.length - 1 ? "rgba(200,162,255,0.35)" : C.border}`,
+            color: i === chars.length - 1 ? C.accent : C.text,
+            animation: "fadeScale 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+          }}>{ch}</div>
+        ))}
+        {chars.length < names[idx % names.length].length && (
+          <div style={{
+            width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center",
+            borderRadius: 8, border: `1px dashed ${C.borderLight}`, animation: "pulse 1s ease-in-out infinite",
+          }}>
+            <div style={{ width: 8, height: 8, borderRadius: "50%", background: C.textTer, opacity: 0.4 }} />
+          </div>
+        )}
+      </div>
+      <div style={{ fontSize: 20, fontWeight: 600, color: C.text, letterSpacing: 1, minHeight: 28 }}>
+        {chars.join("")}
+        <span style={{ color: C.accent, animation: "blink 1s step-end infinite" }}>|</span>
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center", maxWidth: 320 }}>
+        {names.map((n, i) => (
+          <span key={n} style={{
+            fontSize: 12, fontFamily: "'SF Mono', monospace",
+            color: i === idx % names.length ? C.accent : C.textTer,
+            opacity: i === idx % names.length ? 1 : 0.5, transition: "all 0.3s",
+          }}>{n}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Diagram Router ─────────────────────────────────────────────────────────
+function DiagramRouter({ type, phase }) {
+  switch (type) {
+    case "tokenizer": return <TokenizerDiagram phase={phase} />;
+    case "autograd": return <AutogradDiagram phase={phase} />;
+    case "architecture": return <ArchitectureDiagram phase={phase} />;
+    case "attention": return <AttentionDiagram phase={phase} />;
+    case "training": return <TrainingDiagram phase={phase} />;
+    case "inference": return <InferenceDiagram phase={phase} />;
+    default: return null;
+  }
+}
+
+// ─── Section Component ──────────────────────────────────────────────────────
+function Section({ section, index }) {
+  const ref = useRef(null);
+  const [visible, setVisible] = useState(false);
+  const [phase, setPhase] = useState(0);
+  const [speed, setSpeed] = useState(1);
+  const [paused, setPaused] = useState(false);
+
+  useEffect(() => {
+    const obs = new IntersectionObserver(([e]) => { if (e.isIntersecting) setVisible(true); }, { threshold: 0.15 });
+    if (ref.current) obs.observe(ref.current);
+    return () => obs.disconnect();
+  }, []);
+
+  // Shared animation timer driving both diagram and code highlights
+  useEffect(() => {
+    if (!section.animStates || paused) return;
+    const interval = section.animInterval / speed;
+    const t = setInterval(() => setPhase((p) => (p + 1) % section.animStates), interval);
+    return () => clearInterval(t);
+  }, [section.animStates, section.animInterval, speed, paused]);
+
+  const activeLines = section.hlMap ? (section.hlMap[phase] || []) : [];
+  const isHero = section.id === "hero";
+  const hasAnim = !!section.animStates;
+
+  return (
+    <div
+      ref={ref}
+      id={section.id}
+      style={{
+        opacity: visible ? 1 : 0,
+        transform: visible ? "translateY(0)" : "translateY(40px)",
+        transition: "opacity 0.8s cubic-bezier(0.4, 0, 0.2, 1), transform 0.8s cubic-bezier(0.4, 0, 0.2, 1)",
+        transitionDelay: "0.1s",
+        padding: isHero ? "100px 0 60px" : "80px 0",
+        borderBottom: `1px solid ${C.border}`,
+      }}
+    >
+      {/* Hero layout with DNA on the right */}
+      {isHero && (
+        <div style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 24,
+          marginBottom: 32,
+          flexWrap: "wrap",
+        }}>
+          <div style={{ flex: "1 1 340px" }}>
+            <h2 style={{
+              fontSize: 44, fontWeight: 700, color: C.text, margin: 0, marginBottom: 8,
+              letterSpacing: -2, lineHeight: 1.1, fontFamily: "'Figtree', sans-serif",
+            }}>{section.title}</h2>
+            <div style={{
+              fontSize: 18, color: C.textSec,
+              lineHeight: 1.5, fontFamily: "'Figtree', sans-serif", fontWeight: 400,
+            }}>{section.subtitle}</div>
+          </div>
+          <div style={{ flex: "0 0 auto" }}>
+            <DNAHelix />
+          </div>
+        </div>
+      )}
+
+      {/* Section Number */}
+      {!isHero && (
+        <div style={{ fontSize: 11, fontWeight: 500, color: C.textTer, letterSpacing: 3, textTransform: "uppercase", marginBottom: 20 }}>
+          {String(index).padStart(2, "0")}
+        </div>
+      )}
+      {!isHero && <h2 style={{
+        fontSize: 36, fontWeight: 700, color: C.text, margin: 0, marginBottom: 8,
+        letterSpacing: -1, lineHeight: 1.1, fontFamily: "'Figtree', sans-serif",
+      }}>{section.title}</h2>}
+      {!isHero && <div style={{
+        fontSize: 16, color: C.textSec, marginBottom: 28,
+        lineHeight: 1.5, fontFamily: "'Figtree', sans-serif", fontWeight: 400,
+      }}>{section.subtitle}</div>}
+      {section.stats && (
+        <div style={{ display: "flex", gap: 32, marginBottom: 40 }}>
+          {section.stats.map((s, i) => (
+            <div key={i} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <div style={{
+                fontSize: 36, fontWeight: 700, color: C.accent,
+                fontFamily: "'SF Mono', 'Fira Code', monospace", lineHeight: 1,
+              }}>{s.value}</div>
+              <div style={{ fontSize: 12, color: C.textTer, letterSpacing: 0.5 }}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+      )}
+      <p style={{
+        fontSize: 15, color: C.textSec, lineHeight: 1.75, margin: 0, marginBottom: 16,
+        maxWidth: 580, fontFamily: "'Figtree', sans-serif",
+      }}>{section.description}</p>
+      <div style={{
+        fontSize: 13, color: C.textTer, lineHeight: 1.7, maxWidth: 580,
+        padding: "16px 20px", borderLeft: `2px solid ${C.accent}33`,
+        background: C.accentGlow, borderRadius: "0 8px 8px 0",
+        marginBottom: 32, fontFamily: "'Figtree', sans-serif",
+      }}>{section.detail}</div>
+
+      {/* Speed control */}
+      {hasAnim && (
+        <div style={{
+          display: "flex", alignItems: "center", gap: 14, marginBottom: 16,
+        }}>
+          <button
+            onClick={() => setPaused(p => !p)}
+            style={{
+              width: 28, height: 28, borderRadius: 6,
+              border: `1px solid ${C.border}`, background: C.surface,
+              color: C.textSec, cursor: "pointer", display: "flex",
+              alignItems: "center", justifyContent: "center", fontSize: 12,
+              fontFamily: "'SF Mono', monospace", transition: "all 0.2s",
+            }}
+            title={paused ? "播放" : "暂停"}
+          >
+            {paused ? "▶" : "❚❚"}
+          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 10, color: C.textTer, fontFamily: "'SF Mono', monospace", letterSpacing: 0.5, minWidth: 28 }}>
+              {speed.toFixed(1)}x
+            </span>
+            <input
+              type="range"
+              min="0.3"
+              max="2.5"
+              step="0.1"
+              value={speed}
+              onChange={(e) => setSpeed(parseFloat(e.target.value))}
+              style={{
+                width: 100, height: 3, appearance: "none", WebkitAppearance: "none",
+                background: C.borderLight, borderRadius: 2, outline: "none",
+                cursor: "pointer", accentColor: C.accent,
+              }}
+            />
+          </div>
+          <span style={{ fontSize: 10, color: C.textTer, opacity: 0.5, fontFamily: "'Figtree', sans-serif" }}>
+            动画速度
+          </span>
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
+        {section.diagram && (
+          <div style={{
+            flex: "1 1 340px", minWidth: 300, background: C.surface,
+            border: `1px solid ${C.border}`, borderRadius: 16, overflow: "hidden",
+          }}>
+            <DiagramRouter type={section.diagram} phase={phase} />
+          </div>
+        )}
+        <HighlightedCode code={section.code} activeLines={activeLines} label="microgpt.py" startLine={section.startLine} />
+      </div>
+    </div>
+  );
+}
+
+// ─── Playground ─────────────────────────────────────────────────────────────
+const VOCAB_CHARS = "abcdefghijklmnopqrstuvwxyz".split("");
+const VOCAB_MAP = {};
+VOCAB_CHARS.forEach((ch, i) => { VOCAB_MAP[ch] = i; });
+const BOS_ID = VOCAB_CHARS.length; // 26
+
+function PlaygroundTokenizer() {
+  const [input, setInput] = useState("karpathy");
+  const lower = input.toLowerCase();
+  const tokens = lower.split("").map(ch => ({
+    ch, id: VOCAB_MAP[ch] !== undefined ? VOCAB_MAP[ch] : "?",
+    valid: VOCAB_MAP[ch] !== undefined,
+  }));
+
+  return (
+    <div style={{
+      background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16,
+      padding: 28, display: "flex", flexDirection: "column", gap: 20,
+    }}>
+      <div style={{ fontSize: 14, fontWeight: 600, color: C.text, fontFamily: "'Figtree', sans-serif" }}>
+        实时分词器
+      </div>
+      <div style={{ fontSize: 12, color: C.textTer, lineHeight: 1.6 }}>
+        输入任意文本，看看字符级分词器如何把每个字符映射为一个整数 ID。词表是 a–z（0–25）加上一个 BOS token（26）。
+      </div>
+      <input
+        type="text"
+        value={input}
+        onChange={e => setInput(e.target.value)}
+        placeholder="输入一个名字…"
+        style={{
+          padding: "10px 16px", borderRadius: 10, border: `1px solid ${C.border}`,
+          background: C.bg, color: C.text, fontSize: 16, fontFamily: "'SF Mono', monospace",
+          outline: "none", width: "100%",
+        }}
+      />
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+        <div style={{
+          display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+        }}>
+          <div style={{
+            width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center",
+            borderRadius: 8, fontSize: 10, fontWeight: 600, fontFamily: "'SF Mono', monospace",
+            background: "rgba(147,197,253,0.1)", border: "1px solid rgba(147,197,253,0.25)", color: C.blue,
+          }}>BOS</div>
+          <div style={{ fontSize: 10, fontFamily: "'SF Mono', monospace", color: C.blue }}>{BOS_ID}</div>
+        </div>
+        {tokens.map((t, i) => (
+          <div key={i} style={{
+            display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+          }}>
+            <div style={{
+              width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center",
+              borderRadius: 8, fontSize: 20, fontWeight: 600, fontFamily: "'SF Mono', monospace",
+              background: t.valid ? C.accentDim : "rgba(252,165,165,0.1)",
+              border: `1px solid ${t.valid ? "rgba(200,162,255,0.3)" : "rgba(252,165,165,0.3)"}`,
+              color: t.valid ? C.accent : "#fca5a5",
+            }}>{t.ch}</div>
+            <div style={{
+              fontSize: 10, fontFamily: "'SF Mono', monospace",
+              color: t.valid ? C.green : "#fca5a5",
+            }}>{t.id}</div>
+          </div>
+        ))}
+        <div style={{
+          display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+        }}>
+          <div style={{
+            width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center",
+            borderRadius: 8, fontSize: 10, fontWeight: 600, fontFamily: "'SF Mono', monospace",
+            background: "rgba(147,197,253,0.1)", border: "1px solid rgba(147,197,253,0.25)", color: C.blue,
+          }}>BOS</div>
+          <div style={{ fontSize: 10, fontFamily: "'SF Mono', monospace", color: C.blue }}>{BOS_ID}</div>
+        </div>
+      </div>
+      <div style={{ fontSize: 11, color: C.textTer, fontFamily: "'SF Mono', monospace" }}>
+        序列长度：{tokens.length + 2} 个 token（含 2 个 BOS）
+      </div>
+    </div>
+  );
+}
+
+function PlaygroundSoftmax() {
+  const [temperature, setTemperature] = useState(1.0);
+  const [rawLogits] = useState(() => {
+    const base = [2.1, 1.4, 0.8, 3.5, 0.2, -0.5, 1.9, -1.0, 0.6, 1.1];
+    return base;
+  });
+  const labels = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"];
+
+  const scaled = rawLogits.map(l => l / temperature);
+  const maxS = Math.max(...scaled);
+  const exps = scaled.map(s => Math.exp(s - maxS));
+  const total = exps.reduce((a, b) => a + b, 0);
+  const probs = exps.map(e => e / total);
+  const maxProb = Math.max(...probs);
+
+  return (
+    <div style={{
+      background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16,
+      padding: 28, display: "flex", flexDirection: "column", gap: 20,
+    }}>
+      <div style={{ fontSize: 14, fontWeight: 600, color: C.text, fontFamily: "'Figtree', sans-serif" }}>
+        温度与 Softmax 探索器
+      </div>
+      <div style={{ fontSize: 12, color: C.textTer, lineHeight: 1.6 }}>
+        温度在 softmax 之前除以原始 logits，从而塑造概率分布。低温度让模型更自信、更专注。高温度使概率趋于平坦，输出更加随机。
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+        <span style={{
+          fontSize: 28, fontWeight: 700, color: C.accent, fontFamily: "'SF Mono', monospace",
+          minWidth: 64, textAlign: "right",
+        }}>{temperature.toFixed(2)}</span>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
+          <input
+            type="range" min="0.1" max="3.0" step="0.05" value={temperature}
+            onChange={e => setTemperature(parseFloat(e.target.value))}
+            style={{ width: "100%", height: 3, cursor: "pointer" }}
+          />
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <span style={{ fontSize: 10, color: C.textTer }}>0.1（聚焦）</span>
+            <span style={{ fontSize: 10, color: C.textTer }}>3.0（随机）</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Bar chart */}
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 140, padding: "0 4px" }}>
+        {probs.map((p, i) => (
+          <div key={i} style={{
+            flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+            height: "100%", justifyContent: "flex-end",
+          }}>
+            <span style={{
+              fontSize: 9, fontFamily: "'SF Mono', monospace", color: C.textTer,
+              opacity: p > 0.02 ? 1 : 0.4,
+            }}>
+              {(p * 100).toFixed(1)}%
+            </span>
+            <div style={{
+              width: "100%", borderRadius: "4px 4px 0 0",
+              height: `${(p / maxProb) * 100}%`, minHeight: 2,
+              background: i === 3 ? C.accent : `${C.accent}55`,
+              transition: "height 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+            }} />
+            <span style={{
+              fontSize: 12, fontWeight: 600, fontFamily: "'SF Mono', monospace",
+              color: i === 3 ? C.accent : C.textSec,
+            }}>{labels[i]}</span>
+          </div>
+        ))}
+      </div>
+
+      <div style={{
+        display: "flex", gap: 12, flexWrap: "wrap", paddingTop: 8,
+        borderTop: `1px solid ${C.border}`,
+      }}>
+        {[0.1, 0.5, 1.0, 2.0].map(t => (
+          <button key={t} onClick={() => setTemperature(t)} style={{
+            padding: "6px 14px", borderRadius: 8, fontSize: 12, cursor: "pointer",
+            fontFamily: "'SF Mono', monospace", fontWeight: 500, border: "none",
+            background: Math.abs(temperature - t) < 0.06 ? C.accentDim : C.bg,
+            color: Math.abs(temperature - t) < 0.06 ? C.accent : C.textSec,
+            transition: "all 0.2s",
+          }}>T={t}</button>
+        ))}
+        <span style={{ fontSize: 11, color: C.textTer, display: "flex", alignItems: "center", marginLeft: 4 }}>
+          {temperature < 0.3 ? "← 近乎确定" :
+           temperature < 0.7 ? "← 自信但多样" :
+           temperature < 1.2 ? "← 均衡（默认）" :
+           temperature < 2.0 ? "← 探索性" : "← 高度随机"}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function PlaygroundAttention() {
+  const [input, setInput] = useState("transformer");
+  const chars = input.toLowerCase().split("").slice(0, 12);
+  const n = chars.length;
+  const [hoverCell, setHoverCell] = useState(null);
+
+  // Generate pseudo-attention weights based on character similarity & distance
+  const getWeight = (qi, ki) => {
+    if (ki > qi) return 0;
+    const dist = qi - ki;
+    const distWeight = Math.exp(-dist * 0.3);
+    const sameChar = chars[qi] === chars[ki] ? 0.5 : 0;
+    const raw = distWeight + sameChar + 0.1;
+    return raw;
+  };
+
+  // Normalize per query row
+  const weights = [];
+  for (let qi = 0; qi < n; qi++) {
+    const row = [];
+    let sum = 0;
+    for (let ki = 0; ki < n; ki++) {
+      const w = getWeight(qi, ki);
+      row.push(w);
+      sum += w;
+    }
+    weights.push(row.map(w => sum > 0 ? w / sum : 0));
+  }
+
+  return (
+    <div style={{
+      background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16,
+      padding: 28, display: "flex", flexDirection: "column", gap: 20,
+    }}>
+      <div style={{ fontSize: 14, fontWeight: 600, color: C.text, fontFamily: "'Figtree', sans-serif" }}>
+        注意力模式探索器
+      </div>
+      <div style={{ fontSize: 12, color: C.textTer, lineHeight: 1.6 }}>
+        输入文本以查看模拟的因果注意力热力图。每个格子表示一个查询（query）token（行）对键（key）token（列）的关注程度。悬停可查看权重。未来的 token 被掩码。
+      </div>
+      <input
+        type="text"
+        value={input}
+        onChange={e => setInput(e.target.value)}
+        placeholder="输入文本…"
+        maxLength={12}
+        style={{
+          padding: "10px 16px", borderRadius: 10, border: `1px solid ${C.border}`,
+          background: C.bg, color: C.text, fontSize: 16, fontFamily: "'SF Mono', monospace",
+          outline: "none", width: "100%",
+        }}
+      />
+      {n > 0 && (
+        <div style={{ overflowX: "auto" }}>
+          <div style={{
+            display: "inline-grid",
+            gridTemplateColumns: `28px repeat(${n}, 36px)`,
+            gridTemplateRows: `22px repeat(${n}, 36px)`,
+            gap: 2, alignItems: "center", justifyItems: "center",
+          }}>
+            <div />
+            {chars.map((ch, i) => (
+              <div key={`h-${i}`} style={{
+                fontSize: 11, color: C.textTer, fontFamily: "'SF Mono', monospace", fontWeight: 600,
+              }}>{ch}</div>
+            ))}
+            {chars.map((qch, qi) => (
+              <>
+                <div key={`r-${qi}`} style={{
+                  fontSize: 11, color: C.textTer, fontFamily: "'SF Mono', monospace", fontWeight: 600,
+                }}>{qch}</div>
+                {chars.map((kch, ki) => {
+                  const canAttend = ki <= qi;
+                  const w = weights[qi]?.[ki] || 0;
+                  const isHovered = hoverCell && hoverCell[0] === qi && hoverCell[1] === ki;
+                  return (
+                    <div
+                      key={`c-${qi}-${ki}`}
+                      onMouseEnter={() => setHoverCell([qi, ki])}
+                      onMouseLeave={() => setHoverCell(null)}
+                      style={{
+                        width: 36, height: 36, borderRadius: 6,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        fontSize: 8, fontFamily: "'SF Mono', monospace", fontWeight: 600,
+                        background: canAttend ? `rgba(200,162,255,${w * 0.5})` : C.bg,
+                        border: `1px solid ${isHovered ? C.accent : canAttend ? `rgba(200,162,255,${w * 0.4})` : C.border}`,
+                        color: canAttend ? (w > 0.15 ? C.accent : C.textTer) : C.textTer,
+                        cursor: canAttend ? "crosshair" : "default",
+                        transition: "border 0.15s",
+                      }}
+                    >
+                      {canAttend ? (w * 100).toFixed(0) + "%" : "—"}
+                    </div>
+                  );
+                })}
+              </>
+            ))}
+          </div>
+        </div>
+      )}
+      {hoverCell && hoverCell[1] <= hoverCell[0] && (
+        <div style={{
+          fontSize: 12, color: C.textSec, fontFamily: "'SF Mono', monospace",
+          padding: "8px 14px", background: C.bg, borderRadius: 8,
+          border: `1px solid ${C.border}`,
+        }}>
+          Q:"{chars[hoverCell[0]]}"（位置 {hoverCell[0]}）关注 K:"{chars[hoverCell[1]]}"（位置 {hoverCell[1]}），权重为 {((weights[hoverCell[0]]?.[hoverCell[1]] || 0) * 100).toFixed(1)}%
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PlaygroundEmbeddings() {
+  const [tokenIdx, setTokenIdx] = useState(0);
+  const [posIdx, setPosIdx] = useState(0);
+  const dim = 8;
+
+  // Deterministic pseudo-random embeddings seeded by index
+  const embed = (idx, salt) => {
+    const vec = [];
+    for (let d = 0; d < dim; d++) {
+      const x = Math.sin((idx + 1) * (d + 1) * 1.7 + salt) * 0.8;
+      vec.push(parseFloat(x.toFixed(3)));
+    }
+    return vec;
+  };
+
+  const tokEmb = embed(tokenIdx, 0.3);
+  const posEmb = embed(posIdx, 7.1);
+  const combined = tokEmb.map((v, i) => parseFloat((v + posEmb[i]).toFixed(3)));
+
+  const maxAbs = Math.max(...combined.map(Math.abs), 0.01);
+  const tokMax = Math.max(...tokEmb.map(Math.abs), 0.01);
+  const posMax = Math.max(...posEmb.map(Math.abs), 0.01);
+
+  const VecRow = ({ label, vec, color, maxVal }) => (
+    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <span style={{ fontSize: 10, color: C.textTer, fontFamily: "'SF Mono', monospace", minWidth: 48, textAlign: "right" }}>{label}</span>
+      <div style={{ display: "flex", gap: 3, flex: 1 }}>
+        {vec.map((v, i) => {
+          const pct = Math.abs(v) / maxVal;
+          const isPos = v >= 0;
+          return (
+            <div key={i} style={{
+              flex: 1, height: 36, borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center",
+              background: `${color}${Math.round(pct * 40 + 5).toString(16).padStart(2, "0")}`,
+              border: `1px solid ${color}${Math.round(pct * 60 + 15).toString(16).padStart(2, "0")}`,
+              fontSize: 9, fontFamily: "'SF Mono', monospace", fontWeight: 600,
+              color: pct > 0.4 ? C.text : C.textTer,
+              transition: "all 0.3s",
+            }}>
+              {v > 0 ? "+" : ""}{v.toFixed(2)}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  const tokens = "abcdefghijklmnopqrstuvwxyz".split("");
+
+  return (
+    <div style={{
+      background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16,
+      padding: 28, display: "flex", flexDirection: "column", gap: 20,
+    }}>
+      <div style={{ fontSize: 14, fontWeight: 600, color: C.text, fontFamily: "'Figtree', sans-serif" }}>
+        Token 与位置嵌入（Embeddings）
+      </div>
+      <div style={{ fontSize: 12, color: C.textTer, lineHeight: 1.6 }}>
+        每个 token 和位置都有自己学习到的向量。这两个向量按元素相加，形成一个同时编码「token 是什么」与「它在哪」的单一表示。这里展示的是 {dim} 维嵌入（MicroGPT 使用 16 维）。
+      </div>
+      <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: "1 1 140px" }}>
+          <span style={{ fontSize: 10, color: C.textTer, letterSpacing: 1, textTransform: "uppercase" }}>Token</span>
+          <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+            {tokens.slice(0, 10).map((ch, i) => (
+              <button key={i} onClick={() => setTokenIdx(i)} style={{
+                width: 32, height: 32, borderRadius: 6, border: "none", cursor: "pointer",
+                fontSize: 14, fontFamily: "'SF Mono', monospace", fontWeight: 600,
+                background: tokenIdx === i ? C.accentDim : C.bg,
+                color: tokenIdx === i ? C.accent : C.textSec,
+                transition: "all 0.2s",
+              }}>{ch}</button>
+            ))}
+          </div>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: "1 1 140px" }}>
+          <span style={{ fontSize: 10, color: C.textTer, letterSpacing: 1, textTransform: "uppercase" }}>位置（0–{15}）</span>
+          <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+            {Array.from({ length: 8 }, (_, i) => (
+              <button key={i} onClick={() => setPosIdx(i)} style={{
+                width: 32, height: 32, borderRadius: 6, border: "none", cursor: "pointer",
+                fontSize: 12, fontFamily: "'SF Mono', monospace", fontWeight: 600,
+                background: posIdx === i ? "rgba(147,197,253,0.15)" : C.bg,
+                color: posIdx === i ? C.blue : C.textSec,
+                transition: "all 0.2s",
+              }}>{i}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <VecRow label="tok_emb" vec={tokEmb} color={C.accent} maxVal={tokMax} />
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 14, color: C.textTer, minWidth: 48, textAlign: "right" }}>+</span>
+          <div style={{ flex: 1, height: 1, background: C.border }} />
+        </div>
+        <VecRow label="pos_emb" vec={posEmb} color={C.blue} maxVal={posMax} />
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 14, color: C.textTer, minWidth: 48, textAlign: "right" }}>=</span>
+          <div style={{ flex: 1, height: 1, background: C.border }} />
+        </div>
+        <VecRow label="x" vec={combined} color={C.green} maxVal={maxAbs} />
+      </div>
+      <div style={{ fontSize: 11, color: C.textTer, fontFamily: "'SF Mono', monospace" }}>
+        x = wte[{tokenIdx}] + wpe[{posIdx}]&nbsp;&nbsp;→&nbsp;&nbsp;dim = {dim}
+      </div>
+    </div>
+  );
+}
+
+function PlaygroundRMSNorm() {
+  const [values, setValues] = useState([1.5, -0.8, 2.3, -1.1, 0.4, -2.0, 1.2, 0.7]);
+  const dim = values.length;
+
+  const meanSq = values.reduce((s, v) => s + v * v, 0) / dim;
+  const rms = Math.sqrt(meanSq + 1e-5);
+  const scale = 1 / rms;
+  const normed = values.map(v => v * scale);
+
+  const allVals = [...values, ...normed];
+  const maxAbs = Math.max(...allVals.map(Math.abs), 0.01);
+  const barH = 100;
+
+  const randomize = () => {
+    setValues(Array.from({ length: dim }, () => parseFloat((Math.random() * 4 - 2).toFixed(2))));
+  };
+
+  return (
+    <div style={{
+      background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16,
+      padding: 28, display: "flex", flexDirection: "column", gap: 20,
+    }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ fontSize: 14, fontWeight: 600, color: C.text, fontFamily: "'Figtree', sans-serif" }}>
+          RMS 归一化
+        </div>
+        <button onClick={randomize} style={{
+          padding: "5px 14px", borderRadius: 8, border: `1px solid ${C.border}`,
+          background: C.bg, color: C.textSec, cursor: "pointer", fontSize: 11,
+          fontFamily: "'SF Mono', monospace", transition: "all 0.2s",
+        }}>随机化</button>
+      </div>
+      <div style={{ fontSize: 12, color: C.textTer, lineHeight: 1.6 }}>
+        RMSNorm 通过让每个元素除以均方根来归一化向量。与 LayerNorm 不同，它跳过了减去均值的步骤——更简单，效果通常同样出色。点击任意输入条即可修改其数值。
+      </div>
+
+      <div style={{ display: "flex", gap: 32 }}>
+        {/* Input bars */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
+          <span style={{ fontSize: 10, color: C.textTer, letterSpacing: 1, textTransform: "uppercase" }}>输入 x</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 4, height: barH }}>
+            {values.map((v, i) => {
+              const pct = (v / maxAbs) * 50;
+              const isPos = v >= 0;
+              return (
+                <div key={i} style={{
+                  flex: 1, height: "100%", position: "relative", display: "flex",
+                  flexDirection: "column", justifyContent: "center", cursor: "ns-resize",
+                }}
+                  onMouseDown={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const handleMove = (ev) => {
+                      const y = ev.clientY - rect.top;
+                      const pctY = 1 - y / rect.height;
+                      const newVal = parseFloat(((pctY * 2 - 1) * 3).toFixed(2));
+                      setValues(prev => { const n = [...prev]; n[i] = Math.max(-3, Math.min(3, newVal)); return n; });
+                    };
+                    const handleUp = () => { window.removeEventListener("mousemove", handleMove); window.removeEventListener("mouseup", handleUp); };
+                    window.addEventListener("mousemove", handleMove);
+                    window.addEventListener("mouseup", handleUp);
+                  }}
+                >
+                  <div style={{ position: "absolute", top: "50%", left: 0, right: 0, height: 1, background: C.border }} />
+                  <div style={{
+                    position: "absolute",
+                    left: "15%", right: "15%",
+                    top: isPos ? `${50 - Math.abs(pct)}%` : "50%",
+                    height: `${Math.abs(pct)}%`,
+                    borderRadius: 3,
+                    background: isPos ? C.accent : C.orange,
+                    opacity: 0.6,
+                    transition: "all 0.15s",
+                  }} />
+                  <div style={{
+                    position: "absolute", bottom: 0, left: 0, right: 0, textAlign: "center",
+                    fontSize: 8, fontFamily: "'SF Mono', monospace", color: C.textTer,
+                  }}>{v.toFixed(1)}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Arrow */}
+        <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", gap: 6, minWidth: 56 }}>
+          <div style={{ fontSize: 9, color: C.accent, fontFamily: "'SF Mono', monospace", textAlign: "center", lineHeight: 1.4, padding: "4px 8px", background: C.bg, borderRadius: 6, border: `1px solid ${C.border}` }}>
+            1/{rms.toFixed(2)}
+          </div>
+          <svg width="30" height="16" viewBox="0 0 30 16">
+            <path d="M4 8h18M22 8l-5-4M22 8l-5 4" stroke={C.accent} strokeWidth="1.5" fill="none" strokeLinecap="round" />
+          </svg>
+          <div style={{ fontSize: 9, color: C.textTer, fontFamily: "'SF Mono', monospace" }}>缩放</div>
+        </div>
+
+        {/* Output bars */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
+          <span style={{ fontSize: 10, color: C.green, letterSpacing: 1, textTransform: "uppercase" }}>输出</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 4, height: barH }}>
+            {normed.map((v, i) => {
+              const pct = (v / maxAbs) * 50;
+              const isPos = v >= 0;
+              return (
+                <div key={i} style={{ flex: 1, height: "100%", position: "relative" }}>
+                  <div style={{ position: "absolute", top: "50%", left: 0, right: 0, height: 1, background: C.border }} />
+                  <div style={{
+                    position: "absolute",
+                    left: "15%", right: "15%",
+                    top: isPos ? `${50 - Math.abs(pct)}%` : "50%",
+                    height: `${Math.abs(pct)}%`,
+                    borderRadius: 3,
+                    background: C.green,
+                    opacity: 0.6,
+                    transition: "all 0.15s",
+                  }} />
+                  <div style={{
+                    position: "absolute", bottom: 0, left: 0, right: 0, textAlign: "center",
+                    fontSize: 8, fontFamily: "'SF Mono', monospace", color: C.textTer,
+                  }}>{v.toFixed(2)}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      <div style={{
+        display: "flex", gap: 16, flexWrap: "wrap",
+        fontSize: 11, fontFamily: "'SF Mono', monospace", color: C.textTer,
+        padding: "12px 16px", background: C.bg, borderRadius: 8,
+      }}>
+        <span>mean(x<sup>2</sup>) = <span style={{ color: C.accent }}>{meanSq.toFixed(4)}</span></span>
+        <span>rms = <span style={{ color: C.accent }}>{rms.toFixed(4)}</span></span>
+        <span>scale = <span style={{ color: C.green }}>{scale.toFixed(4)}</span></span>
+      </div>
+    </div>
+  );
+}
+
+function PlaygroundReLU() {
+  const [values, setValues] = useState([1.2, -0.5, 2.1, -1.8, 0.3, -0.9, 1.7, -0.2, 0.8, -1.4, 0.1, -2.3]);
+
+  const outputs = values.map(v => Math.max(0, v));
+  const active = outputs.filter(v => v > 0).length;
+  const maxAbs = Math.max(...values.map(Math.abs), 0.01);
+
+  const randomize = () => {
+    setValues(Array.from({ length: 12 }, () => parseFloat((Math.random() * 5 - 2.5).toFixed(2))));
+  };
+
+  return (
+    <div style={{
+      background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16,
+      padding: 28, display: "flex", flexDirection: "column", gap: 20,
+    }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ fontSize: 14, fontWeight: 600, color: C.text, fontFamily: "'Figtree', sans-serif" }}>
+          ReLU 激活
+        </div>
+        <button onClick={randomize} style={{
+          padding: "5px 14px", borderRadius: 8, border: `1px solid ${C.border}`,
+          background: C.bg, color: C.textSec, cursor: "pointer", fontSize: 11,
+          fontFamily: "'SF Mono', monospace", transition: "all 0.2s",
+        }}>随机化</button>
+      </div>
+      <div style={{ fontSize: 12, color: C.textTer, lineHeight: 1.6 }}>
+        ReLU（修正线性单元，Rectified Linear Unit）是 MicroGPT 的 MLP 中使用的激活函数。它极其简单：保留正值，将负值置零。这引入了非线性——没有它，堆叠线性层就只是一个大的线性层。
+      </div>
+      <div style={{ display: "flex", gap: 3, height: 120 }}>
+        {values.map((v, i) => {
+          const out = outputs[i];
+          const killed = out === 0;
+          const barPct = (Math.abs(v) / maxAbs) * 100;
+          const isPos = v >= 0;
+          return (
+            <div key={i} style={{
+              flex: 1, display: "flex", flexDirection: "column", position: "relative", height: "100%",
+            }}>
+              {/* Center line */}
+              <div style={{ position: "absolute", top: "50%", left: 0, right: 0, height: 1, background: C.border }} />
+              {/* Input bar (dimmed if killed) */}
+              <div style={{
+                position: "absolute",
+                left: "10%", right: "10%",
+                top: isPos ? `${50 - barPct / 2}%` : "50%",
+                height: `${barPct / 2}%`,
+                borderRadius: 3,
+                background: killed ? C.orange : C.accent,
+                opacity: killed ? 0.2 : 0.6,
+                transition: "all 0.3s",
+              }} />
+              {/* Output indicator */}
+              {!killed && (
+                <div style={{
+                  position: "absolute",
+                  left: "10%", right: "10%",
+                  top: `${50 - barPct / 2}%`,
+                  height: `${barPct / 2}%`,
+                  borderRadius: 3,
+                  border: `1.5px solid ${C.green}`,
+                  opacity: 0.8,
+                  transition: "all 0.3s",
+                }} />
+              )}
+              {/* Kill X */}
+              {killed && (
+                <div style={{
+                  position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
+                  fontSize: 14, color: C.orange, opacity: 0.5, fontWeight: 700,
+                }}>✕</div>
+              )}
+              {/* Value label */}
+              <div style={{
+                position: "absolute", bottom: -2, left: 0, right: 0, textAlign: "center",
+                fontSize: 8, fontFamily: "'SF Mono', monospace",
+                color: killed ? C.orange : C.textTer, opacity: killed ? 0.5 : 1,
+              }}>{v.toFixed(1)}</div>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{
+        display: "flex", gap: 20, alignItems: "center",
+        fontSize: 11, fontFamily: "'SF Mono', monospace", color: C.textTer,
+        padding: "12px 16px", background: C.bg, borderRadius: 8,
+      }}>
+        <span>激活：<span style={{ color: C.green }}>{active}/{values.length}</span></span>
+        <span>置零：<span style={{ color: C.orange }}>{values.length - active}/{values.length}</span></span>
+        <span style={{ fontSize: 10, color: C.textTer, opacity: 0.6 }}>
+          relu(x) = max(0, x)
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function PlaygroundFFN() {
+  const [inputVec, setInputVec] = useState([0.8, -0.3, 1.2, -0.7]);
+  const inputDim = 4;
+  const hiddenDim = inputDim * 4; // 16
+
+  // Deterministic pseudo-weights
+  const fc1W = Array.from({ length: hiddenDim }, (_, r) =>
+    Array.from({ length: inputDim }, (_, c) => Math.sin((r + 1) * (c + 1) * 2.1) * 0.6)
+  );
+  const fc2W = Array.from({ length: inputDim }, (_, r) =>
+    Array.from({ length: hiddenDim }, (_, c) => Math.cos((r + 1) * (c + 1) * 1.7) * 0.4)
+  );
+
+  // fc1: input(4) → hidden(16)
+  const hidden = fc1W.map(row => row.reduce((s, w, i) => s + w * inputVec[i], 0));
+  // ReLU
+  const activated = hidden.map(v => Math.max(0, v));
+  const killedCount = activated.filter(v => v === 0).length;
+  // fc2: hidden(16) → output(4)
+  const output = fc2W.map(row => row.reduce((s, w, i) => s + w * activated[i], 0));
+
+  const hidMax = Math.max(...hidden.map(Math.abs), 0.01);
+  const outMax = Math.max(...output.map(Math.abs), 0.01);
+
+  const randomize = () => {
+    setInputVec(Array.from({ length: inputDim }, () => parseFloat((Math.random() * 3 - 1.5).toFixed(2))));
+  };
+
+  const MiniBar = ({ val, maxV, color, killed }) => {
+    const pct = Math.min(Math.abs(val) / maxV * 100, 100);
+    return (
+      <div style={{
+        height: 8, borderRadius: 2,
+        width: `${Math.max(pct, 2)}%`,
+        background: killed ? `${C.orange}33` : color,
+        opacity: killed ? 0.3 : 0.7,
+        transition: "all 0.3s",
+      }} />
+    );
+  };
+
+  return (
+    <div style={{
+      background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16,
+      padding: 28, display: "flex", flexDirection: "column", gap: 20,
+    }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ fontSize: 14, fontWeight: 600, color: C.text, fontFamily: "'Figtree', sans-serif" }}>
+          前馈网络（MLP 块）
+        </div>
+        <button onClick={randomize} style={{
+          padding: "5px 14px", borderRadius: 8, border: `1px solid ${C.border}`,
+          background: C.bg, color: C.textSec, cursor: "pointer", fontSize: 11,
+          fontFamily: "'SF Mono', monospace", transition: "all 0.2s",
+        }}>随机化</button>
+      </div>
+      <div style={{ fontSize: 12, color: C.textTer, lineHeight: 1.6 }}>
+        MLP 块将表示扩展到嵌入维度的 4 倍，应用 ReLU，然后再压缩回去。这种「扩展 → 激活 → 压缩」的模式让网络能够学习复杂的非线性变换。这里是：4 → 16 → 4。
+      </div>
+
+      <div style={{ display: "flex", alignItems: "stretch", gap: 12, flexWrap: "wrap" }}>
+        {/* Input */}
+        <div style={{
+          flex: "1 1 100px", background: C.bg, borderRadius: 10, padding: 14,
+          border: `1px solid ${C.border}`, display: "flex", flexDirection: "column", gap: 6,
+        }}>
+          <div style={{ fontSize: 10, color: C.accent, letterSpacing: 1, textTransform: "uppercase", marginBottom: 2 }}>
+            输入（{inputDim}）
+          </div>
+          {inputVec.map((v, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 9, fontFamily: "'SF Mono', monospace", color: C.textTer, minWidth: 32 }}>
+                {v >= 0 ? "+" : ""}{v.toFixed(2)}
+              </span>
+              <MiniBar val={v} maxV={Math.max(...inputVec.map(Math.abs))} color={C.accent} />
+            </div>
+          ))}
+        </div>
+
+        {/* Arrow + fc1 label */}
+        <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", minWidth: 40 }}>
+          <div style={{ fontSize: 8, color: C.textTer, fontFamily: "'SF Mono', monospace", marginBottom: 2 }}>fc1</div>
+          <svg width="24" height="12"><path d="M0 6h18M18 6l-4-3M18 6l-4 3" stroke={C.textTer} strokeWidth="1.2" fill="none" strokeLinecap="round" /></svg>
+        </div>
+
+        {/* Hidden */}
+        <div style={{
+          flex: "2 1 160px", background: C.bg, borderRadius: 10, padding: 14,
+          border: `1px solid ${C.border}`, display: "flex", flexDirection: "column", gap: 3,
+        }}>
+          <div style={{ fontSize: 10, color: C.orange, letterSpacing: 1, textTransform: "uppercase", marginBottom: 2 }}>
+            隐藏层（{hiddenDim}）→ ReLU
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 2 }}>
+            {activated.map((v, i) => {
+              const killed = v === 0;
+              return (
+                <div key={i} style={{
+                  width: 32, height: 22, borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 7, fontFamily: "'SF Mono', monospace", fontWeight: 600,
+                  background: killed ? `${C.orange}11` : `${C.green}18`,
+                  border: `1px solid ${killed ? `${C.orange}33` : `${C.green}33`}`,
+                  color: killed ? C.orange : C.green,
+                  opacity: killed ? 0.4 : 1,
+                  transition: "all 0.3s",
+                }}>{killed ? "✕" : v.toFixed(1)}</div>
+              );
+            })}
+          </div>
+          <div style={{ fontSize: 9, color: C.textTer, fontFamily: "'SF Mono', monospace", marginTop: 4 }}>
+            {killedCount}/{hiddenDim} 被 ReLU 置零
+          </div>
+        </div>
+
+        {/* Arrow + fc2 label */}
+        <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", minWidth: 40 }}>
+          <div style={{ fontSize: 8, color: C.textTer, fontFamily: "'SF Mono', monospace", marginBottom: 2 }}>fc2</div>
+          <svg width="24" height="12"><path d="M0 6h18M18 6l-4-3M18 6l-4 3" stroke={C.textTer} strokeWidth="1.2" fill="none" strokeLinecap="round" /></svg>
+        </div>
+
+        {/* Output */}
+        <div style={{
+          flex: "1 1 100px", background: C.bg, borderRadius: 10, padding: 14,
+          border: `1px solid ${C.border}`, display: "flex", flexDirection: "column", gap: 6,
+        }}>
+          <div style={{ fontSize: 10, color: C.green, letterSpacing: 1, textTransform: "uppercase", marginBottom: 2 }}>
+            输出（{inputDim}）
+          </div>
+          {output.map((v, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 9, fontFamily: "'SF Mono', monospace", color: C.textTer, minWidth: 32 }}>
+                {v >= 0 ? "+" : ""}{v.toFixed(2)}
+              </span>
+              <MiniBar val={v} maxV={outMax} color={C.green} />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Playground() {
+  const ref = useRef(null);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const obs = new IntersectionObserver(([e]) => { if (e.isIntersecting) setVisible(true); }, { threshold: 0.1 });
+    if (ref.current) obs.observe(ref.current);
+    return () => obs.disconnect();
+  }, []);
+
+  return (
+    <div
+      ref={ref}
+      id="playground"
+      style={{
+        opacity: visible ? 1 : 0,
+        transform: visible ? "translateY(0)" : "translateY(40px)",
+        transition: "opacity 0.8s cubic-bezier(0.4, 0, 0.2, 1), transform 0.8s cubic-bezier(0.4, 0, 0.2, 1)",
+        transitionDelay: "0.1s",
+        padding: "80px 0",
+        borderBottom: `1px solid ${C.border}`,
+      }}
+    >
+      <div style={{ fontSize: 11, fontWeight: 500, color: C.textTer, letterSpacing: 3, textTransform: "uppercase", marginBottom: 20 }}>
+        08
+      </div>
+      <h2 style={{
+        fontSize: 36, fontWeight: 700, color: C.text, margin: 0, marginBottom: 8,
+        letterSpacing: -1, lineHeight: 1.1, fontFamily: "'Figtree', sans-serif",
+      }}>互动实验（Playground）</h2>
+      <div style={{
+        fontSize: 16, color: C.textSec, marginBottom: 28,
+        lineHeight: 1.5, fontFamily: "'Figtree', sans-serif", fontWeight: 400,
+      }}>亲手操作这些构建模块。</div>
+      <p style={{
+        fontSize: 15, color: C.textSec, lineHeight: 1.75, margin: 0, marginBottom: 16,
+        maxWidth: 580, fontFamily: "'Figtree', sans-serif",
+      }}>
+        下面的工具让你亲手实验 MicroGPT 的每个核心构建模块——从分词、嵌入、归一化、激活、注意力到采样。全部在你的浏览器中实时运行。
+      </p>
+      <div style={{
+        fontSize: 13, color: C.textTer, lineHeight: 1.7, maxWidth: 580,
+        padding: "16px 20px", borderLeft: `2px solid ${C.accent}33`,
+        background: C.accentGlow, borderRadius: "0 8px 8px 0",
+        marginBottom: 32, fontFamily: "'Figtree', sans-serif",
+      }}>
+        这些都是为建立直觉而设计的简化模拟。分词器使用与 MicroGPT 相同的 a–z + BOS 词表。嵌入与权重是确定性的伪数值。注意力权重由距离和字符相似度近似得到，而非学习得到的参数。
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+        <PlaygroundTokenizer />
+        <PlaygroundEmbeddings />
+        <PlaygroundRMSNorm />
+        <PlaygroundAttention />
+        <PlaygroundReLU />
+        <PlaygroundFFN />
+        <PlaygroundSoftmax />
+      </div>
+    </div>
+  );
+}
+
+// ─── Navigation ─────────────────────────────────────────────────────────────
+const NAV_ITEMS = [...SECTIONS.map(s => ({ id: s.id, label: s.label })), { id: "playground", label: "互动实验" }];
+const LOGO_SRC = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAoCAIAAAADnC86AAABCGlDQ1BJQ0MgUHJvZmlsZQAAeJxjYGA8wQAELAYMDLl5JUVB7k4KEZFRCuwPGBiBEAwSk4sLGHADoKpv1yBqL+viUYcLcKakFicD6Q9ArFIEtBxopAiQLZIOYWuA2EkQtg2IXV5SUAJkB4DYRSFBzkB2CpCtkY7ETkJiJxcUgdT3ANk2uTmlyQh3M/Ck5oUGA2kOIJZhKGYIYnBncAL5H6IkfxEDg8VXBgbmCQixpJkMDNtbGRgkbiHEVBYwMPC3MDBsO48QQ4RJQWJRIliIBYiZ0tIYGD4tZ2DgjWRgEL7AwMAVDQsIHG5TALvNnSEfCNMZchhSgSKeDHkMyQx6QJYRgwGDIYMZAKbWPz9HbOBQAAAIDElEQVR42r1YaYyVZxV+znm/u28zMEApm43g0LSpkIEuopOolEkXpI1Vm0KxkrIETAUtFUmNWzCmNpSqELUIEZFW0dhq6EJLTYOyOGxpQZYhRYQpwgxw9+373nP8cYdh7p07ozXUL++PyeTN+9yzPec5B3g/H4NBmM2z9/LePOWKVDjIBxfwAhAIRCB8EF8F9RleraSKqrOBNzAxg689toEBMJ/nK9SFa+EpRCEWnouyQlfwit5r1+yruNFP/pPcYWE9uBXUXmwL20UX4hSvXL6mTgYm0kQh2xey9wiskt5Bd/z3RjtVlhEMEwBVEEEEogr0mBClKCkrpL9NCgU0jli1o5iYoVpxmor0/F0DzEwi6lmtCi2TqEJ7Xx8sHFcvEBGxilUr1a5jiFQBV1DjIedzrcNvb44GfHz0bOF3O7s73ssBcJhqXhjsF7CBWFUbGHlDYtpn/KPGq1sudBxI/eUlW8iCGCo9wEwQ0Wk3NvxyefOHx4UgWgnsyi+MXvunc09tPXMp61ashx08FwwseVJ2og1N93+58Z55JtGkYgnUSI82PbC0c83i3NH2CjYxk6qOHxluf3ZyIsaFrCUCCFD4HDJR5/SZ4qrnzz73WmczJh3jAyraP8YCITZ3ysd34K/Dps9p/PxS/+gJNpdSzwURFFDhSEJzyXcfbyudOwUiw0Si+MnC8VNuieVTrt/HzMREzKSAW7BNcWdm64jWSU757PUzLsw1pOifXARWvNTc0bV88ahZX0MgYHNpIiI2REzMxEZLOadhuBOOpXdvAzEBiIWcjp9PGd7geJ5SvyIUhQoCMUI2bBdtNF0jAYFyX1SAkjFv1o+TF5rA6QyYQFz7kCo5PpvqPrlkmi1kGcCQqBMPGZX6ScsEY1BKUTl2Th/+Gfp5WgikWPtAumNY2pfMwpg6qFcqikMRE20AwACSeS9btBXrB6RMn3A2gekvy00HIQbck+XCMELHx5U3351tzDrWxwM+oQCRFAs2nwbAhimV83Ydy1CQa4oY/SNJIl9aq1yb3D98OJkPihm05NR6HIoUju+zuTSYuUJM39nyz3JRQ0F2vYGxWZCLYlK7fOpliAFby2ChHVPz22/PJ7JseTBUCoZRzHf/djVABBhVMNO5S6XDpwptU4fGGn22ZEXBRHXjBCWMP0av30tuAISyo48t707GxPFI68ZKLEAmNkRzyc7Vi7KHd1Xq2FSYmZmOnsn95q3uxpAzeULMCbBbEhChp6ivHAJcP0acF9evh241KptmZl5oyzZkSQyqr4JUVcRE4sSc2rGl8+mFuRMHwD3MRX1p2YoCaL254XtzP9Q6ZQgKJZQ9EKGKpQmkAuJHt5zL3tC2vjMXgGNRbS5B1ficQCiYOfjWhV//IHtkdw1XU03lEFXgae60yIp5Hx06rFE8W+t1MRJLmzemr8888vzMS41p43FtybJj0hdTf9/wjN2zlQCwUR2gOwEQEFBhZN2i97R7y6LuUPEqRvcpLUGmJK2B+CrfTxc5O8gXR3Weq4IdvuzPPBU+8hyzFTEQBaQ6W2p7VvTmacNnr4hN+kS5ULCuC+JqV4MU5YC8uHjsLeVT3saHjEV/EoUq+QzCgfZ3Ut/c9I/X9l/sG02gVy0wQyQwYuzI+atGzPuub8QYN5MktYaIIQztPT6rqbh9ZFv0wT8HbH6IhgoyZY8UosIq4KuHWCzcgjfuusCcTw+/aUzk7VP5rnSZma4oA6CS3/GpM0YtW2cSTTZ7GargOgqGFJ7RWJ5f+crIpqQBFJGMXTcbQ7rh+kB1OEBEAfhjTjYr81d3vLDzfKX3M5ihGhrbPPqJ9RSMeOluENdF7YluRJdsTQy77AiBWCiboM3zESxA6tMHMzFTMe2FHWxe0Tz1IwkRNUxcIYWmzz5GkYQUc2R8gxBXNqSTT/hnvxoVVlbAGrDlN+7F2y2IZAfCBuAYKpXE+PGtB8dcEZBi2R8MTbxVizkyzuCyxhp9fFOD32XFVb+SGNqwBPofVK1jSItyW3O0IeJYUQbAwQgHwyqDcbzxJBm1bbvDn9wfFtar/UAYbM3hFrx5l8SS1uXB+oRoOMDxsNPTFiWftrkUDRBXqMBaicWGliLLf5WoI9cVIOVNi/yZ6wINai0G6OwgplTeXsx4AJiMEc/NHniTw1H13JpaVOuRL+iPN118Z3vDk09OOOMolGtcUxHb50c98fXYH9s7A7GA30+eVa2Gdz2hiNl+MJUreoaJVRRE3b//kXu2wySa1HPVemqtWg9snEST13Wmc/Wi8ysfyhzdqWygdcxRBbHu6kjOWnlqzvePnXivHGzwGQPPauW4nobjvu7z5W9vOU0E1T51HBzTPPqr64LNLT3eY7bJrsvbftH1h7U2lwJRi5m6z+5Vlboqk8nczW2vynZVxELOsvtHL73v+sahvl7SO3Iy/8Wnj+0/mWGCaO8TFa1rnMRtd4UmTiV/0D33bnrvK6V/nQbgsN+Tcgu37NN9gwC3YcZ2fd3PTlk8AGOHBe/7WNONY8Klsuw5nnlxV3fRtUwktT6rp9CIDYgMGEALtyipoM7cZuEp6Qy6szK09c5g/XQj1etOKpWZ50oDJhVRsb29ZPD5U/vIT1VYVSYwX/2PqMpAbRGqqrauPgSQ01zdUbF3gE4jUyPIZXD1+H4G85P/18G8d9xe0LOKKPddRZRRVuhK/sa1X0X0Xb6s4TX9ly8beaMh84EsX/piz+E57fy3AuVLVDzEhxbywv9h3fRvEDFfFw3IqBgAAAAASUVORK5CYII=";
+
+function Nav({ activeSection }) {
+  const scrollTo = useCallback((id) => {
+    const el = document.getElementById(id);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
+
+  return (
+    <nav style={{
+      position: "fixed", top: 0, left: 0, right: 0, zIndex: 100,
+      display: "flex", alignItems: "center", justifyContent: "space-between",
+      padding: "10px 24px",
+      background: "rgba(10,10,10,0.8)", backdropFilter: "blur(20px)",
+      WebkitBackdropFilter: "blur(20px)", borderBottom: `1px solid ${C.border}`,
+    }}>
+      {/* Logo left */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+        <img src={LOGO_SRC} alt="Vizuara" style={{ width: 28, height: 28, borderRadius: 6 }} />
+        <span style={{ fontSize: 13, fontWeight: 600, color: C.text, fontFamily: "'Figtree', sans-serif", letterSpacing: 0.3 }}>
+          Vizuara AI Labs
+        </span>
+      </div>
+
+      {/* Nav tabs center */}
+      <div style={{ display: "flex", gap: 4, padding: "4px", borderRadius: 12, background: "rgba(20,20,20,0.6)", flexWrap: "wrap", justifyContent: "center" }}>
+        {NAV_ITEMS.map((s) => (
+          <button key={s.id} onClick={() => scrollTo(s.id)} style={{
+            padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 500,
+            border: "none", cursor: "pointer", fontFamily: "'Figtree', sans-serif",
+            color: activeSection === s.id ? C.accent : C.textTer,
+            background: activeSection === s.id ? C.accentDim : "transparent",
+            transition: "all 0.3s", whiteSpace: "nowrap",
+          }}>{s.label}</button>
+        ))}
+      </div>
+
+      {/* Spacer right to balance layout */}
+      <div style={{ width: 140, flexShrink: 0 }} />
+    </nav>
+  );
+}
+
+// ─── Main App ───────────────────────────────────────────────────────────────
+function MicroGPTVisualizer() {
+  const [activeSection, setActiveSection] = useState("hero");
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const allIds = [...SECTIONS.map(s => s.id), "playground"];
+      const offsets = allIds.map((id) => {
+        const el = document.getElementById(id);
+        return el ? { id, top: el.getBoundingClientRect().top } : null;
+      }).filter(Boolean);
+      const current = offsets.reduce((closest, item) =>
+        Math.abs(item.top - 100) < Math.abs(closest.top - 100) ? item : closest
+      );
+      if (current) setActiveSection(current.id);
+    };
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  return (
+    <>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Figtree:wght@300;400;500;600;700&display=swap');
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
+        body {
+          background: ${C.bg};
+          color: ${C.text};
+          font-family: 'Figtree', -apple-system, sans-serif;
+          -webkit-font-smoothing: antialiased;
+        }
+        ::selection { background: rgba(200,162,255,0.3); }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: ${C.borderLight}; border-radius: 3px; }
+        @keyframes fadeScale {
+          from { opacity: 0; transform: scale(0.85); }
+          to { opacity: 1; transform: scale(1); }
+        }
+        @keyframes pulse {
+          0%, 100% { opacity: 0.4; }
+          50% { opacity: 0.8; }
+        }
+        @keyframes blink {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0; }
+        }
+        button:hover { color: ${C.accent} !important; }
+        input[type="range"] { -webkit-appearance: none; appearance: none; }
+        input[type="range"]::-webkit-slider-thumb {
+          -webkit-appearance: none; appearance: none;
+          width: 12px; height: 12px; border-radius: 50%;
+          background: ${C.accent}; cursor: pointer;
+          border: none; margin-top: -4.5px;
+        }
+        input[type="range"]::-moz-range-thumb {
+          width: 12px; height: 12px; border-radius: 50%;
+          background: ${C.accent}; cursor: pointer; border: none;
+        }
+        input[type="range"]::-webkit-slider-runnable-track {
+          height: 3px; background: ${C.borderLight}; border-radius: 2px;
+        }
+        input[type="range"]::-moz-range-track {
+          height: 3px; background: ${C.borderLight}; border-radius: 2px;
+        }
+      `}</style>
+      <Nav activeSection={activeSection} />
+      <main style={{ maxWidth: 800, margin: "0 auto", padding: "0 32px" }}>
+        {SECTIONS.map((section, i) => (
+          <Section key={section.id} section={section} index={i} />
+        ))}
+        <Playground />
+        <footer style={{ padding: "60px 0", textAlign: "center", borderTop: `1px solid ${C.border}` }}>
+          <div style={{ fontSize: 13, color: C.textTer, lineHeight: 1.8 }}>基于 Andrej Karpathy 的 MicroGPT</div>
+          <div style={{ fontSize: 12, color: C.textTer, opacity: 0.5, marginTop: 4 }}>
+            243 行——最原子的 GPT 实现
+          </div>
+        </footer>
+      </main>
+    </>
+  );
+}
+
+
+ReactDOM.createRoot(document.getElementById('root')).render(<MicroGPTVisualizer />);
+  </script>
+<script data-goatcounter="https://raj.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+</body>
+</html>

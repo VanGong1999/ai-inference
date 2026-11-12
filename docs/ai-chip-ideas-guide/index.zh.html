@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>从 GPU 推理到 AI 芯片创意</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f7f7f2;
+  --paper:#fff;
+  --ink:#151611;
+  --muted:#64665e;
+  --quiet:#8a8d83;
+  --line:#ddddd4;
+  --line2:#c6c9bc;
+  --soft:#f0f0e9;
+  --soft2:#f8f8f3;
+  --green:#385f49;
+  --blue:#3c5575;
+  --brown:#765d41;
+  --red:#8e5047;
+  --max:1180px;
+}
+html{scroll-behavior:smooth}
+body{
+  font-family:"Figtree",ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  background:var(--bg);
+  color:var(--ink);
+  line-height:1.5;
+  text-rendering:optimizeLegibility;
+}
+a{color:inherit}
+svg{display:block;max-width:100%}
+.nav{
+  position:sticky;top:0;z-index:50;
+  background:rgba(247,247,242,.92);
+  border-bottom:1px solid var(--line);
+  backdrop-filter:blur(14px);
+}
+.nav-inner{
+  max-width:var(--max);margin:0 auto;padding:13px 22px;
+  display:flex;align-items:center;justify-content:space-between;gap:18px;
+}
+.brand{font-size:15px;font-weight:850;letter-spacing:-.015em}
+.links{display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}
+.links a{text-decoration:none;color:var(--muted);font-size:13px;font-weight:730;padding:7px 9px;border-radius:7px}
+.links a:hover{background:var(--soft);color:var(--ink)}
+.wrap{max-width:var(--max);margin:0 auto;padding:0 22px}
+section{padding:62px 0;border-bottom:1px solid var(--line)}
+.hero{padding:78px 0 58px}
+.hero-grid{display:grid;grid-template-columns:.9fr 1.1fr;gap:38px;align-items:center}
+.eyebrow{font-size:12px;text-transform:uppercase;letter-spacing:.14em;color:var(--green);font-weight:850;margin-bottom:11px}
+h1{font-size:clamp(42px,7vw,88px);line-height:.94;letter-spacing:-.058em;font-weight:900;max-width:760px}
+h2{font-size:clamp(31px,4.3vw,54px);line-height:1;letter-spacing:-.045em;font-weight:890;margin-bottom:14px}
+h3{font-size:20px;line-height:1.14;letter-spacing:-.025em;font-weight:830}
+h4{font-size:15px;font-weight:850;letter-spacing:-.01em}
+p{max-width:790px}
+.lead{font-size:19px;color:var(--muted);margin-top:18px}
+.small{font-size:13px}.muted{color:var(--muted)}
+.button-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:26px}
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;min-height:42px;
+  padding:10px 15px;border:1px solid var(--line2);border-radius:8px;
+  background:var(--paper);text-decoration:none;font-size:14px;font-weight:780;
+}
+.btn.primary{background:var(--ink);border-color:var(--ink);color:white}
+.panel{background:var(--paper);border:1px solid var(--line);border-radius:12px}
+.hero-visual{padding:18px}
+.section-head{display:grid;grid-template-columns:.72fr 1fr;gap:30px;align-items:end;margin-bottom:24px}
+.grid{display:grid;gap:14px}
+.grid.two{grid-template-columns:repeat(2,1fr)}
+.grid.three{grid-template-columns:repeat(3,1fr)}
+.grid.four{grid-template-columns:repeat(4,1fr)}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:17px}
+.card h3{margin:11px 0 8px}
+.card p{font-size:14px;color:var(--muted)}
+.tag{
+  display:inline-flex;align-items:center;border:1px solid var(--line2);
+  border-radius:999px;padding:4px 8px;background:var(--paper);
+  font-size:11px;font-weight:850;color:var(--muted);white-space:nowrap;
+}
+.plain{
+  background:#f0eee5;border:1px solid var(--line);border-radius:12px;
+  padding:16px;display:grid;gap:6px;
+}
+.plain b{color:var(--ink)}
+.plain p{font-size:15px;color:var(--muted)}
+.ladder{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+.ladder-card{
+  background:var(--paper);border:1px solid var(--line);border-radius:12px;
+  padding:14px;min-height:148px;display:grid;grid-template-rows:auto 1fr;
+}
+.ladder-card b{font-size:12px;color:var(--green);text-transform:uppercase;letter-spacing:.08em}
+.ladder-card p{font-size:14px;color:var(--muted);margin-top:8px}
+.visual-box{
+  min-height:210px;border:1px solid var(--line);border-radius:10px;background:var(--soft2);
+  display:flex;align-items:center;justify-content:center;padding:14px;overflow:hidden;
+}
+.concept{
+  display:grid;grid-template-columns:1fr .92fr;gap:16px;align-items:stretch;
+  background:var(--paper);border:1px solid var(--line);border-radius:12px;overflow:hidden;
+}
+.concept-copy{padding:18px}
+.concept-copy h3{font-size:24px;margin:8px 0 10px}
+.concept-copy p{font-size:15px;color:var(--muted)}
+.concept-copy ul{margin:14px 0 0 18px;color:var(--muted);font-size:14px}
+.concept-copy li{margin:5px 0}
+.concept-art{background:var(--soft2);border-left:1px solid var(--line);display:flex;align-items:center;justify-content:center;padding:16px;min-height:270px}
+.dictionary{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.term{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:15px;display:grid;gap:8px}
+.term h3{font-size:18px}
+.term p{font-size:14px;color:var(--muted)}
+.term .example{border-top:1px solid var(--line);padding-top:8px;font-size:13px;color:var(--quiet)}
+.idea-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+.idea{
+  background:var(--paper);border:1px solid var(--line);border-radius:12px;
+  display:grid;grid-template-columns:132px 1fr;overflow:hidden;min-height:218px;
+}
+.idea-art{background:var(--soft2);border-right:1px solid var(--line);display:flex;align-items:center;justify-content:center;padding:14px}
+.idea-body{padding:16px}
+.idea-top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:9px}
+.idea-num{font-size:12px;font-weight:860;color:var(--green);letter-spacing:.08em;text-transform:uppercase}
+.idea h3{font-size:19px;margin-bottom:7px}
+.idea p{font-size:14px;color:var(--muted)}
+.idea-meta{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.mini-label{border-top:1px solid var(--line);padding-top:8px;font-size:12px;color:var(--quiet)}
+.table{width:100%;border-collapse:collapse;background:var(--paper);border:1px solid var(--line);border-radius:12px;overflow:hidden;display:table}
+.table th,.table td{border-bottom:1px solid var(--line);padding:13px 14px;text-align:left;vertical-align:top}
+.table th{background:var(--soft);font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)}
+.table td{font-size:14px;color:var(--muted)}.table td b{color:var(--ink)}.table tr:last-child td{border-bottom:0}
+.flow{display:grid;grid-template-columns:repeat(6,1fr);gap:9px}
+.step{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:14px;min-height:128px}
+.step b{display:block;color:var(--green);font-size:12px;text-transform:uppercase;letter-spacing:.08em;margin-bottom:7px}
+.step p{font-size:14px;color:var(--muted)}
+footer{padding:34px 22px;text-align:center;color:var(--muted);font-size:13px}
+.stroke{stroke:var(--ink);stroke-width:1.7;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.thin{stroke:var(--line2);stroke-width:1.2;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.fill-paper{fill:var(--paper)}.fill-soft{fill:var(--soft)}.fill-green{fill:#dfe9df}.fill-blue{fill:#dde6f0}.fill-brown{fill:#ece3d4}.fill-red{fill:#eadad6}
+@media(max-width:980px){
+  .hero-grid,.section-head,.grid.two,.grid.three,.grid.four,.ladder,.concept,.dictionary,.idea-grid,.flow{grid-template-columns:1fr}
+  .links{display:none}
+  section{padding:48px 0}
+  .hero{padding-top:56px}
+  .concept-art,.idea-art{border-left:0;border-right:0;border-top:1px solid var(--line)}
+  .idea{grid-template-columns:1fr}
+  .table{display:block;overflow-x:auto}
+}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <div class="brand">从 GPU 推理到 AI 芯片创意</div>
+    <div class="links">
+      <a href="#today">现状</a>
+      <a href="#basics">基础</a>
+      <a href="#bottlenecks">瓶颈</a>
+      <a href="#maybe">可能</a>
+      <a href="#terms">术语</a>
+      <a href="#ideas">创意</a>
+      <a href="#yc">Y Combinator</a>
+      <a href="#use">使用</a>
+    </div>
+  </div>
+</nav>
+
+<main>
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div>
+        <div class="eyebrow">第一性原理指南</div>
+        <h1>从 GPU 推理开始，然后构想更好的芯片。</h1>
+        <p class="lead">大多数人第一次接触 AI 基础设施都是通过 GPU 推理。本指南从这里出发，用通俗的语言解释重要的硬件术语，然后把瓶颈转化成创业创意。</p>
+        <div class="button-row">
+          <a class="btn primary" href="#today">从 GPU 开始</a>
+          <a class="btn" href="#terms">解释术语</a>
+        </div>
+      </div>
+      <aside class="panel hero-visual" aria-label="GPU 推理栈">
+        <svg viewBox="0 0 760 500" role="img" aria-label="一条从用户请求到 GPU 内存、再到 Tensor 核心、最后输出 token 的简单 GPU 推理流水线">
+          <rect x="28" y="26" width="704" height="448" rx="28" fill="#f0f0e9" stroke="#c6c9bc"/>
+          <text x="66" y="72" font-size="22" font-weight="900" fill="#151611">熟悉的起点</text>
+          <g transform="translate(64 112)">
+            <rect width="128" height="86" rx="15" fill="#fff" stroke="#c6c9bc"/>
+            <text x="28" y="38" font-size="18" font-weight="850" fill="#151611">提示词</text>
+            <text x="22" y="62" font-size="13" fill="#64665e">输入 token</text>
+          </g>
+          <g transform="translate(248 86)">
+            <rect width="264" height="250" rx="20" fill="#fff" stroke="#c6c9bc"/>
+            <text x="24" y="42" font-size="21" font-weight="900" fill="#151611">GPU 服务器</text>
+            <rect x="28" y="68" width="92" height="64" rx="12" class="fill-brown" stroke="#c8b89f"/>
+            <text x="50" y="104" font-size="14" font-weight="850" fill="#151611">HBM</text>
+            <rect x="144" y="68" width="92" height="64" rx="12" class="fill-blue" stroke="#adb8c5"/>
+            <text x="156" y="96" font-size="14" font-weight="850" fill="#151611">Tensor</text>
+            <text x="164" y="115" font-size="14" font-weight="850" fill="#151611">核心</text>
+            <rect x="28" y="158" width="208" height="58" rx="12" class="fill-green" stroke="#aeb8a8"/>
+            <text x="66" y="193" font-size="15" font-weight="850" fill="#151611">CUDA / kernel / 调度器</text>
+            <path d="M120 100h24M132 132v26" class="stroke"/>
+          </g>
+          <g transform="translate(568 112)">
+            <rect width="128" height="86" rx="15" fill="#fff" stroke="#c6c9bc"/>
+            <text x="28" y="38" font-size="18" font-weight="850" fill="#151611">输出</text>
+            <text x="22" y="62" font-size="13" fill="#64665e">新 token</text>
+          </g>
+          <path d="M192 155h56M512 155h56" class="stroke"/>
+          <path d="M236 143l14 12-14 12M556 143l14 12-14 12" class="stroke"/>
+          <g transform="translate(84 386)">
+            <rect width="592" height="48" rx="14" fill="#fff" stroke="#c6c9bc"/>
+            <text x="24" y="31" font-size="15" fill="#64665e">问题是：我们能否以更低的成本、更少的内存搬运浪费、更简单的可编程性来服务同样的 token？</text>
+          </g>
+        </svg>
+      </aside>
+    </div>
+  </section>
+
+  <section id="today">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">第 1 步</div>
+          <h2>今天每个人都在做什么。</h2>
+        </div>
+        <p class="lead">今天大多数严肃的 LLM 推理都跑在 GPU 上。GPU 非常好用，但它们也带着来自图形学、CUDA、昂贵内存和主机-设备系统的假设。这为新创意留出了空间。</p>
+      </div>
+      <div class="ladder">
+        <div class="ladder-card"><b>1. 请求</b><p>用户发送一个提示词。系统把文本变成 token。</p></div>
+        <div class="ladder-card"><b>2. GPU 内存</b><p>模型权重和 KV 缓存存放在昂贵的高带宽内存里。</p></div>
+        <div class="ladder-card"><b>3. 矩阵运算</b><p>大部分工作是注意力层和前馈层里的矩阵乘法。</p></div>
+        <div class="ladder-card"><b>4. 调度</b><p>kernel、批处理、路由和队列决定了 GPU 是否保持忙碌。</p></div>
+        <div class="ladder-card"><b>5. 成本</b><p>业务指标不只是速度，而是每一美元能换来的有效 token。</p></div>
+      </div>
+      <div class="plain" style="margin-top:14px">
+        <b>简单的框架</b>
+        <p>GPU 擅长许多种并行工作。但 LLM 推理是一个更窄的任务：搬运模型数据、做矩阵乘法、记住历史 token、生成新 token。如果我们理解了这个更窄的任务，就能问：换一种硬件-软件栈是否会更便宜或更容易编程。</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="basics">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">第 2 步</div>
+          <h2>在谈大创意之前的基础知识。</h2>
+        </div>
+        <p class="lead">下面每个术语之所以出现，是因为它已经是当前 GPU 推理的一部分，或者因为它攻击了当前路径中的某个成本。目标不是为了背单词：而是要看清钱、延迟和复杂性都花在了哪里。</p>
+      </div>
+
+      <div class="grid" style="gap:18px">
+        <article class="concept">
+          <div class="concept-copy">
+            <span class="tag">基本概念</span>
+            <h3>什么是脉动阵列（systolic array）？</h3>
+            <p>脉动阵列是一个由微小乘加单元组成的网格。数字以规律的节奏流过网格，所以芯片可以用极少的浪费搬运来完成矩阵乘法。</p>
+            <ul>
+              <li>LLM 的大部分数学都花在矩阵乘法里。</li>
+              <li>现代 NVIDIA GPU 已经在 Tensor 核心里包含了这种矩阵引擎，当前的 LLM 推理也在不断使用它。</li>
+              <li>TPU 把类似的引擎称为矩阵乘法单元（Matrix Multiply Units）。</li>
+              <li>我们提到脉动阵列，是因为一块昂贵的 GPU 只有在这些矩阵引擎被好好喂数据、定尺寸、被调度时才有生产力。</li>
+            </ul>
+          </div>
+          <div class="concept-art">
+            <svg viewBox="0 0 420 260" aria-label="脉动阵列说明">
+              <rect x="30" y="46" width="360" height="170" rx="18" fill="#fff" stroke="#c6c9bc"/>
+              <g fill="#dde6f0" stroke="#9eafc3">
+                <rect x="112" y="72" width="30" height="30" rx="5"/><rect x="150" y="72" width="30" height="30" rx="5"/><rect x="188" y="72" width="30" height="30" rx="5"/><rect x="226" y="72" width="30" height="30" rx="5"/><rect x="264" y="72" width="30" height="30" rx="5"/>
+                <rect x="112" y="110" width="30" height="30" rx="5"/><rect x="150" y="110" width="30" height="30" rx="5"/><rect x="188" y="110" width="30" height="30" rx="5"/><rect x="226" y="110" width="30" height="30" rx="5"/><rect x="264" y="110" width="30" height="30" rx="5"/>
+                <rect x="112" y="148" width="30" height="30" rx="5"/><rect x="150" y="148" width="30" height="30" rx="5"/><rect x="188" y="148" width="30" height="30" rx="5"/><rect x="226" y="148" width="30" height="30" rx="5"/><rect x="264" y="148" width="30" height="30" rx="5"/>
+              </g>
+              <path d="M70 86h38M70 124h38M70 162h38M294 86h44M294 124h44M294 162h44M128 36v36M166 36v36M204 36v36M242 36v36M280 36v36" class="stroke"/>
+              <text x="52" y="66" font-size="13" fill="#64665e">A 行</text>
+              <text x="262" y="31" font-size="13" fill="#64665e">B 列</text>
+              <text x="326" y="196" font-size="13" fill="#64665e">C 输出</text>
+              <text x="139" y="232" font-size="14" font-weight="850" fill="#385f49">规律的数据流 = 高效的矩阵乘法</text>
+            </svg>
+          </div>
+        </article>
+
+        <article class="concept">
+          <div class="concept-copy">
+            <span class="tag">基本概念</span>
+            <h3>什么是 HBM、SRAM 和 SSD？</h3>
+            <p>它们是存放数据的不同位置。内存离得越近、越快，就越贵。推理成本往往来自决定哪些字节必须靠近矩阵引擎、哪些字节可以放得更远。</p>
+            <ul>
+              <li><b>SRAM：</b>芯片上极小、极快的内存。</li>
+              <li><b>HBM：</b>在 GPU 或加速器旁边的高带宽昂贵内存。</li>
+              <li><b>SSD：</b>便宜得多的存储，但比 HBM 慢。</li>
+              <li>我们提到内存层级，是因为许多 AI 芯片创意不是关于更多算力；而是关于把热数据放近、把冷数据放便宜。</li>
+            </ul>
+          </div>
+          <div class="concept-art">
+            <svg viewBox="0 0 420 260" aria-label="内存层级">
+              <rect x="40" y="46" width="90" height="160" rx="14" class="fill-green" stroke="#aeb8a8"/>
+              <text x="64" y="92" font-size="19" font-weight="900" fill="#151611">SRAM</text>
+              <text x="60" y="122" font-size="13" fill="#64665e">最快</text>
+              <text x="56" y="145" font-size="13" fill="#64665e">最小</text>
+              <rect x="166" y="46" width="90" height="160" rx="14" class="fill-brown" stroke="#c8b89f"/>
+              <text x="190" y="92" font-size="19" font-weight="900" fill="#151611">HBM</text>
+              <text x="184" y="122" font-size="13" fill="#64665e">快</text>
+              <text x="178" y="145" font-size="13" fill="#64665e">昂贵</text>
+              <rect x="292" y="46" width="90" height="160" rx="14" class="fill-red" stroke="#caa8a3"/>
+              <text x="321" y="92" font-size="19" font-weight="900" fill="#151611">SSD</text>
+              <text x="310" y="122" font-size="13" fill="#64665e">更慢</text>
+              <text x="306" y="145" font-size="13" fill="#64665e">更便宜</text>
+              <path d="M130 126h36M256 126h36" class="stroke"/>
+              <text x="78" y="226" font-size="13" fill="#64665e">靠近计算</text>
+              <text x="290" y="226" font-size="13" fill="#64665e">大容量冷存储</text>
+            </svg>
+          </div>
+        </article>
+
+        <article class="concept">
+          <div class="concept-copy">
+            <span class="tag">基本概念</span>
+            <h3>什么是 KV 缓存？</h3>
+            <p>当 LLM 读取或生成 token 时，它会存储之前 token 的键（key）和值（value）向量，这样就不必每次都从头重算。这个存储就叫 KV 缓存。</p>
+            <ul>
+              <li>K 表示键（key）；V 表示值（value）。</li>
+              <li>当前的 GPU 推理通常把活跃的 KV 缓存放在 GPU 的 HBM 里。</li>
+              <li>长对话和长文档会产生很大的 KV 缓存。</li>
+              <li>我们提到 KV 缓存，是因为长上下文推理往往先变成一个内存管理问题，之后才变成纯算力问题。</li>
+            </ul>
+          </div>
+          <div class="concept-art">
+            <svg viewBox="0 0 420 260" aria-label="KV 缓存作为之前 token 的记忆">
+              <rect x="38" y="58" width="344" height="142" rx="18" fill="#fff" stroke="#c6c9bc"/>
+              <text x="66" y="92" font-size="18" font-weight="900" fill="#151611">对话历史</text>
+              <g transform="translate(66 112)">
+                <rect width="54" height="34" rx="9" class="fill-green" stroke="#aeb8a8"/><text x="18" y="22" font-size="12" font-weight="850" fill="#151611">K,V</text>
+                <rect x="68" width="54" height="34" rx="9" class="fill-green" stroke="#aeb8a8"/><text x="86" y="22" font-size="12" font-weight="850" fill="#151611">K,V</text>
+                <rect x="136" width="54" height="34" rx="9" class="fill-green" stroke="#aeb8a8"/><text x="154" y="22" font-size="12" font-weight="850" fill="#151611">K,V</text>
+                <rect x="204" width="54" height="34" rx="9" class="fill-brown" stroke="#c8b89f"/><text x="222" y="22" font-size="12" font-weight="850" fill="#151611">K,V</text>
+              </g>
+              <path d="M210 160v52" class="stroke"/><path d="M198 200l12 14 12-14" class="stroke"/>
+              <text x="124" y="234" font-size="14" font-weight="850" fill="#385f49">模型在生成下一个 token 时回看历史</text>
+            </svg>
+          </div>
+        </article>
+
+        <article class="concept">
+          <div class="concept-copy">
+            <span class="tag">基本概念</span>
+            <h3>什么是 DMA？</h3>
+            <p>DMA 意思是直接内存访问（direct memory access）。不必让 CPU 手动搬动每一小块数据，DMA 引擎会在后台把数据块从一个内存位置复制到另一个。</p>
+            <ul>
+              <li>把它想象成一条数据传送带。</li>
+              <li>它可以在 SRAM、HBM、网络或 SSD 之间搬运数据。</li>
+              <li>它可以让搬运与计算重叠，这样矩阵引擎就不必干等。</li>
+              <li>我们提到 DMA，是因为许多改进提案其实都是关于更好的传送带，包括数据移动过程中的压缩。</li>
+            </ul>
+          </div>
+          <div class="concept-art">
+            <svg viewBox="0 0 420 260" aria-label="DMA 作为传送带">
+              <rect x="38" y="82" width="88" height="86" rx="14" fill="#fff" stroke="#c6c9bc"/>
+              <text x="62" y="120" font-size="18" font-weight="900" fill="#151611">HBM</text>
+              <rect x="292" y="82" width="88" height="86" rx="14" fill="#fff" stroke="#c6c9bc"/>
+              <text x="318" y="120" font-size="18" font-weight="900" fill="#151611">SRAM</text>
+              <rect x="168" y="68" width="84" height="114" rx="16" class="fill-brown" stroke="#c8b89f"/>
+              <text x="187" y="112" font-size="19" font-weight="900" fill="#151611">DMA</text>
+              <text x="184" y="138" font-size="13" fill="#64665e">复制引擎</text>
+              <path d="M126 125h42M252 125h40" class="stroke"/>
+              <path d="M154 113l14 12-14 12M278 113l14 12-14 12" class="stroke"/>
+              <text x="112" y="216" font-size="14" font-weight="850" fill="#385f49">数据在计算继续时搬运</text>
+            </svg>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section id="bottlenecks">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">第 3 步</div>
+          <h2>GPU 推理在哪里变贵。</h2>
+        </div>
+        <p class="lead">这些瓶颈是连接「我们用 GPU」和「也许有新的芯片、编译器、运行时和可观测性公司可以创立」的桥梁。</p>
+      </div>
+      <div class="grid three">
+        <div class="card">
+          <span class="tag">瓶颈</span>
+          <h3>阵列可能会闲置。</h3>
+          <p>在解码（decode）阶段，模型往往一次只生成一个 token。这会让矩阵引擎利用率不足，除非有批处理、GQA、投机解码或其他调度技巧来帮忙。</p>
+        </div>
+        <div class="card">
+          <span class="tag">瓶颈</span>
+          <h3>HBM 很贵。</h3>
+          <p>模型权重和 KV 缓存消耗昂贵的内存。长上下文让情况更糟，尤其是旧上下文即使很少被用到也还待在 HBM 里。</p>
+        </div>
+        <div class="card">
+          <span class="tag">瓶颈</span>
+          <h3>GPU 软件强大但复杂。</h3>
+          <p>CUDA、kernel、warp 和调度都很成熟，但也带来开销。如果编译器栈足够优秀，类 CPU 的加速器可以更容易编程。</p>
+        </div>
+      </div>
+      <div class="visual-box" style="margin-top:16px;min-height:290px">
+        <svg viewBox="0 0 820 300" aria-label="GPU 推理瓶颈地图">
+          <rect x="28" y="40" width="764" height="210" rx="24" fill="#fff" stroke="#c6c9bc"/>
+          <g transform="translate(70 78)">
+            <rect width="150" height="132" rx="16" class="fill-brown" stroke="#c8b89f"/>
+            <text x="42" y="44" font-size="20" font-weight="900" fill="#151611">HBM</text>
+            <text x="26" y="72" font-size="13" fill="#64665e">权重</text>
+            <text x="26" y="94" font-size="13" fill="#64665e">KV 缓存</text>
+            <text x="26" y="116" font-size="13" fill="#64665e">激活</text>
+          </g>
+          <g transform="translate(336 78)">
+            <rect width="150" height="132" rx="16" class="fill-blue" stroke="#adb8c5"/>
+            <text x="34" y="44" font-size="20" font-weight="900" fill="#151611">矩阵</text>
+            <text x="44" y="70" font-size="20" font-weight="900" fill="#151611">引擎</text>
+            <text x="30" y="100" font-size="13" fill="#64665e">必须保持忙碌</text>
+          </g>
+          <g transform="translate(602 78)">
+            <rect width="150" height="132" rx="16" class="fill-green" stroke="#aeb8a8"/>
+            <text x="40" y="44" font-size="20" font-weight="900" fill="#151611">输出</text>
+            <text x="38" y="72" font-size="13" fill="#64665e">一个 token</text>
+            <text x="38" y="94" font-size="13" fill="#64665e">然后重复</text>
+          </g>
+          <path d="M220 144h116M486 144h116" class="stroke"/>
+          <path d="M320 132l16 12-16 12M586 132l16 12-16 12" class="stroke"/>
+          <text x="238" y="120" font-size="13" font-weight="850" fill="#8e5047">内存流量</text>
+          <text x="503" y="120" font-size="13" font-weight="850" fill="#8e5047">延迟压力</text>
+          <text x="80" y="272" font-size="14" fill="#64665e">创业创意出现在字节搬运过多、计算在等待、或软件栈太难用的任何地方。</text>
+        </svg>
+      </div>
+    </div>
+  </section>
+
+  <section id="maybe">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">第 4 步</div>
+          <h2>大家都在做的 vs 我们可能做的。</h2>
+        </div>
+        <p class="lead">关键是要避免把这些当成随机的架构术语。每一个都是对当前 GPU 推理某个痛点的回应。</p>
+      </div>
+      <table class="table">
+        <thead><tr><th>今天</th><th>问题</th><th>也许我们该这样做</th><th>创业切入点</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><b>使用带巨大 HBM 的昂贵 GPU。</b></td>
+            <td>好用，但可能掩盖低效的内存使用。</td>
+            <td>对 KV 缓存、稀疏注意力、压缩和内存层级施加更多纪律。</td>
+            <td>HBM 最小化规划器、SSD 支撑的 KV 缓存、压缩运行时。</td>
+          </tr>
+          <tr>
+            <td><b>把 GPU 当成默认加速器。</b></td>
+            <td>GPU 通用且成熟，但不一定是 LLM 推理最简单的形态。</td>
+            <td>构建一个类 CPU 的加速器，其中核心、缓存和脉动阵列为推理协同设计。</td>
+            <td>AI CPU 开发板、模拟器、编译器后端。</td>
+          </tr>
+          <tr>
+            <td><b>在一种核心上跑所有 transformer 工作。</b></td>
+            <td>注意力层和前馈层喜欢不同的矩阵形状。</td>
+            <td>使用不同的核心尺寸，或对注意力和 FF 分别调度。</td>
+            <td>注意力/FF 分离编译器或运行时调度器。</td>
+          </tr>
+          <tr>
+            <td><b>反复通过 HBM 搬运数据。</b></td>
+            <td>数据搬运烧钱又烧电。</td>
+            <td>使用 DMA 引擎、SRAM 到 SRAM 传输、压缩和算子融合。</td>
+            <td>DMA 压缩 IP、分块软件流水线库。</td>
+          </tr>
+          <tr>
+            <td><b>购买昂贵的路由网络。</b></td>
+            <td>路由器和光链路方便但昂贵。</td>
+            <td>在工作负载允许时，使用短铜缆和类似环面的局部拓扑。</td>
+            <td>环面感知集群套件、拓扑感知服务。</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="terms">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">通俗英语词典</div>
+          <h2>不故弄玄虚的术语。</h2>
+        </div>
+        <p class="lead">每当觉得某个术语陌生时，就来看这一节。每条定义也解释了为什么这个术语对当前 GPU 推理重要，以及它为什么出现在产品创意里。</p>
+      </div>
+      <div class="dictionary">
+        <div class="term"><h3>GPU 推理</h3><p>在 GPU 上运行训练好的模型来回答用户请求。没有训练发生；模型在提供输出。</p><div class="example"><b>为什么重要：</b>这是基线。这里的每个创意都在问 GPU 已经做得好的是什么，然后寻找服务 token 仍然昂贵的地方。</div></div>
+        <div class="term"><h3>脉动阵列</h3><p>一个乘加单元网格，通过让数字以稳定模式流过网格来执行矩阵乘法。</p><div class="example"><b>为什么重要：</b>它已经存在于当前 NVIDIA GPU 里，作为 Tensor 核心的一部分，当前的 LLM 推理依赖它。我们提到它，是因为让这个引擎保持忙碌是核心硬件问题。</div></div>
+        <div class="term"><h3>Tensor 核心</h3><p>NVIDIA 给加速神经网络矩阵运算的 GPU 单元起的名字。概念上，这就是脉动阵列式矩阵引擎所在的地方。</p><div class="example"><b>为什么重要：</b>当 GPU 做 LLM 推理很快时，Tensor 核心承担了大量有用计算。任何竞争芯片都必须说明它如何同样好或更好地喂饱矩阵引擎。</div></div>
+        <div class="term"><h3>矩阵乘法</h3><p>把数字的行和列组合起来的核心运算。transformer 在注意力层和前馈层里用到它。</p><div class="example"><b>为什么重要：</b>LLM 推理之所以昂贵，很大程度上是因为它执行海量的矩阵乘法。这就是矩阵引擎主导硬件讨论的原因。</div></div>
+        <div class="term"><h3>HBM</h3><p>高带宽内存（High Bandwidth Memory）。封装在加速器旁边的极快内存，但每 GB 很贵。</p><div class="example"><b>为什么重要：</b>当前 GPU 推理依赖 HBM 来存模型权重、激活和活跃 KV 缓存。降低 HBM 压力可以提升每美元能换来的 token。</div></div>
+        <div class="term"><h3>SRAM</h3><p>芯片上极小、极快的内存。它比 HBM 离计算近得多，但容量有限。</p><div class="example"><b>为什么重要：</b>kernel 把分块加载进类 SRAM 的快速内存，让 Tensor 核心能复用数据，而不是反复回 HBM。</div></div>
+        <div class="term"><h3>SSD</h3><p>便宜的大容量存储。比 HBM 慢，但对不需要每微秒都访问的数据很有用。</p><div class="example"><b>为什么重要：</b>SSD 出现在这些创意里，是因为如果软件能智能地取回，更早的上下文或冷 KV 缓存数据就可以从昂贵的 HBM 挪出去。</div></div>
+        <div class="term"><h3>KV 缓存</h3><p>之前 token 存储的键和值向量。它让模型在生成期间能回看之前的上下文。</p><div class="example"><b>为什么重要：</b>长对话和长文档在 GPU 内存里产生很大的 KV 缓存。这就是内存分层、压缩和稀疏注意力重要的原因。</div></div>
+        <div class="term"><h3>DMA</h3><p>直接内存访问（Direct Memory Access）。一个硬件复制引擎，在不需要 CPU 手动做每次复制的情况下，在内存区域之间搬运数据。</p><div class="example"><b>为什么重要：</b>推理性能取决于在当前块计算时搬运下一块数据。DMA 是能让计算保持被喂饱的传送带。</div></div>
+        <div class="term"><h3>DMA 压缩器</h3><p>内置压缩和解压的 DMA 引擎，让更少的数据穿过内存或网络链路。</p><div class="example"><b>为什么重要：</b>如果权重、激活或 KV 缓存在移动时被压缩，同样的 HBM 和网络带宽就能服务更多有效 token。</div></div>
+        <div class="term"><h3>预填充（Prefill）</h3><p>模型在生成之前读取提示词或文档。许多输入 token 可以被一起处理。</p><div class="example"><b>为什么重要：</b>预填充通常能高效利用 Tensor 核心，因为许多已知 token 可以被批量成大的矩阵乘法。</div></div>
+        <div class="term"><h3>解码（Decode）</h3><p>模型生成输出 token。它往往一次一个 token，更难高效利用。</p><div class="example"><b>为什么重要：</b>解码是延迟、KV 缓存读取和低矩阵引擎利用率经常出现的地方。许多服务创意都是解码创意。</div></div>
+        <div class="term"><h3>GQA</h3><p>分组查询注意力（Grouped-Query Attention）。一种 transformer 注意力设计，在查询头之间共享一些键/值工作。</p><div class="example"><b>为什么重要：</b>使用 GQA 是因为解码可能很吃内存。它减少了 KV 缓存流量，这既帮助当前 GPU 推理，也帮助未来的加速器。</div></div>
+        <div class="term"><h3>投机解码</h3><p>一种服务技巧，用一个更小或更便宜的过程猜测未来 token，主模型再验证它们。</p><div class="example"><b>为什么重要：</b>它能把一次一个 token 的解码变成更大的工作块，让矩阵引擎每一步都有更多有用工作。</div></div>
+        <div class="term"><h3>CUDA、kernel 和 warp</h3><p>CUDA 是 NVIDIA 的 GPU 编程平台。kernel 是一次 GPU 函数启动。warp 是一起被调度的一组 GPU 线程。</p><div class="example"><b>为什么重要：</b>这是当前 GPU 推理背后的成熟软件模型。新的 AI CPU 创意只有在能既不损失性能又让编程更容易时才有意义。</div></div>
+        <div class="term"><h3>算子融合</h3><p>把多个模型运算合并进一个 kernel 或流水线，让中间结果留在计算附近。</p><div class="example"><b>为什么重要：</b>融合减少回 HBM 的次数。这是编译器与运行时能在不改模型的情况下改变经济性的原因之一。</div></div>
+        <div class="term"><h3>软件流水线</h3><p>调度加载、计算和存储工作，让芯片的不同部分同时忙碌。</p><div class="example"><b>为什么重要：</b>如果矩阵引擎在等内存，钱就在被浪费。流水线是软件隐藏搬运延迟的方式。</div></div>
+        <div class="term"><h3>MoE</h3><p>专家混合（Mixture of Experts）。一种模型设计，每个 token 只使用一部分专门的专家网络。</p><div class="example"><b>为什么重要：</b>MoE 能降低每个 token 的计算，但当专家分布在多块芯片上时，会带来路由和网络问题。</div></div>
+        <div class="term"><h3>环面网络</h3><p>一种布局，芯片以带环绕链路的环或网格连接到邻近芯片。对某些 AI 通信来说，它可以比全路由更便宜。</p><div class="example"><b>为什么重要：</b>大模型经常跨许多芯片运行。网络决定了 all-reduce、路由和模型并行会变多贵。</div></div>
+        <div class="term"><h3>AI CPU</h3><p>一种类 CPU 的加速器，带大缓存和附着在可编程核心上的矩阵引擎。</p><div class="example"><b>为什么重要：</b>提案不是要移除矩阵引擎，而是要保留 LLM 数学引擎，但用一个更简单、更像 CPU 的编程模型把它围起来。</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="ideas">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">第 5 步</div>
+          <h2>基础清楚了，现在是创业创意。</h2>
+        </div>
+        <p class="lead">每个产品创意攻击一个具体瓶颈。对每一个，问：谁付钱、第一个 demo 是什么、哪个指标会改善？</p>
+      </div>
+
+      <div class="idea-grid">
+        <article class="idea">
+          <div class="idea-art">
+            <svg viewBox="0 0 130 130" aria-label="AI CPU 芯片"><rect x="18" y="18" width="94" height="94" rx="14" fill="#fff" stroke="#c6c9bc"/><rect x="34" y="34" width="26" height="26" rx="6" class="fill-green" stroke="#aeb8a8"/><rect x="70" y="34" width="26" height="26" rx="6" class="fill-blue" stroke="#adb8c5"/><rect x="34" y="70" width="62" height="22" rx="6" class="fill-brown" stroke="#c8b89f"/></svg>
+          </div>
+          <div class="idea-body"><div class="idea-top"><span class="idea-num">创意 01</span><span class="tag">硬件</span></div><h3>推理优先的 AI CPU</h3><p>一种类 CPU 的加速器，带用于可编程性的核心、用于矩阵运算的脉动阵列，以及缓存优先的内存设计。</p><div class="idea-meta"><div class="mini-label"><b>为什么：</b>GPU 强大但不是唯一的可能形态。</div><div class="mini-label"><b>Demo：</b>一个模型便宜地跑起来。</div></div></div>
+        </article>
+
+        <article class="idea">
+          <div class="idea-art">
+            <svg viewBox="0 0 130 130" aria-label="编译器后端"><rect x="20" y="25" width="90" height="80" rx="12" fill="#fff" stroke="#c6c9bc"/><path d="M36 48h58M36 66h38M36 84h50" class="stroke"/><circle cx="94" cy="84" r="6" fill="#385f49"/></svg>
+          </div>
+          <div class="idea-body"><div class="idea-top"><span class="idea-num">创意 02</span><span class="tag">编译器</span></div><h3>编译器后端工作室</h3><p>帮助新的加速器团队把 PyTorch/JAX/XLA 图转换成适合他们硬件的高效 kernel。</p><div class="idea-meta"><div class="mini-label"><b>为什么：</b>没有软件，硬件就失败。</div><div class="mini-label"><b>Demo：</b>一个快速的注意力 kernel。</div></div></div>
+        </article>
+
+        <article class="idea">
+          <div class="idea-art">
+            <svg viewBox="0 0 130 130" aria-label="HBM 规划器"><rect x="24" y="24" width="82" height="82" rx="12" fill="#fff" stroke="#c6c9bc"/><rect x="40" y="38" width="50" height="12" rx="6" class="fill-red"/><rect x="40" y="58" width="36" height="12" rx="6" class="fill-brown"/><rect x="40" y="78" width="58" height="12" rx="6" class="fill-green"/></svg>
+          </div>
+          <div class="idea-body"><div class="idea-top"><span class="idea-num">创意 03</span><span class="tag">内存</span></div><h3>HBM 最小化规划器</h3><p>分析服务工作负载，推荐量化、KV 策略、分片和存储分层来降低 HBM 使用。</p><div class="idea-meta"><div class="mini-label"><b>为什么：</b>HBM 很贵。</div><div class="mini-label"><b>Demo：</b>从 trace 生成成本报告。</div></div></div>
+        </article>
+
+        <article class="idea">
+          <div class="idea-art">
+            <svg viewBox="0 0 130 130" aria-label="SSD KV 缓存"><rect x="20" y="28" width="36" height="74" rx="8" fill="#fff" stroke="#c6c9bc"/><rect x="76" y="28" width="36" height="74" rx="8" class="fill-red" stroke="#caa8a3"/><path d="M56 50c16-14 20-14 20 0M76 80c-16 14-20 14-20 0" class="stroke"/></svg>
+          </div>
+          <div class="idea-body"><div class="idea-top"><span class="idea-num">创意 04</span><span class="tag">KV 缓存</span></div><h3>SSD 支撑的长记忆</h3><p>把近期的 KV 放在 HBM 里，把更早的上下文挪进更便宜的存储，用检索来保持质量。</p><div class="idea-meta"><div class="mini-label"><b>为什么：</b>长上下文很吃内存。</div><div class="mini-label"><b>Demo：</b>长对话基准测试。</div></div></div>
+        </article>
+
+        <article class="idea">
+          <div class="idea-art">
+            <svg viewBox="0 0 130 130" aria-label="DMA 压缩器"><rect x="12" y="42" width="28" height="46" rx="7" fill="#fff" stroke="#c6c9bc"/><rect x="50" y="32" width="30" height="66" rx="8" class="fill-brown" stroke="#c8b89f"/><rect x="90" y="42" width="28" height="46" rx="7" fill="#fff" stroke="#c6c9bc"/><path d="M40 65h10M80 65h10" class="stroke"/><text x="56" y="69" font-size="10" font-weight="850" fill="#151611">DMA</text></svg>
+          </div>
+          <div class="idea-body"><div class="idea-top"><span class="idea-num">创意 05</span><span class="tag">数据搬运</span></div><h3>DMA 压缩引擎</h3><p>在数据穿过内存或网络链路时压缩和解压，降低带宽压力。</p><div class="idea-meta"><div class="mini-label"><b>为什么：</b>数据搬运很贵。</div><div class="mini-label"><b>Demo：</b>FPGA 或模拟器。</div></div></div>
+        </article>
+
+        <article class="idea">
+          <div class="idea-art">
+            <svg viewBox="0 0 130 130" aria-label="稀疏格式"><rect x="16" y="40" width="98" height="50" rx="10" fill="#fff" stroke="#c6c9bc"/><text x="29" y="70" font-size="24" font-weight="900" fill="#151611">1:2</text><text x="75" y="70" font-size="18" font-weight="850" fill="#385f49">7+1</text></svg>
+          </div>
+          <div class="idea-body"><div class="idea-top"><span class="idea-num">创意 06</span><span class="tag">数值</span></div><h3>稀疏与低比特工具包</h3><p>让模型以更少的比特和结构化零来运行，同时保持输出质量的配方。</p><div class="idea-meta"><div class="mini-label"><b>为什么：</b>更少的比特意味着更少的内存流量。</div><div class="mini-label"><b>Demo：</b>开源模型转换。</div></div></div>
+        </article>
+
+        <article class="idea">
+          <div class="idea-art">
+            <svg viewBox="0 0 130 130" aria-label="预填充 解码"><rect x="16" y="30" width="42" height="70" rx="9" class="fill-green" stroke="#aeb8a8"/><rect x="72" y="30" width="42" height="70" rx="9" class="fill-blue" stroke="#adb8c5"/><rect x="52" y="56" width="26" height="18" rx="5" fill="#fff" stroke="#c6c9bc"/><text x="30" y="68" font-size="10" font-weight="850" fill="#151611">P</text><text x="88" y="68" font-size="10" font-weight="850" fill="#151611">D</text></svg>
+          </div>
+          <div class="idea-body"><div class="idea-top"><span class="idea-num">创意 07</span><span class="tag">服务</span></div><h3>预填充/解码调度器</h3><p>平衡读取工作和生成工作，让算力和内存带宽都被好好利用。</p><div class="idea-meta"><div class="mini-label"><b>为什么：</b>预填充和解码压榨不同的资源。</div><div class="mini-label"><b>Demo：</b>vLLM 插件。</div></div></div>
+        </article>
+
+        <article class="idea">
+          <div class="idea-art">
+            <svg viewBox="0 0 130 130" aria-label="环面电路板"><g fill="#fff" stroke="#385f49" stroke-width="2"><circle cx="34" cy="34" r="9"/><circle cx="65" cy="34" r="9"/><circle cx="96" cy="34" r="9"/><circle cx="34" cy="65" r="9"/><circle cx="65" cy="65" r="9"/><circle cx="96" cy="65" r="9"/><circle cx="34" cy="96" r="9"/><circle cx="65" cy="96" r="9"/><circle cx="96" cy="96" r="9"/></g><path d="M34 34h62M34 65h62M34 96h62M34 34v62M65 34v62M96 34v62" class="thin"/></svg>
+          </div>
+          <div class="idea-body"><div class="idea-top"><span class="idea-num">创意 08</span><span class="tag">网络</span></div><h3>环面感知集群套件</h3><p>用短距离的芯片间链路来处理常见 AI 通信模式，减少对昂贵路由器的依赖。</p><div class="idea-meta"><div class="mini-label"><b>为什么：</b>规模上网络成本很重要。</div><div class="mini-label"><b>Demo：</b>4 芯片拓扑模拟器。</div></div></div>
+        </article>
+
+        <article class="idea">
+          <div class="idea-art">
+            <svg viewBox="0 0 130 130" aria-label="软件流水线"><rect x="18" y="34" width="32" height="16" rx="5" class="fill-green" stroke="#aeb8a8"/><rect x="50" y="58" width="32" height="16" rx="5" class="fill-blue" stroke="#adb8c5"/><rect x="82" y="82" width="32" height="16" rx="5" class="fill-brown" stroke="#c8b89f"/><path d="M28 110h86" class="thin"/></svg>
+          </div>
+          <div class="idea-body"><div class="idea-top"><span class="idea-num">创意 09</span><span class="tag">kernel</span></div><h3>分块软件流水线库</h3><p>让 kernel 作者声明加载、计算、存储和网络阶段，而不用写难读的手工流水线代码。</p><div class="idea-meta"><div class="mini-label"><b>为什么：</b>快 kernel 很难写。</div><div class="mini-label"><b>Demo：</b>融合 matmul 示例。</div></div></div>
+        </article>
+
+        <article class="idea">
+          <div class="idea-art">
+            <svg viewBox="0 0 130 130" aria-label="Token 经济"><text x="24" y="72" font-size="30" font-weight="900" fill="#151611">$/tok</text><path d="M26 92h76" class="stroke"/><path d="M36 40h58" class="thin"/></svg>
+          </div>
+          <div class="idea-body"><div class="idea-top"><span class="idea-num">创意 10</span><span class="tag">可观测性</span></div><h3>每美元 token 仪表盘</h3><p>展示哪些提示词、模型、租户和服务选择在增加成本或损害延迟。</p><div class="idea-meta"><div class="mini-label"><b>为什么：</b>团队需要经济层面的可见性。</div><div class="mini-label"><b>Demo：</b>trace 仪表盘。</div></div></div>
+        </article>
+
+        <article class="idea">
+          <div class="idea-art">
+            <svg viewBox="0 0 130 130" aria-label="MoE 路由"><rect x="18" y="50" width="30" height="30" rx="7" fill="#fff" stroke="#c6c9bc"/><rect x="82" y="24" width="30" height="30" rx="7" class="fill-blue" stroke="#adb8c5"/><rect x="82" y="76" width="30" height="30" rx="7" class="fill-green" stroke="#aeb8a8"/><path d="M48 65C64 48 66 39 82 39M48 65c18 8 18 26 34 26" class="stroke"/></svg>
+          </div>
+          <div class="idea-body"><div class="idea-top"><span class="idea-num">创意 11</span><span class="tag">MoE</span></div><h3>MoE 利用率优化器</h3><p>放置专家、路由 token、给低优先级工作排队，让稀疏专家模型不浪费加速器。</p><div class="idea-meta"><div class="mini-label"><b>为什么：</b>专家负载不均衡。</div><div class="mini-label"><b>Demo：</b>路由模拟器。</div></div></div>
+        </article>
+
+        <article class="idea">
+          <div class="idea-art">
+            <svg viewBox="0 0 130 130" aria-label="协同设计搜索"><circle cx="32" cy="86" r="6" fill="#c6c9bc"/><circle cx="52" cy="52" r="6" fill="#c6c9bc"/><circle cx="80" cy="72" r="6" fill="#385f49"/><circle cx="101" cy="38" r="6" fill="#c6c9bc"/><path d="M32 86L52 52L80 72L101 38" class="stroke"/><rect x="18" y="102" width="94" height="8" rx="4" fill="#ddddd4"/></svg>
+          </div>
+          <div class="idea-body"><div class="idea-top"><span class="idea-num">创意 12</span><span class="tag">规划</span></div><h3>AI 芯片协同设计搜索</h3><p>在阵列、内存、网络、编译器、模型形状和客户工作负载之间探索取舍。</p><div class="idea-meta"><div class="mini-label"><b>为什么：</b>局部优化会误导。</div><div class="mini-label"><b>Demo：</b>设计空间探索器。</div></div></div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section id="yc">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">Y Combinator 问题</div>
+          <h2>一份认真的创业申请应该能回答的问题。</h2>
+        </div>
+        <p class="lead">这些问题把技术创意变成公司形态的思考。答案应该简短、具体，并扎根于一个可度量的推理痛点。</p>
+      </div>
+
+      <div class="grid three">
+        <div class="card">
+          <span class="tag">公司</span>
+          <h3>你在构建什么？</h3>
+          <p>用一句通俗的话说出产品。例如：「我们通过把冷 KV 缓存挪出 HBM 来降低 LLM 服务成本，同时保持回答质量。」</p>
+        </div>
+        <div class="card">
+          <span class="tag">客户</span>
+          <h3>谁有这个问题？</h3>
+          <p>精确说出第一个买家：推理平台团队、模型实验室、云服务商、GPU 集群运营商，或有长上下文工作负载的公司。</p>
+        </div>
+        <div class="card">
+          <span class="tag">痛点</span>
+          <h3>今天什么是痛苦的？</h3>
+          <p>把痛点连接到当前 GPU 推理路径：HBM 成本、解码延迟、闲置的 Tensor 核心、kernel 复杂性、KV 缓存增长或网络瓶颈。</p>
+        </div>
+        <div class="card">
+          <span class="tag">洞察</span>
+          <h3>你知道什么别人忽略的？</h3>
+          <p>说出技术押注。例如：「瓶颈不只是 FLOPs，而是 HBM、SRAM 和矩阵引擎之间的字节搬运。」</p>
+        </div>
+        <div class="card">
+          <span class="tag">演示</span>
+          <h3>最小的令人印象深刻的 demo 是什么？</h3>
+          <p>选一个窄的证明：一个模拟器、一个 vLLM 插件、一个压缩 KV 基准、一个更快的融合 kernel，或一个 FPGA DMA 压缩原型。</p>
+        </div>
+        <div class="card">
+          <span class="tag">指标</span>
+          <h3>哪个数字会变好？</h3>
+          <p>用买家能理解的指标：每美元 token、输出 token 延迟、每请求 HBM GB、Tensor 核心利用率、每 token 瓦特，或每 token 网络字节。</p>
+        </div>
+        <div class="card">
+          <span class="tag">竞争</span>
+          <h3>客户现在用什么替代？</h3>
+          <p>真正的竞争对手往往是「买更多 GPU」或「接受更低的利用率」。解释为什么你的方案更便宜、更容易或更可用。</p>
+        </div>
+        <div class="card">
+          <span class="tag">时机</span>
+          <h3>为什么是现在？</h3>
+          <p>利用世界的变化：长上下文、推理模型、MoE、推理支出、HBM 稀缺、新的编译器栈，或对非 GPU 算力的需求。</p>
+        </div>
+        <div class="card">
+          <span class="tag">风险</span>
+          <h3>最难的技术风险是什么？</h3>
+          <p>要直接。例如：稀疏注意力质量、压缩开销、编译器可靠性、客户模型变更、硬件验证，或多芯片调度。</p>
+        </div>
+        <div class="card">
+          <span class="tag">进展</span>
+          <h3>你怎么知道有人想要它？</h3>
+          <p>展示 trace、基准、设计伙伴、意向书、付费试点，或一个当前 GPU 路径明显浪费的工作负载。</p>
+        </div>
+        <div class="card">
+          <span class="tag">团队</span>
+          <h3>为什么是这个团队？</h3>
+          <p>指出已经做出来的东西：kernel、编译器、服务系统、硬件原型、真实用户使用的 infra，或异常强的技术执行力。</p>
+        </div>
+        <div class="card">
+          <span class="tag">范围</span>
+          <h3>第一个切入点是什么？</h3>
+          <p>避免一开始就声称要拿下整个芯片市场。从一个痛苦的使用场景、一个模型家族、一个服务栈，或一个硬件原语开始。</p>
+        </div>
+      </div>
+
+      <div class="plain" style="margin-top:14px">
+        <b>一个好的答案模式</b>
+        <p>从当前 GPU 推理工作流开始，识别一个具体瓶颈，解释它存在的技术原因，展示你的方案能改进它的最小证明，并指出会在意的买家。</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="use">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">如何使用本指南</div>
+          <h2>一条贯穿材料的简单路径。</h2>
+        </div>
+        <p class="lead">本页从熟悉的 GPU 推理走到新的 AI 芯片创意。把它当作一个引导故事，而不是术语堆砌。</p>
+      </div>
+      <div class="flow">
+        <div class="step"><b>开始</b><p>从「提示词进入 GPU 推理服务器时会发生什么」开始。</p></div>
+        <div class="step"><b>基础</b><p>阅读脉动阵列、HBM、SRAM、SSD、KV 缓存和 DMA 的解释。</p></div>
+        <div class="step"><b>瓶颈</b><p>看看解码、长上下文和内存搬运为什么产生成本瓶颈。</p></div>
+        <div class="step"><b>对比</b><p>用「今天 vs 也许」的表格引入创新方向。</p></div>
+        <div class="step"><b>创意</b><p>挑 3 个创业创意，定义买家、切入点、demo 和指标。</p></div>
+        <div class="step"><b>问题</b><p>用申请问题把每个创意转化成一句简洁的公司描述。</p></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  一份从 GPU 推理到 AI 芯片与服务创业创意的第一性原理指南。
+</footer>
+</body>
+</html>

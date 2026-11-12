@@ -24,7 +24,7 @@
 
 | 资源 | 说明 |
 |---|---|
-| [Reducing KV Cache Across Tokens](https://vizuaraai.github.io/kv-cache-token-reduction-walkthrough/visual-walkthroughs/kv-cache-token-reduction-visual-walkthrough.html) | 整讲的视觉主线：token 被剪枝/压缩/窗口化/摘要时 cache 如何变化 |
+| [Reducing KV Cache Across Tokens](../../kv-cache-token-reduction-walkthrough/visual-walkthroughs/kv-cache-token-reduction-visual-walkthrough.html) | 整讲的视觉主线：token 被剪枝/压缩/窗口化/摘要时 cache 如何变化 |
 | [Why Convolution Is N log N（FFT）](../../fft-visual-walkthrough.html) | 从音乐混响讲到 FFT，解释卷积为何能用 N log N 完成 |
 | [Why Mamba Needs Selectivity](../../mamba-why-selectivity-matters.html) | 为什么标准 SSM 不够，选择性为什么重要 |
 | [Inside the Mamba Block](../../mamba-architecture-step-by-step.html) | Mamba block 内部结构的逐步走查 |

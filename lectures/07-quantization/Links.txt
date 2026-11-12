@@ -1,10 +1,9 @@
 Lecture Notes: https://miro.com/app/board/uXjVHUlWycA=/?share_link_id=27488682354
 
 Visual Walkthrough:
-Quantization Visual Walkthrough: https://vizuaraai.github.io/convolution-musical-journey/quantization-visual-walkthrough/
+Quantization Visual Walkthrough: ../../docs/quantization-visual-walkthrough/
 
 Important Research Papers:
 (1) GPTQ: https://arxiv.org/pdf/2210.17323
 (2) AWQ: https://arxiv.org/pdf/2306.00978
 (3) Activations have channel outliers!: https://arxiv.org/abs/2208.07339
-

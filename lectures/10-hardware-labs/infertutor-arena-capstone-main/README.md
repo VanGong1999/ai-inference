@@ -138,11 +138,10 @@ You may try up to 8 H100 GPUs if quota is available. In our internal dry run, 8 
 
 ## Quick Start
 
-Clone the repository:
+Use the local copy already in this repo:
 
 ```bash
-git clone https://github.com/VizuaraAI/infertutor-arena-capstone.git
-cd infertutor-arena-capstone/starter_code
+cd starter_code
 ```
 
 Install dependencies:

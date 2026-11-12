@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Chip Ideas From GPU Inference</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f7f7f2;
+  --paper:#fff;
+  --ink:#151611;
+  --muted:#64665e;
+  --quiet:#8a8d83;
+  --line:#ddddd4;
+  --line2:#c6c9bc;
+  --soft:#f0f0e9;
+  --soft2:#f8f8f3;
+  --green:#385f49;
+  --blue:#3c5575;
+  --brown:#765d41;
+  --red:#8e5047;
+  --max:1180px;
+}
+html{scroll-behavior:smooth}
+body{
+  font-family:"Figtree",ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  background:var(--bg);
+  color:var(--ink);
+  line-height:1.5;
+  text-rendering:optimizeLegibility;
+}
+a{color:inherit}
+svg{display:block;max-width:100%}
+.nav{
+  position:sticky;top:0;z-index:50;
+  background:rgba(247,247,242,.92);
+  border-bottom:1px solid var(--line);
+  backdrop-filter:blur(14px);
+}
+.nav-inner{
+  max-width:var(--max);margin:0 auto;padding:13px 22px;
+  display:flex;align-items:center;justify-content:space-between;gap:18px;
+}
+.brand{font-size:15px;font-weight:850;letter-spacing:-.015em}
+.links{display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}
+.links a{text-decoration:none;color:var(--muted);font-size:13px;font-weight:730;padding:7px 9px;border-radius:7px}
+.links a:hover{background:var(--soft);color:var(--ink)}
+.wrap{max-width:var(--max);margin:0 auto;padding:0 22px}
+section{padding:62px 0;border-bottom:1px solid var(--line)}
+.hero{padding:78px 0 58px}
+.hero-grid{display:grid;grid-template-columns:.9fr 1.1fr;gap:38px;align-items:center}
+.eyebrow{font-size:12px;text-transform:uppercase;letter-spacing:.14em;color:var(--green);font-weight:850;margin-bottom:11px}
+h1{font-size:clamp(42px,7vw,88px);line-height:.94;letter-spacing:-.058em;font-weight:900;max-width:760px}
+h2{font-size:clamp(31px,4.3vw,54px);line-height:1;letter-spacing:-.045em;font-weight:890;margin-bottom:14px}
+h3{font-size:20px;line-height:1.14;letter-spacing:-.025em;font-weight:830}
+h4{font-size:15px;font-weight:850;letter-spacing:-.01em}
+p{max-width:790px}
+.lead{font-size:19px;color:var(--muted);margin-top:18px}
+.small{font-size:13px}.muted{color:var(--muted)}
+.button-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:26px}
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;min-height:42px;
+  padding:10px 15px;border:1px solid var(--line2);border-radius:8px;
+  background:var(--paper);text-decoration:none;font-size:14px;font-weight:780;
+}
+.btn.primary{background:var(--ink);border-color:var(--ink);color:white}
+.panel{background:var(--paper);border:1px solid var(--line);border-radius:12px}
+.hero-visual{padding:18px}
+.section-head{display:grid;grid-template-columns:.72fr 1fr;gap:30px;align-items:end;margin-bottom:24px}
+.grid{display:grid;gap:14px}
+.grid.two{grid-template-columns:repeat(2,1fr)}
+.grid.three{grid-template-columns:repeat(3,1fr)}
+.grid.four{grid-template-columns:repeat(4,1fr)}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:17px}
+.card h3{margin:11px 0 8px}
+.card p{font-size:14px;color:var(--muted)}
+.tag{
+  display:inline-flex;align-items:center;border:1px solid var(--line2);
+  border-radius:999px;padding:4px 8px;background:var(--paper);
+  font-size:11px;font-weight:850;color:var(--muted);white-space:nowrap;
+}
+.plain{
+  background:#f0eee5;border:1px solid var(--line);border-radius:12px;
+  padding:16px;display:grid;gap:6px;
+}
+.plain b{color:var(--ink)}
+.plain p{font-size:15px;color:var(--muted)}
+.ladder{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+.ladder-card{
+  background:var(--paper);border:1px solid var(--line);border-radius:12px;
+  padding:14px;min-height:148px;display:grid;grid-template-rows:auto 1fr;
+}
+.ladder-card b{font-size:12px;color:var(--green);text-transform:uppercase;letter-spacing:.08em}
+.ladder-card p{font-size:14px;color:var(--muted);margin-top:8px}
+.visual-box{
+  min-height:210px;border:1px solid var(--line);border-radius:10px;background:var(--soft2);
+  display:flex;align-items:center;justify-content:center;padding:14px;overflow:hidden;
+}
+.concept{
+  display:grid;grid-template-columns:1fr .92fr;gap:16px;align-items:stretch;
+  background:var(--paper);border:1px solid var(--line);border-radius:12px;overflow:hidden;
+}
+.concept-copy{padding:18px}
+.concept-copy h3{font-size:24px;margin:8px 0 10px}
+.concept-copy p{font-size:15px;color:var(--muted)}
+.concept-copy ul{margin:14px 0 0 18px;color:var(--muted);font-size:14px}
+.concept-copy li{margin:5px 0}
+.concept-art{background:var(--soft2);border-left:1px solid var(--line);display:flex;align-items:center;justify-content:center;padding:16px;min-height:270px}
+.dictionary{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.term{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:15px;display:grid;gap:8px}
+.term h3{font-size:18px}
+.term p{font-size:14px;color:var(--muted)}
+.term .example{border-top:1px solid var(--line);padding-top:8px;font-size:13px;color:var(--quiet)}
+.idea-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+.idea{
+  background:var(--paper);border:1px solid var(--line);border-radius:12px;
+  display:grid;grid-template-columns:132px 1fr;overflow:hidden;min-height:218px;
+}
+.idea-art{background:var(--soft2);border-right:1px solid var(--line);display:flex;align-items:center;justify-content:center;padding:14px}
+.idea-body{padding:16px}
+.idea-top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:9px}
+.idea-num{font-size:12px;font-weight:860;color:var(--green);letter-spacing:.08em;text-transform:uppercase}
+.idea h3{font-size:19px;margin-bottom:7px}
+.idea p{font-size:14px;color:var(--muted)}
+.idea-meta{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.mini-label{border-top:1px solid var(--line);padding-top:8px;font-size:12px;color:var(--quiet)}
+.table{width:100%;border-collapse:collapse;background:var(--paper);border:1px solid var(--line);border-radius:12px;overflow:hidden;display:table}
+.table th,.table td{border-bottom:1px solid var(--line);padding:13px 14px;text-align:left;vertical-align:top}
+.table th{background:var(--soft);font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)}
+.table td{font-size:14px;color:var(--muted)}.table td b{color:var(--ink)}.table tr:last-child td{border-bottom:0}
+.flow{display:grid;grid-template-columns:repeat(6,1fr);gap:9px}
+.step{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:14px;min-height:128px}
+.step b{display:block;color:var(--green);font-size:12px;text-transform:uppercase;letter-spacing:.08em;margin-bottom:7px}
+.step p{font-size:14px;color:var(--muted)}
+footer{padding:34px 22px;text-align:center;color:var(--muted);font-size:13px}
+.stroke{stroke:var(--ink);stroke-width:1.7;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.thin{stroke:var(--line2);stroke-width:1.2;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.fill-paper{fill:var(--paper)}.fill-soft{fill:var(--soft)}.fill-green{fill:#dfe9df}.fill-blue{fill:#dde6f0}.fill-brown{fill:#ece3d4}.fill-red{fill:#eadad6}
+@media(max-width:980px){
+  .hero-grid,.section-head,.grid.two,.grid.three,.grid.four,.ladder,.concept,.dictionary,.idea-grid,.flow{grid-template-columns:1fr}
+  .links{display:none}
+  section{padding:48px 0}
+  .hero{padding-top:56px}
+  .concept-art,.idea-art{border-left:0;border-right:0;border-top:1px solid var(--line)}
+  .idea{grid-template-columns:1fr}
+  .table{display:block;overflow-x:auto}
+}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <div class="brand">GPU Inference to AI Chip Ideas</div>
+    <div class="links">
+      <a href="#today">Today</a>
+      <a href="#basics">Basics</a>
+      <a href="#bottlenecks">Bottlenecks</a>
+      <a href="#maybe">Maybe</a>
+      <a href="#terms">Terms</a>
+      <a href="#ideas">Ideas</a>
+      <a href="#yc">Y Combinator</a>
+      <a href="#use">Use</a>
+    </div>
+  </div>
+</nav>
+
+<main>
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div>
+        <div class="eyebrow">First principles guide</div>
+        <h1>Start with GPU inference. Then imagine better chips.</h1>
+        <p class="lead">Most people first encounter AI infrastructure through GPU inference. This guide starts there, explains the important hardware terms in plain English, then turns the bottlenecks into startup ideas.</p>
+        <div class="button-row">
+          <a class="btn primary" href="#today">Start from GPUs</a>
+          <a class="btn" href="#terms">Explain the terms</a>
+        </div>
+      </div>
+      <aside class="panel hero-visual" aria-label="GPU inference stack">
+        <svg viewBox="0 0 760 500" role="img" aria-label="A simple GPU inference pipeline from user request to GPU memory to tensor cores to output tokens">
+          <rect x="28" y="26" width="704" height="448" rx="28" fill="#f0f0e9" stroke="#c6c9bc"/>
+          <text x="66" y="72" font-size="22" font-weight="900" fill="#151611">The familiar starting point</text>
+          <g transform="translate(64 112)">
+            <rect width="128" height="86" rx="15" fill="#fff" stroke="#c6c9bc"/>
+            <text x="28" y="38" font-size="18" font-weight="850" fill="#151611">Prompt</text>
+            <text x="22" y="62" font-size="13" fill="#64665e">input tokens</text>
+          </g>
+          <g transform="translate(248 86)">
+            <rect width="264" height="250" rx="20" fill="#fff" stroke="#c6c9bc"/>
+            <text x="24" y="42" font-size="21" font-weight="900" fill="#151611">GPU server</text>
+            <rect x="28" y="68" width="92" height="64" rx="12" class="fill-brown" stroke="#c8b89f"/>
+            <text x="50" y="104" font-size="14" font-weight="850" fill="#151611">HBM</text>
+            <rect x="144" y="68" width="92" height="64" rx="12" class="fill-blue" stroke="#adb8c5"/>
+            <text x="156" y="96" font-size="14" font-weight="850" fill="#151611">Tensor</text>
+            <text x="164" y="115" font-size="14" font-weight="850" fill="#151611">Cores</text>
+            <rect x="28" y="158" width="208" height="58" rx="12" class="fill-green" stroke="#aeb8a8"/>
+            <text x="66" y="193" font-size="15" font-weight="850" fill="#151611">CUDA / kernels / scheduler</text>
+            <path d="M120 100h24M132 132v26" class="stroke"/>
+          </g>
+          <g transform="translate(568 112)">
+            <rect width="128" height="86" rx="15" fill="#fff" stroke="#c6c9bc"/>
+            <text x="28" y="38" font-size="18" font-weight="850" fill="#151611">Output</text>
+            <text x="22" y="62" font-size="13" fill="#64665e">new tokens</text>
+          </g>
+          <path d="M192 155h56M512 155h56" class="stroke"/>
+          <path d="M236 143l14 12-14 12M556 143l14 12-14 12" class="stroke"/>
+          <g transform="translate(84 386)">
+            <rect width="592" height="48" rx="14" fill="#fff" stroke="#c6c9bc"/>
+            <text x="24" y="31" font-size="15" fill="#64665e">The question: can we serve the same tokens with less cost, less wasted memory movement, and simpler programmability?</text>
+          </g>
+        </svg>
+      </aside>
+    </div>
+  </section>
+
+  <section id="today">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">Step 1</div>
+          <h2>What everyone is doing today.</h2>
+        </div>
+        <p class="lead">Most serious LLM inference today runs on GPUs. GPUs work very well, but they also carry assumptions from graphics, CUDA, expensive memory, and host-device systems. That creates room for new ideas.</p>
+      </div>
+      <div class="ladder">
+        <div class="ladder-card"><b>1. Request</b><p>A user sends a prompt. The system turns text into tokens.</p></div>
+        <div class="ladder-card"><b>2. GPU memory</b><p>The model weights and KV cache sit in expensive high-bandwidth memory.</p></div>
+        <div class="ladder-card"><b>3. Matrix math</b><p>Most work is matrix multiplication inside attention and feed-forward layers.</p></div>
+        <div class="ladder-card"><b>4. Scheduling</b><p>Kernels, batches, routing, and queues decide whether the GPU stays busy.</p></div>
+        <div class="ladder-card"><b>5. Cost</b><p>The business metric is not just speed. It is useful tokens per dollar.</p></div>
+      </div>
+      <div class="plain" style="margin-top:14px">
+        <b>Simple framing</b>
+        <p>A GPU is excellent at many kinds of parallel work. But LLM inference is a narrower job: move model data, do matrix multiplication, remember past tokens, and generate new tokens. If we understand that narrower job, we can ask whether a different hardware-software stack would be cheaper or easier to program.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="basics">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">Step 2</div>
+          <h2>The basics before the big ideas.</h2>
+        </div>
+        <p class="lead">Each term below appears because it is already part of current GPU inference, or because it attacks a cost in that current path. The goal is not vocabulary for its own sake: it is to see where the money, latency, and complexity go.</p>
+      </div>
+
+      <div class="grid" style="gap:18px">
+        <article class="concept">
+          <div class="concept-copy">
+            <span class="tag">basic idea</span>
+            <h3>What is a systolic array?</h3>
+            <p>A systolic array is a grid of tiny multiply-add units. Numbers flow through the grid in a regular rhythm, so the chip can do matrix multiplication with very little wasted movement.</p>
+            <ul>
+              <li>LLMs spend most of their math inside matrix multiplication.</li>
+              <li>Modern NVIDIA GPUs already contain this kind of matrix engine inside Tensor Cores, and current LLM inference uses them constantly.</li>
+              <li>TPUs call similar engines Matrix Multiply Units.</li>
+              <li>We mention systolic arrays because an expensive GPU is only productive when these matrix engines are fed, sized, and scheduled well.</li>
+            </ul>
+          </div>
+          <div class="concept-art">
+            <svg viewBox="0 0 420 260" aria-label="Systolic array explanation">
+              <rect x="30" y="46" width="360" height="170" rx="18" fill="#fff" stroke="#c6c9bc"/>
+              <g fill="#dde6f0" stroke="#9eafc3">
+                <rect x="112" y="72" width="30" height="30" rx="5"/><rect x="150" y="72" width="30" height="30" rx="5"/><rect x="188" y="72" width="30" height="30" rx="5"/><rect x="226" y="72" width="30" height="30" rx="5"/><rect x="264" y="72" width="30" height="30" rx="5"/>
+                <rect x="112" y="110" width="30" height="30" rx="5"/><rect x="150" y="110" width="30" height="30" rx="5"/><rect x="188" y="110" width="30" height="30" rx="5"/><rect x="226" y="110" width="30" height="30" rx="5"/><rect x="264" y="110" width="30" height="30" rx="5"/>
+                <rect x="112" y="148" width="30" height="30" rx="5"/><rect x="150" y="148" width="30" height="30" rx="5"/><rect x="188" y="148" width="30" height="30" rx="5"/><rect x="226" y="148" width="30" height="30" rx="5"/><rect x="264" y="148" width="30" height="30" rx="5"/>
+              </g>
+              <path d="M70 86h38M70 124h38M70 162h38M294 86h44M294 124h44M294 162h44M128 36v36M166 36v36M204 36v36M242 36v36M280 36v36" class="stroke"/>
+              <text x="52" y="66" font-size="13" fill="#64665e">A rows</text>
+              <text x="262" y="31" font-size="13" fill="#64665e">B columns</text>
+              <text x="326" y="196" font-size="13" fill="#64665e">C output</text>
+              <text x="139" y="232" font-size="14" font-weight="850" fill="#385f49">regular data flow = efficient matrix multiply</text>
+            </svg>
+          </div>
+        </article>
+
+        <article class="concept">
+          <div class="concept-copy">
+            <span class="tag">basic idea</span>
+            <h3>What is HBM, SRAM, and SSD?</h3>
+            <p>They are different places to store data. The closer and faster the memory is, the more expensive it is. Inference cost often comes from deciding which bytes must be close to the matrix engine and which bytes can live farther away.</p>
+            <ul>
+              <li><b>SRAM:</b> tiny, very fast memory on the chip.</li>
+              <li><b>HBM:</b> expensive high-bandwidth memory next to the GPU or accelerator.</li>
+              <li><b>SSD:</b> much cheaper storage, but slower than HBM.</li>
+              <li>We mention memory tiers because many AI chip ideas are not about more math; they are about keeping hot data close and cold data cheap.</li>
+            </ul>
+          </div>
+          <div class="concept-art">
+            <svg viewBox="0 0 420 260" aria-label="Memory hierarchy">
+              <rect x="40" y="46" width="90" height="160" rx="14" class="fill-green" stroke="#aeb8a8"/>
+              <text x="64" y="92" font-size="19" font-weight="900" fill="#151611">SRAM</text>
+              <text x="60" y="122" font-size="13" fill="#64665e">fastest</text>
+              <text x="56" y="145" font-size="13" fill="#64665e">smallest</text>
+              <rect x="166" y="46" width="90" height="160" rx="14" class="fill-brown" stroke="#c8b89f"/>
+              <text x="190" y="92" font-size="19" font-weight="900" fill="#151611">HBM</text>
+              <text x="184" y="122" font-size="13" fill="#64665e">fast</text>
+              <text x="178" y="145" font-size="13" fill="#64665e">expensive</text>
+              <rect x="292" y="46" width="90" height="160" rx="14" class="fill-red" stroke="#caa8a3"/>
+              <text x="321" y="92" font-size="19" font-weight="900" fill="#151611">SSD</text>
+              <text x="310" y="122" font-size="13" fill="#64665e">slower</text>
+              <text x="306" y="145" font-size="13" fill="#64665e">cheaper</text>
+              <path d="M130 126h36M256 126h36" class="stroke"/>
+              <text x="78" y="226" font-size="13" fill="#64665e">near compute</text>
+              <text x="290" y="226" font-size="13" fill="#64665e">large cold storage</text>
+            </svg>
+          </div>
+        </article>
+
+        <article class="concept">
+          <div class="concept-copy">
+            <span class="tag">basic idea</span>
+            <h3>What is a KV cache?</h3>
+            <p>When an LLM reads or generates tokens, it stores key and value vectors from previous tokens so it does not recompute everything from scratch. That storage is called the KV cache.</p>
+            <ul>
+              <li>K means key; V means value.</li>
+              <li>Current GPU inference usually keeps active KV cache in GPU HBM.</li>
+              <li>Long conversations and long documents create large KV caches.</li>
+              <li>We mention KV cache because long-context inference often becomes a memory-management problem before it becomes a raw-compute problem.</li>
+            </ul>
+          </div>
+          <div class="concept-art">
+            <svg viewBox="0 0 420 260" aria-label="KV cache as memory of previous tokens">
+              <rect x="38" y="58" width="344" height="142" rx="18" fill="#fff" stroke="#c6c9bc"/>
+              <text x="66" y="92" font-size="18" font-weight="900" fill="#151611">Conversation history</text>
+              <g transform="translate(66 112)">
+                <rect width="54" height="34" rx="9" class="fill-green" stroke="#aeb8a8"/><text x="18" y="22" font-size="12" font-weight="850" fill="#151611">K,V</text>
+                <rect x="68" width="54" height="34" rx="9" class="fill-green" stroke="#aeb8a8"/><text x="86" y="22" font-size="12" font-weight="850" fill="#151611">K,V</text>
+                <rect x="136" width="54" height="34" rx="9" class="fill-green" stroke="#aeb8a8"/><text x="154" y="22" font-size="12" font-weight="850" fill="#151611">K,V</text>
+                <rect x="204" width="54" height="34" rx="9" class="fill-brown" stroke="#c8b89f"/><text x="222" y="22" font-size="12" font-weight="850" fill="#151611">K,V</text>
+              </g>
+              <path d="M210 160v52" class="stroke"/><path d="M198 200l12 14 12-14" class="stroke"/>
+              <text x="124" y="234" font-size="14" font-weight="850" fill="#385f49">the model looks back while generating the next token</text>
+            </svg>
+          </div>
+        </article>
+
+        <article class="concept">
+          <div class="concept-copy">
+            <span class="tag">basic idea</span>
+            <h3>What is DMA?</h3>
+            <p>DMA means direct memory access. Instead of a CPU manually moving every small piece of data, a DMA engine copies blocks of data between memory locations in the background.</p>
+            <ul>
+              <li>Think of it as a data conveyor belt.</li>
+              <li>It can move data between SRAM, HBM, network, or SSD.</li>
+              <li>It can overlap movement with computation, so the matrix engine does not wait.</li>
+              <li>We mention DMA because many proposed improvements are really about better conveyor belts, including compression while data moves.</li>
+            </ul>
+          </div>
+          <div class="concept-art">
+            <svg viewBox="0 0 420 260" aria-label="DMA as conveyor belt">
+              <rect x="38" y="82" width="88" height="86" rx="14" fill="#fff" stroke="#c6c9bc"/>
+              <text x="62" y="120" font-size="18" font-weight="900" fill="#151611">HBM</text>
+              <rect x="292" y="82" width="88" height="86" rx="14" fill="#fff" stroke="#c6c9bc"/>
+              <text x="318" y="120" font-size="18" font-weight="900" fill="#151611">SRAM</text>
+              <rect x="168" y="68" width="84" height="114" rx="16" class="fill-brown" stroke="#c8b89f"/>
+              <text x="187" y="112" font-size="19" font-weight="900" fill="#151611">DMA</text>
+              <text x="184" y="138" font-size="13" fill="#64665e">copy engine</text>
+              <path d="M126 125h42M252 125h40" class="stroke"/>
+              <path d="M154 113l14 12-14 12M278 113l14 12-14 12" class="stroke"/>
+              <text x="112" y="216" font-size="14" font-weight="850" fill="#385f49">data moves while compute continues</text>
+            </svg>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section id="bottlenecks">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">Step 3</div>
+          <h2>Where GPU inference gets expensive.</h2>
+        </div>
+        <p class="lead">These bottlenecks are the bridge from "we use GPUs" to "maybe there are new chip, compiler, runtime, and observability companies to build."</p>
+      </div>
+      <div class="grid three">
+        <div class="card">
+          <span class="tag">bottleneck</span>
+          <h3>Arrays can sit idle.</h3>
+          <p>During decode, the model often generates one token at a time. That can make the matrix engines underutilized unless batching, GQA, speculative decoding, or other scheduling tricks help.</p>
+        </div>
+        <div class="card">
+          <span class="tag">bottleneck</span>
+          <h3>HBM is costly.</h3>
+          <p>Model weights and KV cache consume expensive memory. Long context makes this worse, especially if old context sits in HBM even when rarely needed.</p>
+        </div>
+        <div class="card">
+          <span class="tag">bottleneck</span>
+          <h3>GPU software is powerful but complex.</h3>
+          <p>CUDA, kernels, warps, and scheduling are mature, but they also create overheads. A CPU-like accelerator could be easier to program if the compiler stack is excellent.</p>
+        </div>
+      </div>
+      <div class="visual-box" style="margin-top:16px;min-height:290px">
+        <svg viewBox="0 0 820 300" aria-label="GPU inference bottleneck map">
+          <rect x="28" y="40" width="764" height="210" rx="24" fill="#fff" stroke="#c6c9bc"/>
+          <g transform="translate(70 78)">
+            <rect width="150" height="132" rx="16" class="fill-brown" stroke="#c8b89f"/>
+            <text x="42" y="44" font-size="20" font-weight="900" fill="#151611">HBM</text>
+            <text x="26" y="72" font-size="13" fill="#64665e">weights</text>
+            <text x="26" y="94" font-size="13" fill="#64665e">KV cache</text>
+            <text x="26" y="116" font-size="13" fill="#64665e">activations</text>
+          </g>
+          <g transform="translate(336 78)">
+            <rect width="150" height="132" rx="16" class="fill-blue" stroke="#adb8c5"/>
+            <text x="34" y="44" font-size="20" font-weight="900" fill="#151611">Matrix</text>
+            <text x="44" y="70" font-size="20" font-weight="900" fill="#151611">engine</text>
+            <text x="30" y="100" font-size="13" fill="#64665e">must stay busy</text>
+          </g>
+          <g transform="translate(602 78)">
+            <rect width="150" height="132" rx="16" class="fill-green" stroke="#aeb8a8"/>
+            <text x="40" y="44" font-size="20" font-weight="900" fill="#151611">Output</text>
+            <text x="38" y="72" font-size="13" fill="#64665e">one token</text>
+            <text x="38" y="94" font-size="13" fill="#64665e">then repeat</text>
+          </g>
+          <path d="M220 144h116M486 144h116" class="stroke"/>
+          <path d="M320 132l16 12-16 12M586 132l16 12-16 12" class="stroke"/>
+          <text x="238" y="120" font-size="13" font-weight="850" fill="#8e5047">memory traffic</text>
+          <text x="503" y="120" font-size="13" font-weight="850" fill="#8e5047">latency pressure</text>
+          <text x="80" y="272" font-size="14" fill="#64665e">Startup ideas appear wherever bytes move too much, compute waits, or the software stack is too hard to use.</text>
+        </svg>
+      </div>
+    </div>
+  </section>
+
+  <section id="maybe">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">Step 4</div>
+          <h2>What everyone does vs what we might do.</h2>
+        </div>
+        <p class="lead">The key is to avoid treating these as random architecture terms. Each one is a response to a current GPU inference pain.</p>
+      </div>
+      <table class="table">
+        <thead><tr><th>Today</th><th>Problem</th><th>Maybe we should do this</th><th>Startup wedge</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><b>Use expensive GPUs with huge HBM.</b></td>
+            <td>Works well, but can hide inefficient memory use.</td>
+            <td>Put more discipline into KV cache, sparse attention, compression, and memory tiers.</td>
+            <td>HBM minimization planner, SSD-backed KV cache, compression runtime.</td>
+          </tr>
+          <tr>
+            <td><b>Treat GPU as the default accelerator.</b></td>
+            <td>GPUs are general and mature, but not necessarily the simplest shape for LLM inference.</td>
+            <td>Build a CPU-like accelerator where cores, caches, and systolic arrays are co-designed for inference.</td>
+            <td>AI CPU dev board, simulator, compiler backend.</td>
+          </tr>
+          <tr>
+            <td><b>Run all transformer work on one kind of core.</b></td>
+            <td>Attention and feed-forward layers like different matrix shapes.</td>
+            <td>Use different core sizes or schedule attention and FF differently.</td>
+            <td>Attention/FF split compiler or runtime scheduler.</td>
+          </tr>
+          <tr>
+            <td><b>Move data through HBM repeatedly.</b></td>
+            <td>Data movement burns power and money.</td>
+            <td>Use DMA engines, SRAM-to-SRAM transfers, compression, and op fusion.</td>
+            <td>DMA compression IP, tiled software pipelining library.</td>
+          </tr>
+          <tr>
+            <td><b>Buy expensive routed networking.</b></td>
+            <td>Routers and optical links are convenient but costly.</td>
+            <td>Use short copper links and torus-like local topology where workloads allow it.</td>
+            <td>Torus-aware cluster kit, topology-aware serving.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="terms">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">Plain English dictionary</div>
+          <h2>Terminology without the mystery.</h2>
+        </div>
+        <p class="lead">Use this section whenever a term feels unfamiliar. Each definition also explains why the term matters for current GPU inference and why it appears in the product ideas.</p>
+      </div>
+      <div class="dictionary">
+        <div class="term"><h3>GPU inference</h3><p>Running a trained model on GPUs to answer user requests. No training is happening; the model is serving outputs.</p><div class="example"><b>Why it matters:</b> this is the baseline. Every idea here asks what GPUs already do well, then looks for places where serving tokens is still expensive.</div></div>
+        <div class="term"><h3>Systolic array</h3><p>A grid of multiply-add units that performs matrix multiplication by flowing numbers through the grid in a steady pattern.</p><div class="example"><b>Why it matters:</b> this is already inside current NVIDIA GPUs as part of Tensor Cores, and current LLM inference relies on it. We mention it because keeping this engine busy is the central hardware problem.</div></div>
+        <div class="term"><h3>Tensor Core</h3><p>NVIDIA's name for the GPU units that accelerate neural-network matrix operations. Conceptually, this is where the systolic-array style matrix engine lives.</p><div class="example"><b>Why it matters:</b> when a GPU is fast at LLM inference, Tensor Cores are doing much of the useful math. Any competing chip must explain how it feeds matrix engines as well or better.</div></div>
+        <div class="term"><h3>Matrix multiplication</h3><p>The core operation that combines rows and columns of numbers. Transformers use it in attention layers and feed-forward layers.</p><div class="example"><b>Why it matters:</b> LLM inference is expensive largely because it performs enormous amounts of matrix multiplication. That is why matrix engines dominate the hardware discussion.</div></div>
+        <div class="term"><h3>HBM</h3><p>High Bandwidth Memory. Very fast memory packaged near the accelerator, but expensive per GB.</p><div class="example"><b>Why it matters:</b> current GPU inference depends on HBM for model weights, activations, and active KV cache. Reducing HBM pressure can improve tokens per dollar.</div></div>
+        <div class="term"><h3>SRAM</h3><p>Small, very fast memory on the chip. It is much closer to compute than HBM but limited in size.</p><div class="example"><b>Why it matters:</b> kernels load tiles into SRAM-like fast memory so Tensor Cores can reuse data instead of repeatedly going back to HBM.</div></div>
+        <div class="term"><h3>SSD</h3><p>Cheap large storage. Slower than HBM, but useful for data that is not needed every microsecond.</p><div class="example"><b>Why it matters:</b> SSD appears in these ideas because older context or cold KV-cache data might move out of expensive HBM if the software can retrieve it intelligently.</div></div>
+        <div class="term"><h3>KV cache</h3><p>Stored key and value vectors from previous tokens. It lets the model refer back to prior context during generation.</p><div class="example"><b>Why it matters:</b> long conversations and long documents create large KV caches in GPU memory. That is why memory tiering, compression, and sparse attention matter.</div></div>
+        <div class="term"><h3>DMA</h3><p>Direct Memory Access. A hardware copy engine that moves data between memory regions without a CPU doing every copy manually.</p><div class="example"><b>Why it matters:</b> inference performance depends on moving the next tile of data while the current tile is computing. DMA is the conveyor belt that can keep compute fed.</div></div>
+        <div class="term"><h3>DMA compressor</h3><p>A DMA engine with compression and decompression built in, so less data travels through memory or network links.</p><div class="example"><b>Why it matters:</b> if weights, activations, or KV cache compress while moving, the same HBM and network bandwidth can serve more useful tokens.</div></div>
+        <div class="term"><h3>Prefill</h3><p>The model reading the prompt or document before generating. Many input tokens can be processed together.</p><div class="example"><b>Why it matters:</b> prefill usually uses Tensor Cores efficiently because many known tokens can be batched into large matrix multiplications.</div></div>
+        <div class="term"><h3>Decode</h3><p>The model generating output tokens. It often happens one token at a time, which can be harder to utilize efficiently.</p><div class="example"><b>Why it matters:</b> decode is where latency, KV-cache reads, and low matrix-engine utilization often appear. Many serving ideas are decode ideas.</div></div>
+        <div class="term"><h3>GQA</h3><p>Grouped-query attention. A transformer attention design that shares some key/value work across query heads.</p><div class="example"><b>Why it matters:</b> GQA is used because decode can be memory hungry. It reduces KV-cache traffic, which helps current GPU inference and future accelerators.</div></div>
+        <div class="term"><h3>Speculative decoding</h3><p>A serving trick where a smaller or cheaper process guesses future tokens, and the main model verifies them.</p><div class="example"><b>Why it matters:</b> it can turn one-token-at-a-time decode into larger chunks of work, giving the matrix engines more useful work per step.</div></div>
+        <div class="term"><h3>CUDA, kernels, and warps</h3><p>CUDA is NVIDIA's GPU programming platform. A kernel is a GPU function launch. Warps are groups of GPU threads scheduled together.</p><div class="example"><b>Why it matters:</b> this is the mature software model behind current GPU inference. New AI CPU ideas matter only if they can make programming easier without losing performance.</div></div>
+        <div class="term"><h3>Op fusion</h3><p>Combining multiple model operations into one kernel or pipeline so intermediate results stay close to compute.</p><div class="example"><b>Why it matters:</b> fusion reduces trips to HBM. It is one reason compilers and runtimes can change the economics without changing the model.</div></div>
+        <div class="term"><h3>Software pipelining</h3><p>Scheduling load, compute, and store work so different parts of the chip are busy at the same time.</p><div class="example"><b>Why it matters:</b> if the matrix engine waits for memory, money is being wasted. Pipelining is how software hides movement latency.</div></div>
+        <div class="term"><h3>MoE</h3><p>Mixture of Experts. A model design where each token uses only a subset of specialized expert networks.</p><div class="example"><b>Why it matters:</b> MoE can reduce compute per token, but it creates routing and networking problems when experts are spread across chips.</div></div>
+        <div class="term"><h3>Torus network</h3><p>A layout where chips connect to nearby chips in a ring or grid with wraparound links. It can be cheaper than full routing for some AI communication.</p><div class="example"><b>Why it matters:</b> large models often run across many chips. The network decides how expensive all-reduce, routing, and model parallelism become.</div></div>
+        <div class="term"><h3>AI CPU</h3><p>A CPU-like accelerator with large caches and matrix engines attached to programmable cores.</p><div class="example"><b>Why it matters:</b> the proposal is not to remove matrix engines. It is to keep the LLM math engine, but surround it with a simpler, more CPU-like programming model.</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="ideas">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">Step 5</div>
+          <h2>Startup ideas, now that the basics are clear.</h2>
+        </div>
+        <p class="lead">Each product idea attacks one specific bottleneck. For each one, ask: who pays, what is the first demo, and what metric improves?</p>
+      </div>
+
+      <div class="idea-grid">
+        <article class="idea">
+          <div class="idea-art">
+            <svg viewBox="0 0 130 130" aria-label="AI CPU chip"><rect x="18" y="18" width="94" height="94" rx="14" fill="#fff" stroke="#c6c9bc"/><rect x="34" y="34" width="26" height="26" rx="6" class="fill-green" stroke="#aeb8a8"/><rect x="70" y="34" width="26" height="26" rx="6" class="fill-blue" stroke="#adb8c5"/><rect x="34" y="70" width="62" height="22" rx="6" class="fill-brown" stroke="#c8b89f"/></svg>
+          </div>
+          <div class="idea-body"><div class="idea-top"><span class="idea-num">Idea 01</span><span class="tag">hardware</span></div><h3>Inference-first AI CPU</h3><p>A CPU-like accelerator with cores for programmability, systolic arrays for matrix math, and a cache-first memory design.</p><div class="idea-meta"><div class="mini-label"><b>Why:</b> GPUs are powerful but not the only possible shape.</div><div class="mini-label"><b>Demo:</b> one model running cheaply.</div></div></div>
+        </article>
+
+        <article class="idea">
+          <div class="idea-art">
+            <svg viewBox="0 0 130 130" aria-label="Compiler backend"><rect x="20" y="25" width="90" height="80" rx="12" fill="#fff" stroke="#c6c9bc"/><path d="M36 48h58M36 66h38M36 84h50" class="stroke"/><circle cx="94" cy="84" r="6" fill="#385f49"/></svg>
+          </div>
+          <div class="idea-body"><div class="idea-top"><span class="idea-num">Idea 02</span><span class="tag">compiler</span></div><h3>Compiler backend studio</h3><p>Help new accelerator teams convert PyTorch/JAX/XLA graphs into efficient kernels for their hardware.</p><div class="idea-meta"><div class="mini-label"><b>Why:</b> hardware fails without software.</div><div class="mini-label"><b>Demo:</b> one fast attention kernel.</div></div></div>
+        </article>
+
+        <article class="idea">
+          <div class="idea-art">
+            <svg viewBox="0 0 130 130" aria-label="HBM planner"><rect x="24" y="24" width="82" height="82" rx="12" fill="#fff" stroke="#c6c9bc"/><rect x="40" y="38" width="50" height="12" rx="6" class="fill-red"/><rect x="40" y="58" width="36" height="12" rx="6" class="fill-brown"/><rect x="40" y="78" width="58" height="12" rx="6" class="fill-green"/></svg>
+          </div>
+          <div class="idea-body"><div class="idea-top"><span class="idea-num">Idea 03</span><span class="tag">memory</span></div><h3>HBM minimization planner</h3><p>Analyze a serving workload and recommend quantization, KV policy, sharding, and storage tiers to reduce HBM use.</p><div class="idea-meta"><div class="mini-label"><b>Why:</b> HBM is expensive.</div><div class="mini-label"><b>Demo:</b> cost report from traces.</div></div></div>
+        </article>
+
+        <article class="idea">
+          <div class="idea-art">
+            <svg viewBox="0 0 130 130" aria-label="SSD KV cache"><rect x="20" y="28" width="36" height="74" rx="8" fill="#fff" stroke="#c6c9bc"/><rect x="76" y="28" width="36" height="74" rx="8" class="fill-red" stroke="#caa8a3"/><path d="M56 50c16-14 20-14 20 0M76 80c-16 14-20 14-20 0" class="stroke"/></svg>
+          </div>
+          <div class="idea-body"><div class="idea-top"><span class="idea-num">Idea 04</span><span class="tag">KV cache</span></div><h3>SSD-backed long memory</h3><p>Keep recent KV in HBM and move older context into cheaper storage, using retrieval so quality stays high.</p><div class="idea-meta"><div class="mini-label"><b>Why:</b> long context is memory-heavy.</div><div class="mini-label"><b>Demo:</b> long chat benchmark.</div></div></div>
+        </article>
+
+        <article class="idea">
+          <div class="idea-art">
+            <svg viewBox="0 0 130 130" aria-label="DMA compressor"><rect x="12" y="42" width="28" height="46" rx="7" fill="#fff" stroke="#c6c9bc"/><rect x="50" y="32" width="30" height="66" rx="8" class="fill-brown" stroke="#c8b89f"/><rect x="90" y="42" width="28" height="46" rx="7" fill="#fff" stroke="#c6c9bc"/><path d="M40 65h10M80 65h10" class="stroke"/><text x="56" y="69" font-size="10" font-weight="850" fill="#151611">DMA</text></svg>
+          </div>
+          <div class="idea-body"><div class="idea-top"><span class="idea-num">Idea 05</span><span class="tag">data movement</span></div><h3>DMA compression engine</h3><p>Compress and decompress data as it moves through memory or network links, reducing bandwidth pressure.</p><div class="idea-meta"><div class="mini-label"><b>Why:</b> data movement is costly.</div><div class="mini-label"><b>Demo:</b> FPGA or simulator.</div></div></div>
+        </article>
+
+        <article class="idea">
+          <div class="idea-art">
+            <svg viewBox="0 0 130 130" aria-label="Sparse format"><rect x="16" y="40" width="98" height="50" rx="10" fill="#fff" stroke="#c6c9bc"/><text x="29" y="70" font-size="24" font-weight="900" fill="#151611">1:2</text><text x="75" y="70" font-size="18" font-weight="850" fill="#385f49">7+1</text></svg>
+          </div>
+          <div class="idea-body"><div class="idea-top"><span class="idea-num">Idea 06</span><span class="tag">numerics</span></div><h3>Sparsity and low-bit toolkit</h3><p>Recipes that make models run with fewer bits and structured zeros while preserving output quality.</p><div class="idea-meta"><div class="mini-label"><b>Why:</b> fewer bits means less memory traffic.</div><div class="mini-label"><b>Demo:</b> open model conversion.</div></div></div>
+        </article>
+
+        <article class="idea">
+          <div class="idea-art">
+            <svg viewBox="0 0 130 130" aria-label="Prefill decode"><rect x="16" y="30" width="42" height="70" rx="9" class="fill-green" stroke="#aeb8a8"/><rect x="72" y="30" width="42" height="70" rx="9" class="fill-blue" stroke="#adb8c5"/><rect x="52" y="56" width="26" height="18" rx="5" fill="#fff" stroke="#c6c9bc"/><text x="30" y="68" font-size="10" font-weight="850" fill="#151611">P</text><text x="88" y="68" font-size="10" font-weight="850" fill="#151611">D</text></svg>
+          </div>
+          <div class="idea-body"><div class="idea-top"><span class="idea-num">Idea 07</span><span class="tag">serving</span></div><h3>Prefill/decode scheduler</h3><p>Balance reading work and generation work so compute and memory bandwidth are both used well.</p><div class="idea-meta"><div class="mini-label"><b>Why:</b> prefill and decode stress different resources.</div><div class="mini-label"><b>Demo:</b> vLLM plugin.</div></div></div>
+        </article>
+
+        <article class="idea">
+          <div class="idea-art">
+            <svg viewBox="0 0 130 130" aria-label="Torus board"><g fill="#fff" stroke="#385f49" stroke-width="2"><circle cx="34" cy="34" r="9"/><circle cx="65" cy="34" r="9"/><circle cx="96" cy="34" r="9"/><circle cx="34" cy="65" r="9"/><circle cx="65" cy="65" r="9"/><circle cx="96" cy="65" r="9"/><circle cx="34" cy="96" r="9"/><circle cx="65" cy="96" r="9"/><circle cx="96" cy="96" r="9"/></g><path d="M34 34h62M34 65h62M34 96h62M34 34v62M65 34v62M96 34v62" class="thin"/></svg>
+          </div>
+          <div class="idea-body"><div class="idea-top"><span class="idea-num">Idea 08</span><span class="tag">networking</span></div><h3>Torus-aware cluster kit</h3><p>Use short local chip-to-chip links for common AI communication patterns, reducing dependence on expensive routers.</p><div class="idea-meta"><div class="mini-label"><b>Why:</b> networking cost matters at scale.</div><div class="mini-label"><b>Demo:</b> 4-chip topology simulator.</div></div></div>
+        </article>
+
+        <article class="idea">
+          <div class="idea-art">
+            <svg viewBox="0 0 130 130" aria-label="Software pipeline"><rect x="18" y="34" width="32" height="16" rx="5" class="fill-green" stroke="#aeb8a8"/><rect x="50" y="58" width="32" height="16" rx="5" class="fill-blue" stroke="#adb8c5"/><rect x="82" y="82" width="32" height="16" rx="5" class="fill-brown" stroke="#c8b89f"/><path d="M28 110h86" class="thin"/></svg>
+          </div>
+          <div class="idea-body"><div class="idea-top"><span class="idea-num">Idea 09</span><span class="tag">kernels</span></div><h3>Tiled software pipeline library</h3><p>Let kernel authors declare load, compute, store, and network stages without writing unreadable hand-pipelined code.</p><div class="idea-meta"><div class="mini-label"><b>Why:</b> fast kernels are hard to write.</div><div class="mini-label"><b>Demo:</b> fused matmul example.</div></div></div>
+        </article>
+
+        <article class="idea">
+          <div class="idea-art">
+            <svg viewBox="0 0 130 130" aria-label="Token economics"><text x="24" y="72" font-size="30" font-weight="900" fill="#151611">$/tok</text><path d="M26 92h76" class="stroke"/><path d="M36 40h58" class="thin"/></svg>
+          </div>
+          <div class="idea-body"><div class="idea-top"><span class="idea-num">Idea 10</span><span class="tag">observability</span></div><h3>Tokens-per-dollar dashboard</h3><p>Show which prompts, models, tenants, and serving choices are increasing cost or hurting latency.</p><div class="idea-meta"><div class="mini-label"><b>Why:</b> teams need economic visibility.</div><div class="mini-label"><b>Demo:</b> trace dashboard.</div></div></div>
+        </article>
+
+        <article class="idea">
+          <div class="idea-art">
+            <svg viewBox="0 0 130 130" aria-label="MoE routing"><rect x="18" y="50" width="30" height="30" rx="7" fill="#fff" stroke="#c6c9bc"/><rect x="82" y="24" width="30" height="30" rx="7" class="fill-blue" stroke="#adb8c5"/><rect x="82" y="76" width="30" height="30" rx="7" class="fill-green" stroke="#aeb8a8"/><path d="M48 65C64 48 66 39 82 39M48 65c18 8 18 26 34 26" class="stroke"/></svg>
+          </div>
+          <div class="idea-body"><div class="idea-top"><span class="idea-num">Idea 11</span><span class="tag">MoE</span></div><h3>MoE utilization optimizer</h3><p>Place experts, route tokens, and queue low-priority work so sparse expert models do not waste accelerators.</p><div class="idea-meta"><div class="mini-label"><b>Why:</b> expert load is uneven.</div><div class="mini-label"><b>Demo:</b> routing simulator.</div></div></div>
+        </article>
+
+        <article class="idea">
+          <div class="idea-art">
+            <svg viewBox="0 0 130 130" aria-label="Co-design search"><circle cx="32" cy="86" r="6" fill="#c6c9bc"/><circle cx="52" cy="52" r="6" fill="#c6c9bc"/><circle cx="80" cy="72" r="6" fill="#385f49"/><circle cx="101" cy="38" r="6" fill="#c6c9bc"/><path d="M32 86L52 52L80 72L101 38" class="stroke"/><rect x="18" y="102" width="94" height="8" rx="4" fill="#ddddd4"/></svg>
+          </div>
+          <div class="idea-body"><div class="idea-top"><span class="idea-num">Idea 12</span><span class="tag">planning</span></div><h3>AI chip co-design search</h3><p>Explore tradeoffs across arrays, memory, networking, compilers, model shapes, and customer workloads.</p><div class="idea-meta"><div class="mini-label"><b>Why:</b> local optimizations mislead.</div><div class="mini-label"><b>Demo:</b> design-space explorer.</div></div></div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section id="yc">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">Y Combinator questions</div>
+          <h2>Questions a serious startup application should answer.</h2>
+        </div>
+        <p class="lead">These questions turn the technical ideas into company-shaped thinking. The answers should be short, concrete, and grounded in one measurable inference pain.</p>
+      </div>
+
+      <div class="grid three">
+        <div class="card">
+          <span class="tag">company</span>
+          <h3>What are you building?</h3>
+          <p>Say the product in one plain sentence. Example: "We reduce LLM serving cost by moving cold KV cache out of HBM while preserving answer quality."</p>
+        </div>
+        <div class="card">
+          <span class="tag">customer</span>
+          <h3>Who has the problem?</h3>
+          <p>Name the first buyer precisely: inference platform teams, model labs, cloud providers, GPU cluster operators, or companies with long-context workloads.</p>
+        </div>
+        <div class="card">
+          <span class="tag">pain</span>
+          <h3>What is painful today?</h3>
+          <p>Connect the pain to the current GPU inference path: HBM cost, decode latency, idle Tensor Cores, kernel complexity, KV-cache growth, or network bottlenecks.</p>
+        </div>
+        <div class="card">
+          <span class="tag">insight</span>
+          <h3>What do you know that others miss?</h3>
+          <p>State the technical bet. For example: "The bottleneck is not only FLOPs; it is byte movement between HBM, SRAM, and the matrix engine."</p>
+        </div>
+        <div class="card">
+          <span class="tag">demo</span>
+          <h3>What is the smallest impressive demo?</h3>
+          <p>Pick one narrow proof: a simulator, a vLLM plugin, one compressed KV benchmark, one faster fused kernel, or one FPGA DMA-compression prototype.</p>
+        </div>
+        <div class="card">
+          <span class="tag">metric</span>
+          <h3>What number gets better?</h3>
+          <p>Use a metric buyers understand: tokens per dollar, output-token latency, HBM GB per request, Tensor Core utilization, watts per token, or network bytes per token.</p>
+        </div>
+        <div class="card">
+          <span class="tag">competition</span>
+          <h3>What do customers use instead?</h3>
+          <p>The real competitor is often "buy more GPUs" or "accept lower utilization." Explain why your approach is cheaper, easier, or more available.</p>
+        </div>
+        <div class="card">
+          <span class="tag">timing</span>
+          <h3>Why now?</h3>
+          <p>Use changes in the world: long context, reasoning models, MoE, inference spending, HBM scarcity, new compiler stacks, or demand for non-GPU capacity.</p>
+        </div>
+        <div class="card">
+          <span class="tag">risk</span>
+          <h3>What is the hard technical risk?</h3>
+          <p>Be direct. Examples: sparse attention quality, compression overhead, compiler reliability, customer model changes, hardware validation, or multi-chip scheduling.</p>
+        </div>
+        <div class="card">
+          <span class="tag">traction</span>
+          <h3>How do you know anyone wants it?</h3>
+          <p>Show traces, benchmarks, design partners, letters of intent, paid pilots, or a workload where the current GPU path is visibly wasteful.</p>
+        </div>
+        <div class="card">
+          <span class="tag">team</span>
+          <h3>Why this team?</h3>
+          <p>Point to things already built: kernels, compilers, serving systems, hardware prototypes, infra used by real users, or unusually strong technical execution.</p>
+        </div>
+        <div class="card">
+          <span class="tag">scope</span>
+          <h3>What is the first wedge?</h3>
+          <p>Avoid claiming the whole chip market first. Start with one painful use case, one model family, one serving stack, or one hardware primitive.</p>
+        </div>
+      </div>
+
+      <div class="plain" style="margin-top:14px">
+        <b>A good answer pattern</b>
+        <p>Start from the current GPU inference workflow, identify one concrete bottleneck, explain the technical reason it exists, show the smallest proof that your approach improves it, and name the buyer who would care.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="use">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">How to use this guide</div>
+          <h2>A simple path through the material.</h2>
+        </div>
+        <p class="lead">The page moves from familiar GPU inference to new AI chip ideas. Use it as a guided story instead of a glossary dump.</p>
+      </div>
+      <div class="flow">
+        <div class="step"><b>Start</b><p>Begin with what happens when a prompt goes to a GPU inference server.</p></div>
+        <div class="step"><b>Basics</b><p>Read the explanations for systolic arrays, HBM, SRAM, SSD, KV cache, and DMA.</p></div>
+        <div class="step"><b>Bottlenecks</b><p>Look at why decode, long context, and memory movement create cost bottlenecks.</p></div>
+        <div class="step"><b>Contrast</b><p>Use the "today vs maybe" table to introduce the innovation directions.</p></div>
+        <div class="step"><b>Ideas</b><p>Pick 3 startup ideas and define buyer, wedge, demo, and metric.</p></div>
+        <div class="step"><b>Questions</b><p>Use the application questions to convert each idea into one concise company description.</p></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  A first-principles guide from GPU inference to AI chip and serving startup ideas.
+</footer>
+</body>
+</html>

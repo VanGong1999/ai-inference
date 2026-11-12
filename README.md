@@ -60,6 +60,7 @@ ai-inference/
 │   ├── assets/
 │   ├── lecture-notes/   # 生产系统笔记（含 *.zh.md 中文翻译）
 │   ├── quantization-visual-walkthrough/
+│   ├── dna-of-a-transformer/ … turboquant-… / deepseek-…  # 原外链 walkthrough 本地拷贝
 │   └── guides/          # 中文导读层
 │       ├── README.md    # 学习路径总览
 │       ├── 00-学习路径.md
@@ -67,9 +68,10 @@ ai-inference/
 │       ├── 00-环境搭建.md
 │       └── lectures/    # 11 篇中文导读
 └── lectures/            # 原始讲座资料（原样保留）
-    ├── 00-inference-book/
-    ├── 00-visual-walkthroughs/
-    └── 01-introduction-to-inference-engineering/ ... 11-capstone-project/
+    ├── 05-…/flash-attention-main/          # 本地依赖（gitignore，不入库）
+    ├── 08-…/DeepSeek-From-Scratch-main/    # MTP 从零实现本地拷贝
+    ├── 10-…/infertutor-arena-capstone-main/ # Capstone 代码；*.pdf 本地不入库
+    └── 01-… … 11-capstone-project/
 ```
 
 ## 学习路线（简版）

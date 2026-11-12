@@ -2,5 +2,8 @@ Lecture Notes : https://miro.com/app/board/uXjVHXz5hxs=/?share_link_id=883779604
 
 Visual Walkthroughs:
 (1) The GPU Architecture: https://brrrviz.com/the-machine/device-architecture
-(2) Flash Attention 1 vs 2: https://vizuaraai.github.io/convolution-musical-journey/flashattention-1-2.html
-(3) Flash Attention 3: https://vizuaraai.github.io/convolution-musical-journey/flashattention-3.html
+(2) Flash Attention 1 vs 2: ../../docs/flashattention-1-2.html
+(3) Flash Attention 3: ../../docs/flashattention-3.html
+
+Local dependency (not committed; keep on disk for notebook builds):
+flash-attention-main/  ← Dao-AILab/flash-attention 本地拷贝

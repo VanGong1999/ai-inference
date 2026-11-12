@@ -2,7 +2,7 @@ Lecture Notes: https://miro.com/app/board/uXjVHZulX3g=/?share_link_id=1783852523
 Important resources: (1) Comparison of Modern LLM Architectures: https://sebastianraschka.com/llm-architecture-gallery/
 
 
-DeepSeek Sparse Attention: https://vizuaraai.github.io/DeepSeek-Sparse/
+DeepSeek Sparse Attention: ../../docs/DeepSeek-Sparse/
 ^ Visual Walkthrough
 
 TinyStories KV Cache Benchmark (.ipynb), Helper file (.py)

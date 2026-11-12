@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DeepSeek V4 KV 缓存 - 可视化 Walkthrough</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@500;700&amp;family=Instrument+Serif:ital@0;1&amp;display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --ink:#171717;--muted:#6f737b;--line:#e7e2d8;--paper:#fffdfa;--wash:#f7f3ea;
+  --q:#2f7df6;--k:#12a36f;--v:#8b5cf6;--score:#f59e0b;--out:#ea4b6b;
+  --c4:#0ea5a8;--c128:#cc6b26;--local:#e04470;--shared:#3438bd;--dark:#222236;
+  --shadow:0 18px 50px rgba(30,25,18,.08);--max:1120px;
+}
+html{scroll-behavior:smooth}
+body{font-family:Inter,-apple-system,BlinkMacSystemFont,sans-serif;background:var(--paper);color:var(--ink);font-size:15px;line-height:1.5}
+.nav{position:fixed;inset:0 0 auto;z-index:20;background:rgba(255,253,250,.86);backdrop-filter:blur(18px);border-bottom:1px solid var(--line)}
+.nav-inner{max-width:var(--max);margin:0 auto;padding:12px 24px;display:flex;align-items:center;justify-content:space-between;gap:18px}
+.brand{font-family:"Instrument Serif",serif;font-size:22px;color:var(--shared)}
+.links{display:flex;gap:14px;flex-wrap:wrap;justify-content:flex-end}
+.links a{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);text-decoration:none;font-weight:800}
+.links a:hover{color:var(--shared)}
+.wrap{max-width:var(--max);margin:0 auto;padding:0 24px}
+section{padding:74px 0;border-bottom:1px solid var(--line)}
+section.alt{background:var(--wash)}
+.hero{padding-top:108px;text-align:center}
+.eyebrow{font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--shared);font-weight:800;margin-bottom:10px}
+h1{font-family:"Instrument Serif",serif;font-size:clamp(44px,7vw,82px);line-height:.95;font-weight:400;letter-spacing:0}
+h2{font-family:"Instrument Serif",serif;font-size:clamp(32px,4vw,52px);line-height:1;font-weight:400;letter-spacing:0;margin-bottom:12px}
+.sub{max-width:760px;margin:18px auto 0;color:var(--muted);font-size:18px}
+.stage{background:#fff;border:1px solid var(--line);border-radius:8px;padding:22px;box-shadow:var(--shadow);margin-top:24px}
+.stage-title{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}
+.stage-title b{font-size:12px;text-transform:uppercase;letter-spacing:.14em}
+.stage-title span{font:700 11px/1 JetBrains Mono,monospace;color:var(--muted)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:stretch}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.flow{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap}
+.arrow{color:var(--muted);font-weight:900;font-size:22px}
+.matrix{display:inline-grid;gap:3px;padding:12px;border-radius:8px;border:2px solid currentColor;background:#fff;min-width:124px;box-shadow:0 8px 18px rgba(0,0,0,.04)}
+.matrix.q{color:var(--q);background:#f0f6ff}.matrix.k{color:var(--k);background:#ecfdf5}.matrix.v{color:var(--v);background:#f6f0ff}.matrix.s{color:var(--score);background:#fff7e6}.matrix.o{color:var(--out);background:#fff0f4}.matrix.shared{color:var(--shared);background:#f1f2ff}
+.m-label{font:800 12px/1 JetBrains Mono,monospace;text-align:center;margin-bottom:4px}
+.m-row{display:grid;grid-template-columns:repeat(4,1fr);gap:3px}
+.cell{height:22px;border-radius:4px;background:currentColor;opacity:.2}
+.cell:nth-child(2n){opacity:.36}.cell:nth-child(3n){opacity:.58}.cell:nth-child(5n){opacity:.74}
+.thin .cell{height:16px}.tall .cell{height:30px}
+.tokens{display:flex;gap:5px;align-items:end;justify-content:center;flex-wrap:wrap}
+.tok{width:38px;height:38px;border-radius:6px;border:2px solid #d9d4ca;background:#fff;display:flex;align-items:center;justify-content:center;font:800 11px JetBrains Mono,monospace;color:#5b5b66;position:relative}
+.tok.q{border-color:var(--q);background:#eaf2ff;color:var(--q)}.tok.local{border-color:var(--local);background:#fff0f5;color:var(--local)}.tok.c4{border-color:var(--c4);background:#e8fbfb;color:#087b7e}.tok.c128{border-color:var(--c128);background:#fff2e8;color:#9a4312}.tok.shared{border-color:var(--shared);background:#eff0ff;color:var(--shared)}
+.tok.fade{opacity:.26}.tok.big{width:70px}.tok.wide{width:95px}.tok:after{content:attr(data-mini);position:absolute;bottom:-17px;left:50%;transform:translateX(-50%);font:700 9px JetBrains Mono,monospace;color:var(--muted);white-space:nowrap}
+.caption{font-size:12px;text-transform:uppercase;letter-spacing:.13em;color:var(--muted);font-weight:800;text-align:center;margin-top:18px}
+.mini-note{font:700 12px JetBrains Mono,monospace;color:var(--muted);text-align:center;margin-top:10px}
+.plain-note{font-size:14px;color:#4b4f58;text-align:center;max-width:820px;margin:14px auto 0}
+.formula-line{font:800 13px JetBrains Mono,monospace;color:#2f3140;background:#f8f6ef;border:1px solid var(--line);border-radius:7px;padding:12px;margin-top:12px;text-align:center;overflow-x:auto}
+.formula-line strong{color:var(--shared)}
+.fork{display:grid;grid-template-columns:1fr auto 1fr;gap:14px;align-items:start;margin-top:18px}
+.branch{border:1px solid var(--line);border-radius:8px;padding:14px;background:#fff}
+.branch h4{font-size:12px;text-transform:uppercase;letter-spacing:.12em;margin-bottom:12px}
+.weight-row{display:grid;grid-template-columns:44px 1fr 52px;gap:8px;align-items:center;margin:7px 0}
+.weight-row b{font:800 11px JetBrains Mono,monospace;color:#555563}
+.wtrack{height:16px;background:#eee9df;border-radius:99px;overflow:hidden}
+.wbar{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--c4),#60d6d8)}
+.wbar.orange{background:linear-gradient(90deg,var(--c128),#f3a66f)}
+.weight-row span{font:800 10px JetBrains Mono,monospace;color:var(--muted)}
+.pipe{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:16px}
+.pipe-step{min-height:82px;border:1px solid var(--line);border-radius:7px;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:10px}
+.pipe-step b{font:900 12px JetBrains Mono,monospace;margin-bottom:7px}.pipe-step span{font-size:12px;color:var(--muted);font-weight:700}
+.merge-demo{position:relative;min-height:170px;margin-top:16px;border:1px solid var(--line);border-radius:8px;background:linear-gradient(180deg,#fff,#faf8f1);overflow:hidden}
+.merge-item{position:absolute;width:72px;height:40px;border-radius:7px;display:flex;align-items:center;justify-content:center;font:900 12px JetBrains Mono,monospace}
+.merge-k{left:12%;top:38px;background:#dff8ed;border:2px solid var(--k);color:var(--k);animation:mergeK 3s ease-in-out infinite}
+.merge-v{left:12%;bottom:38px;background:#ece4ff;border:2px solid var(--v);color:var(--v);animation:mergeV 3s ease-in-out infinite}
+.merge-s{right:12%;top:65px;background:#e3e5ff;border:2px solid var(--shared);color:var(--shared);animation:pulseS 3s ease-in-out infinite}
+.merge-line{position:absolute;left:31%;right:31%;height:2px;background:var(--line)}
+.merge-line.one{top:58px;transform:rotate(12deg)}.merge-line.two{bottom:58px;transform:rotate(-12deg)}
+.anim-read{animation:pulseS 2.4s ease-in-out infinite}.anim-fill{animation:fillBar 2.6s ease-in-out infinite}
+.checkline{display:grid;grid-template-columns:120px 1fr;gap:10px;align-items:center;margin:10px 0}
+.checkline b{font:900 12px JetBrains Mono,monospace}.safe{color:#0a8063}.blocked{color:#b42343}
+.compare{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:24px}
+.panel{border:1px solid var(--line);border-radius:8px;padding:18px;background:#fff}
+.panel h3{font-size:14px;text-transform:uppercase;letter-spacing:.13em;margin-bottom:14px}
+.cache-row{display:grid;grid-template-columns:72px 1fr;gap:10px;align-items:center;margin:8px 0}
+.cache-row b{font:800 11px JetBrains Mono,monospace}
+.cache-slots{display:flex;gap:4px;flex-wrap:wrap}
+.slot{height:24px;width:28px;border-radius:4px;background:#e7e7eb;border:1px solid #d5d5dd}
+.slot.k{background:#dff8ed;border-color:#8bd8bb}.slot.v{background:#ece4ff;border-color:#baa4f8}.slot.shared{background:#e3e5ff;border-color:#9498ee}.slot.c4{width:38px;background:#d9f8f8;border-color:#83d8da}.slot.c128{width:74px;background:#ffe6d2;border-color:#f0ad79}.slot.local{background:#ffe0ea;border-color:#f59ab6}
+.brace{height:18px;border:2px solid var(--line);border-top:0;border-radius:0 0 12px 12px;margin:8px auto 0;width:78%;position:relative}
+.brace:after{content:attr(data-label);position:absolute;left:50%;top:11px;transform:translateX(-50%);background:#fff;padding:0 8px;font:800 10px JetBrains Mono,monospace;color:var(--muted);white-space:nowrap}
+.layer-stack{display:grid;gap:7px;margin-top:16px}
+.layer{display:grid;grid-template-columns:76px 1fr 110px;gap:10px;align-items:center;border:1px solid var(--line);border-radius:6px;padding:8px;background:#fff}
+.layer b{font:800 11px JetBrains Mono,monospace;color:#555563}.layer-name{height:18px;border-radius:4px}.layer-name.c4{background:linear-gradient(90deg,var(--c4),#d9f8f8)}.layer-name.c128{background:linear-gradient(90deg,var(--c128),#ffe6d2)}.layer-name.local{background:linear-gradient(90deg,var(--local),#ffe0ea)}
+.tag{font:800 10px JetBrains Mono,monospace;border-radius:99px;padding:5px 8px;text-align:center}.tag.c4{background:#d9f8f8;color:#087b7e}.tag.c128{background:#ffe6d2;color:#9a4312}.tag.local{background:#ffe0ea;color:#b51647}.tag.shared{background:#e3e5ff;color:var(--shared)}
+.big-equation{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:14px;align-items:center;margin-top:22px}
+.radar{position:relative;min-height:310px;border:1px solid var(--line);border-radius:8px;background:radial-gradient(circle at center,#fff 0,#fff 28%,#f7f3ea 29%,#f7f3ea 30%,#fff 31%,#fff 51%,#f7f3ea 52%,#f7f3ea 53%,#fff 54%);overflow:hidden}
+.needle{position:absolute;left:50%;top:50%;height:2px;transform-origin:left center;background:var(--shared);opacity:.65}
+.needle.n1{width:43%;transform:rotate(205deg)}.needle.n2{width:37%;transform:rotate(235deg)}.needle.n3{width:33%;transform:rotate(260deg)}.needle.n4{width:28%;transform:rotate(285deg)}.needle.n5{width:19%;transform:rotate(318deg);background:var(--local);height:3px;opacity:.95}
+.center-q{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:62px;height:62px;border-radius:50%;background:#eaf2ff;border:3px solid var(--q);display:flex;align-items:center;justify-content:center;font:900 14px JetBrains Mono,monospace;color:var(--q);z-index:3}
+.dot{position:absolute;width:52px;height:34px;border-radius:6px;border:2px solid var(--shared);background:#eff0ff;color:var(--shared);font:800 9px JetBrains Mono,monospace;display:flex;align-items:center;justify-content:center}
+.dot.local{border-color:var(--local);background:#fff0f5;color:var(--local)}
+.d1{left:13%;top:34%}.d2{left:20%;top:68%}.d3{left:47%;top:82%}.d4{right:16%;top:62%}.d5{right:25%;top:34%}
+.d6{left:35%;top:18%}.d7{right:34%;top:18%}.d8{left:33%;bottom:16%}.d9{right:32%;bottom:16%}
+.needle.n6{width:25%;transform:rotate(235deg);background:var(--k)}.needle.n7{width:25%;transform:rotate(305deg);background:var(--v)}.needle.n8{width:28%;transform:rotate(90deg);background:var(--shared)}.needle.n9{width:30%;transform:rotate(150deg);background:var(--c4)}
+.scene-label{position:absolute;left:18px;top:14px;font:900 11px JetBrains Mono,monospace;color:var(--muted);background:rgba(255,255,255,.8);padding:6px 8px;border-radius:99px;border:1px solid var(--line)}
+.story-text{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:16px}
+.story-card{background:#fff;border:1px solid var(--line);border-radius:8px;padding:14px}.story-card b{display:block;font-size:12px;text-transform:uppercase;letter-spacing:.12em;margin-bottom:7px}.story-card p{font-size:13px;color:#4b4f58;margin:0}
+.timeline{display:grid;grid-template-columns:1fr 1.15fr .9fr auto;gap:10px;align-items:stretch;margin-top:18px}
+.zone{border:1px solid var(--line);border-radius:8px;background:#fff;padding:12px;min-height:112px}
+.zone b{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.12em;margin-bottom:10px;color:#4b4f58}
+.zone.far{background:#fff7ef}.zone.mid{background:#ecfbfb}.zone.near{background:#fff3f7}.zone.query{display:flex;align-items:center;justify-content:center;background:#eef5ff}
+.zone .tokens{justify-content:flex-start}
+.tiny{width:28px;height:30px;font-size:9px}
+.compress-demo{display:grid;grid-template-columns:1.2fr auto .8fr;gap:14px;align-items:center;margin-top:16px}
+.pool{border:1px solid var(--line);border-radius:8px;padding:14px;background:#fff}
+.pool-title{font:900 11px JetBrains Mono,monospace;color:#4b4f58;margin-bottom:10px;text-align:center}
+.pool-band{position:relative;border:1px dashed var(--line);border-radius:8px;padding:12px;margin-top:14px;background:#faf8f1}
+.pool-band:before{content:attr(data-label);position:absolute;left:12px;top:-10px;background:#fff;padding:0 8px;font:900 10px JetBrains Mono,monospace;color:var(--muted)}
+.weight-dots{display:flex;gap:4px;justify-content:center;margin-top:10px}
+.weight-dots i{width:18px;height:18px;border-radius:50%;background:var(--c4);opacity:.35;animation:fillBar 2.8s ease-in-out infinite}.weight-dots i:nth-child(2n){opacity:.55}.weight-dots i:nth-child(3n){opacity:.8}
+.weight-dots.orange i{background:var(--c128)}
+.legend{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:16px}.legend span{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:800;color:var(--muted)}.swatch{width:16px;height:10px;border-radius:3px}.swatch.q{background:var(--q)}.swatch.k{background:var(--k)}.swatch.v{background:var(--v)}.swatch.shared{background:var(--shared)}.swatch.c4{background:var(--c4)}.swatch.c128{background:var(--c128)}.swatch.local{background:var(--local)}
+.fade-in{opacity:0;transform:translateY(16px);transition:opacity .55s ease,transform .55s ease}.fade-in.visible{opacity:1;transform:translateY(0)}
+footer{padding:34px 24px;text-align:center;background:var(--wash);font-size:12px;color:var(--muted)}
+@media(max-width:820px){
+  .links{display:none}.grid2,.grid3,.compare,.big-equation,.fork,.pipe,.story-text,.timeline,.compress-demo{grid-template-columns:1fr}.arrow{transform:rotate(90deg)}.layer{grid-template-columns:58px 1fr 90px}.tok{width:32px;height:34px}.stage{padding:16px}
+}
+@keyframes mergeK{0%,100%{transform:translateX(0)}50%{transform:translateX(145px) translateY(28px);opacity:.18}}
+@keyframes mergeV{0%,100%{transform:translateX(0)}50%{transform:translateX(145px) translateY(-28px);opacity:.18}}
+@keyframes pulseS{0%,100%{transform:scale(1);box-shadow:none}50%{transform:scale(1.04);box-shadow:0 0 0 7px rgba(52,56,189,.1)}}
+@keyframes fillBar{0%,100%{filter:saturate(.7);opacity:.55}50%{filter:saturate(1.2);opacity:1}}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <div class="brand">DeepSeek V4 KV 缓存</div>
+    <div class="links">
+      <a href="#qkv">Q K V</a>
+      <a href="#normal">普通缓存</a>
+      <a href="#shared">共享 KV</a>
+      <a href="#compress">压缩</a>
+      <a href="#sparse">稀疏</a>
+      <a href="#local">局部窗口</a>
+      <a href="#layers">层</a>
+      <a href="#difference">区别</a>
+      <a href="#benefits">收益</a>
+    </div>
+  </div>
+</nav>
+
+<section class="hero">
+  <div class="wrap fade-in">
+    <div class="eyebrow">可视化 walkthrough</div>
+    <h1>DeepSeek V4<br>KV 缓存</h1>
+    <p class="sub">一个以查询为中心的故事：一个新 token 提问，许多旧 token 回答。DeepSeek V4 改变了这些旧 token 存储了什么，以及查询必须读取多少历史。</p>
+    <div class="legend">
+      <span><i class="swatch q"></i>查询</span><span><i class="swatch k"></i>键</span><span><i class="swatch v"></i>值</span>
+      <span><i class="swatch shared"></i>共享 K/V</span><span><i class="swatch c4"></i>c4a</span><span><i class="swatch c128"></i>c128a</span><span><i class="swatch local"></i>局部</span>
+    </div>
+  </div>
+</section>
+
+<section id="story" class="alt">
+  <div class="wrap">
+    <div class="fade-in">
+      <div class="eyebrow">故事</div>
+      <h2>新查询向过去求助</h2>
+      <div class="stage">
+        <div class="stage-title"><b>一个解码步</b><span>当前查询在中心</span></div>
+        <div class="radar">
+          <div class="scene-label">基础注意力图景</div>
+          <i class="needle n1 anim-read"></i><i class="needle n2 anim-read"></i><i class="needle n3 anim-read"></i><i class="needle n4 anim-read"></i><i class="needle n5 anim-read"></i>
+          <div class="center-q">Q</div>
+          <div class="dot d1">t0</div><div class="dot d2">t1</div><div class="dot d3">t2</div><div class="dot d4">t3</div><div class="dot d5">t4</div>
+        </div>
+        <div class="story-text">
+          <div class="story-card"><b>1. 查询</b><p>最新的 token 生成一个查询向量。它在问：哪些旧 token 此刻重要？</p></div>
+          <div class="story-card"><b>2. 记忆</b><p>每个旧 token 都留下了缓存信息，所以查询不必重新计算整个过去。</p></div>
+          <div class="story-card"><b>3. DeepSeek 的改变</b><p>DeepSeek V4 让每个旧 token 留下更少的记忆，然后把更旧的记忆汇总成更大的块。</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="qkv" class="alt">
+  <div class="wrap">
+    <div class="fade-in">
+      <div class="eyebrow">第 1 步</div>
+      <h2>一个 token 变成三种视图</h2>
+      <div class="stage">
+        <div class="stage-title"><b>矩阵层面</b><span>token t</span></div>
+        <div class="flow">
+          <div class="matrix thin">
+            <div class="m-label">x</div>
+            <div class="m-row"><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i></div>
+            <div class="m-row"><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i></div>
+          </div>
+          <div class="arrow">x Wq</div>
+          <div class="matrix q">
+            <div class="m-label">Q</div>
+            <div class="m-row"><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i></div>
+            <div class="m-row"><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i></div>
+          </div>
+          <div class="arrow">x Wk</div>
+          <div class="matrix k">
+            <div class="m-label">K</div>
+            <div class="m-row"><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i></div>
+            <div class="m-row"><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i></div>
+          </div>
+          <div class="arrow">x Wv</div>
+          <div class="matrix v">
+            <div class="m-label">V</div>
+            <div class="m-row"><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i></div>
+            <div class="m-row"><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i></div>
+          </div>
+        </div>
+        <div class="caption">Q 提问。K 匹配。V 承载内容。</div>
+        <div class="fork">
+          <div class="branch">
+            <h4 style="color:var(--score)">分数路径</h4>
+            <div class="flow">
+              <span class="tag shared">Q</span><div class="arrow">点积</div><span class="tag shared" style="background:#dff8ed;color:var(--k)">K</span>
+            </div>
+            <div class="formula-line">score(token j) = Q_i dot K_j</div>
+          </div>
+          <div class="arrow" style="align-self:center">然后</div>
+          <div class="branch">
+            <h4 style="color:var(--out)">内容路径</h4>
+            <div class="flow">
+              <span class="tag shared" style="background:#fff7e6;color:var(--score)">注意力权重</span><div class="arrow">混合</div><span class="tag shared" style="background:#ece4ff;color:var(--v)">V</span>
+            </div>
+            <div class="formula-line">output = V_j 的加权和</div>
+          </div>
+        </div>
+        <p class="plain-note">在常规设计中，K 和 V 是两个不同的可学习投影。缓存要同时存两者，因为未来的 token 需要再次走这两条路径。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="normal">
+  <div class="wrap">
+    <div class="fade-in">
+      <div class="eyebrow">第 2 步</div>
+      <h2>基础 KV 缓存存储每个旧的 K 和 V</h2>
+      <div class="stage">
+        <div class="stage-title"><b>解码步</b><span>新 token t8</span></div>
+        <div class="radar">
+          <div class="scene-label">基础 KV 缓存视图</div>
+          <i class="needle n6 anim-read"></i><i class="needle n7 anim-read"></i><i class="needle n8 anim-read"></i><i class="needle n9 anim-read"></i>
+          <div class="center-q">Q8</div>
+          <div class="dot d6" style="border-color:var(--k);background:#ecfdf5;color:var(--k)">K0</div>
+          <div class="dot d7" style="border-color:var(--v);background:#f6f0ff;color:var(--v)">V0</div>
+          <div class="dot d8" style="border-color:var(--k);background:#ecfdf5;color:var(--k)">K7</div>
+          <div class="dot d9" style="border-color:var(--v);background:#f6f0ff;color:var(--v)">V7</div>
+        </div>
+        <p class="plain-note">在基础 transformer 中，每个旧 token 留下两块记忆。查询先用 K 块判断相关性，再用 V 块收集信息。</p>
+        <div class="big-equation">
+          <div class="matrix q">
+            <div class="m-label">Q8</div>
+            <div class="m-row"><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i></div>
+            <div class="m-row"><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i></div>
+          </div>
+          <div class="arrow">查看</div>
+          <div>
+            <div class="cache-row"><b>K 缓存</b><div class="cache-slots"><i class="slot k"></i><i class="slot k"></i><i class="slot k"></i><i class="slot k"></i><i class="slot k"></i><i class="slot k"></i><i class="slot k"></i><i class="slot k"></i></div></div>
+            <div class="cache-row"><b>V 缓存</b><div class="cache-slots"><i class="slot v"></i><i class="slot v"></i><i class="slot v"></i><i class="slot v"></i><i class="slot v"></i><i class="slot v"></i><i class="slot v"></i><i class="slot v"></i></div></div>
+          </div>
+          <div class="arrow">返回</div>
+          <div class="matrix o">
+            <div class="m-label">O8</div>
+            <div class="m-row"><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i></div>
+            <div class="m-row"><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i></div>
+          </div>
+        </div>
+        <div class="caption">每个旧 token 两个缓存块：一个 K 块和一个 V 块。</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="shared" class="alt">
+  <div class="wrap">
+    <div class="fade-in">
+      <div class="eyebrow">第 3 步</div>
+      <h2>DeepSeek V4 让一个向量同时承担两个职责</h2>
+      <div class="compare">
+        <div class="panel">
+          <h3>之前：分离的投影</h3>
+          <div class="cache-row"><b>token 1</b><div class="cache-slots"><i class="slot k"></i><i class="slot v"></i></div></div>
+          <div class="cache-row"><b>token 2</b><div class="cache-slots"><i class="slot k"></i><i class="slot v"></i></div></div>
+          <div class="cache-row"><b>token 3</b><div class="cache-slots"><i class="slot k"></i><i class="slot v"></i></div></div>
+          <div class="cache-row"><b>token 4</b><div class="cache-slots"><i class="slot k"></i><i class="slot v"></i></div></div>
+          <div class="brace" data-label="K + V"></div>
+          <div class="formula-line">x_j -> K_j 和 V_j</div>
+        </div>
+        <div class="panel">
+          <h3>之后：共享表示</h3>
+          <div class="cache-row"><b>token 1</b><div class="cache-slots"><i class="slot shared"></i></div></div>
+          <div class="cache-row"><b>token 2</b><div class="cache-slots"><i class="slot shared"></i></div></div>
+          <div class="cache-row"><b>token 3</b><div class="cache-slots"><i class="slot shared"></i></div></div>
+          <div class="cache-row"><b>token 4</b><div class="cache-slots"><i class="slot shared"></i></div></div>
+          <div class="brace" data-label="共享 K/V"></div>
+          <div class="formula-line">x_j -> <strong>S_j</strong></div>
+        </div>
+      </div>
+      <div class="stage">
+        <div class="stage-title"><b>「共享」是什么意思</b><span>不是指针共享；是表示共享</span></div>
+        <div class="radar">
+          <div class="scene-label">DeepSeek V4 共享缓存视图</div>
+          <i class="needle n1 anim-read"></i><i class="needle n2 anim-read"></i><i class="needle n3 anim-read"></i><i class="needle n4 anim-read"></i><i class="needle n5 anim-read"></i>
+          <div class="center-q">Q</div>
+          <div class="dot d1 anim-read">S0</div><div class="dot d2 anim-read">S1</div><div class="dot d3 anim-read">S2</div><div class="dot d4 anim-read">S3</div><div class="dot d5 anim-read">S4</div>
+        </div>
+        <p class="plain-note">现在查询与每个旧 token 的一个共享记忆对象对话。这个对象仍然是模型学出来的；它不是训练之后再加上的有损技巧。</p>
+        <div class="stage" style="box-shadow:none;margin-top:18px">
+          <div class="stage-title"><b>矩阵层面的答案</b><span>Wk/Wv 改了什么？</span></div>
+          <div class="compare">
+            <div class="panel">
+              <h3>传统 KV 缓存</h3>
+              <div class="flow">
+                <div class="matrix thin"><div class="m-label">x_j</div><div class="m-row"><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i></div></div>
+                <div class="arrow">Wk</div>
+                <div class="matrix k"><div class="m-label">K_j</div><div class="m-row"><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i></div></div>
+                <div class="arrow">和 Wv</div>
+                <div class="matrix v"><div class="m-label">V_j</div><div class="m-row"><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i></div></div>
+              </div>
+              <div class="formula-line">缓存存储：K_j 加上 V_j</div>
+            </div>
+            <div class="panel">
+              <h3>DeepSeek V4 共享缓存</h3>
+              <div class="flow">
+                <div class="matrix thin"><div class="m-label">x_j</div><div class="m-row"><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i></div></div>
+                <div class="arrow">Ws</div>
+                <div class="matrix shared anim-read"><div class="m-label">S_j</div><div class="m-row"><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i></div></div>
+              </div>
+              <div class="formula-line">缓存存储：一个共享的 S_j</div>
+            </div>
+          </div>
+          <div class="story-text">
+            <div class="story-card"><b>不是复制</b><p>它不是事后「把 K 拿过来复用作 V」。模型是用共享的缓存状态训练出来的。</p></div>
+            <div class="story-card"><b>一个缓存状态</b><p>对学生而言，可以这样想：两条产生缓存的矩阵，变成了一条产生缓存的路径，`x_j -> S_j`。</p></div>
+            <div class="story-card"><b>两个角色</b><p>同一个 `S_j` 先与查询比较以决定相关性，再作为内容混入输出。</p></div>
+          </div>
+        </div>
+        <div class="fork">
+          <div class="branch">
+            <h4 style="color:var(--k)">作为键</h4>
+            <div class="flow">
+              <div class="matrix shared"><div class="m-label">S_j</div><div class="m-row"><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i></div></div>
+              <div class="arrow">与 Q 比较</div>
+              <div class="matrix k"><div class="m-label">类似键</div><div class="m-row"><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i></div></div>
+            </div>
+            <div class="formula-line">score = Q_i dot S_j</div>
+          </div>
+          <div class="arrow" style="align-self:center">同一个 S_j</div>
+          <div class="branch">
+            <h4 style="color:var(--v)">作为值</h4>
+            <div class="flow">
+              <div class="matrix shared"><div class="m-label">S_j</div><div class="m-row"><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i></div></div>
+              <div class="arrow">按权重混合</div>
+              <div class="matrix v"><div class="m-label">类似内容</div><div class="m-row"><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i></div></div>
+            </div>
+            <div class="formula-line">输出使用同一个 S_j</div>
+          </div>
+        </div>
+        <p class="plain-note">模型学到一个对匹配和内容都有用的共享状态向量。这就是为什么缓存每个 token 可以只存一个块，而不是两个。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="compress" class="alt">
+  <div class="wrap">
+    <div class="fade-in">
+      <div class="eyebrow">第 4 步</div>
+      <h2>更旧的共享状态被压缩；最新的状态保持精确</h2>
+      <div class="stage">
+        <div class="stage-title"><b>从这里开始</b><span>每个旧 token 先有一个共享状态 S</span></div>
+        <div class="timeline">
+          <div class="zone far">
+            <b>久远的过去</b>
+            <div class="tokens"><i class="tok shared tiny">S0</i><i class="tok shared tiny">S1</i><i class="tok shared tiny">S2</i><i class="tok shared tiny">...</i><i class="tok shared tiny">S127</i></div>
+          </div>
+          <div class="zone mid">
+            <b>中间的过去</b>
+            <div class="tokens"><i class="tok shared tiny">S128</i><i class="tok shared tiny">S129</i><i class="tok shared tiny">S130</i><i class="tok shared tiny">...</i><i class="tok shared tiny">S255</i></div>
+          </div>
+          <div class="zone near">
+            <b>最近的过去</b>
+            <div class="tokens"><i class="tok shared tiny">S256</i><i class="tok shared tiny">S257</i><i class="tok shared tiny">S258</i><i class="tok shared tiny">S259</i></div>
+          </div>
+          <div class="zone query"><i class="tok q">Q</i></div>
+        </div>
+        <p class="plain-note">压缩的是什么？是共享状态 `S`，不是查询。DeepSeek V4 已经用共享状态替换了每个旧 token 分离的 K 和 V。现在压缩再把旧的 `S` 状态分组为摘要块。</p>
+      </div>
+      <div class="stage">
+        <div class="stage-title"><b>C4A：中等压缩</b><span>8 个共享状态混合成 1 个块；下一个块移动 4 位</span></div>
+        <div class="compress-demo">
+          <div class="pool">
+            <div class="pool-title">C4A 之前的共享状态</div>
+            <div class="pool-band" data-label="C4A[1] 查看 8 个状态">
+              <div class="tokens"><i class="tok shared">S0</i><i class="tok shared">S1</i><i class="tok shared">S2</i><i class="tok shared">S3</i><i class="tok shared">S4</i><i class="tok shared">S5</i><i class="tok shared">S6</i><i class="tok shared">S7</i></div>
+              <div class="weight-dots"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+            </div>
+            <div class="pool-band" data-label="C4A[2] 重叠并移动 4 位">
+              <div class="tokens"><i class="tok fade">S0</i><i class="tok fade">S1</i><i class="tok fade">S2</i><i class="tok fade">S3</i><i class="tok shared">S4</i><i class="tok shared">S5</i><i class="tok shared">S6</i><i class="tok shared">S7</i><i class="tok shared">S8</i><i class="tok shared">S9</i><i class="tok shared">S10</i><i class="tok shared">S11</i></div>
+              <div class="weight-dots"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+            </div>
+          </div>
+          <div class="arrow">可学习的加权混合</div>
+          <div class="pool">
+            <div class="pool-title">压缩后的 C4A 缓存</div>
+            <div class="tokens"><i class="tok c4 wide anim-read" data-mini="来自 S0..S7">C4A[1]</i><i class="tok c4 wide anim-read" data-mini="来自 S4..S11">C4A[2]</i></div>
+            <p class="plain-note">C4A 不是简单的平均。模型会学习每个 `S` 状态对摘要的贡献强度。</p>
+          </div>
+        </div>
+        <div class="formula-line">C4A：8 个共享状态 -> 1 个压缩块，然后向前移动 4 个状态</div>
+      </div>
+      <div class="stage">
+        <div class="stage-title"><b>C128A：重度压缩</b><span>128 个共享状态混合成 1 个块；下一个块移动 128 位</span></div>
+        <div class="compress-demo">
+          <div class="pool">
+            <div class="pool-title">C128A 之前的共享状态</div>
+            <div class="pool-band" data-label="C128A[0] 查看 128 个状态">
+              <div class="tokens"><i class="tok shared">S0</i><i class="tok shared">S1</i><i class="tok shared">S2</i><i class="tok shared">...</i><i class="tok shared">S126</i><i class="tok shared">S127</i></div>
+              <div class="weight-dots orange"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+            </div>
+            <div class="pool-band" data-label="C128A[1] 移动到接下来的 128 个状态">
+              <div class="tokens"><i class="tok shared">S128</i><i class="tok shared">S129</i><i class="tok shared">S130</i><i class="tok shared">...</i><i class="tok shared">S254</i><i class="tok shared">S255</i></div>
+              <div class="weight-dots orange"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+            </div>
+          </div>
+          <div class="arrow">强可学习混合</div>
+          <div class="pool">
+            <div class="pool-title">压缩后的 C128A 缓存</div>
+            <div class="tokens"><i class="tok c128 wide anim-read" data-mini="来自 128 个状态">C128A[0]</i><i class="tok c128 wide anim-read" data-mini="接下来的 128 个">C128A[1]</i></div>
+            <p class="plain-note">C128A 用于久远的历史：它保留长程上下文的存在感，而不必精确存储每个旧 token。</p>
+          </div>
+        </div>
+        <div class="formula-line">C128A：128 个共享状态 -> 1 个压缩块，然后向前跳 128 个状态</div>
+      </div>
+      <div class="stage">
+        <div class="stage-title"><b>压缩后查询的记忆地图</b><span>久远 = C128A，中间 = C4A，最新 = 精确 S</span></div>
+        <div class="timeline">
+          <div class="zone far">
+            <b>久远的过去：重度压缩</b>
+            <div class="tokens"><i class="tok c128 wide">C128A[0]</i><i class="tok c128 wide">C128A[1]</i></div>
+          </div>
+          <div class="zone mid">
+            <b>中间的过去：中度压缩</b>
+            <div class="tokens"><i class="tok c4 wide">C4A[63]</i><i class="tok c4 wide">C4A[64]</i><i class="tok c4 wide">C4A[65]</i></div>
+          </div>
+          <div class="zone near">
+            <b>最近的过去：未压缩</b>
+            <div class="tokens"><i class="tok shared tiny">S(t-4)</i><i class="tok shared tiny">S(t-3)</i><i class="tok shared tiny">S(t-2)</i><i class="tok shared tiny">S(t-1)</i></div>
+          </div>
+          <div class="zone query"><i class="tok q">Q</i></div>
+        </div>
+        <div class="caption">最新的 token 被刻意不压缩。它们保持精确，因为查询附近的局部细节最重要。</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="sparse" class="alt">
+  <div class="wrap">
+    <div class="fade-in">
+      <div class="eyebrow">第 5 步</div>
+      <h2>现在查询读取一张混合的记忆地图</h2>
+      <div class="grid2">
+        <div class="stage">
+          <div class="stage-title"><b>C4A：选择性读取</b><span>许多 C4A 块 -> 选择有用的那些</span></div>
+          <div class="tokens">
+            <i class="tok c4 wide">C4A0</i><i class="tok c4 wide fade">C4A1</i><i class="tok c4 wide">C4A2</i><i class="tok c4 wide fade">C4A3</i><i class="tok c4 wide fade">C4A4</i><i class="tok c4 wide">C4A5</i><i class="tok c4 wide fade">C4A6</i><i class="tok c4 wide">C4A7</i>
+          </div>
+          <div class="arrow" style="text-align:center;margin:18px 0">可学习索引器给压缩块打分</div>
+          <div class="weight-row"><b>C4A0</b><div class="wtrack"><i class="wbar" style="width:84%"></i></div><span>读取</span></div>
+          <div class="weight-row"><b>C4A1</b><div class="wtrack"><i class="wbar" style="width:18%"></i></div><span>跳过</span></div>
+          <div class="weight-row"><b>C4A2</b><div class="wtrack"><i class="wbar" style="width:76%"></i></div><span>读取</span></div>
+          <div class="weight-row"><b>C4A5</b><div class="wtrack"><i class="wbar" style="width:91%"></i></div><span>读取</span></div>
+          <div class="formula-line">查询读取选中的 C4A 摘要，而不是每个中间历史块</div>
+        </div>
+        <div class="stage">
+          <div class="stage-title"><b>C128A：密集摘要读取</b><span>少量 C128A 块 -> 全部读取</span></div>
+          <div class="tokens">
+            <i class="tok c128 wide">C128A0</i><i class="tok c128 wide">C128A1</i><i class="tok c128 wide">C128A2</i><i class="tok c128 wide">C128A3</i><i class="tok q">Q</i>
+          </div>
+          <div class="arrow" style="text-align:center;margin:18px 0">已经足够短</div>
+          <div class="cache-row"><b>读取</b><div class="cache-slots"><i class="slot c128"></i><i class="slot c128"></i><i class="slot c128"></i><i class="slot c128"></i><i class="slot c128"></i></div></div>
+          <div class="formula-line">查询读取所有 C128A 摘要</div>
+          <p class="plain-note">C128A 压缩得非常激进，剩下的久远历史序列很小。模型可以负担得起读取所有这些摘要。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="local" class="alt">
+  <div class="wrap">
+    <div class="fade-in">
+      <div class="eyebrow">第 6 步</div>
+      <h2>最新的 token 保持未压缩</h2>
+      <div class="stage">
+        <div class="stage-title"><b>对于当前查询</b><span>压缩的历史 + 短的局部窗口</span></div>
+        <div class="tokens">
+          <i class="tok c128 wide" data-mini="久远过去">C128A[0]</i>
+          <i class="tok c128 wide" data-mini="久远过去">C128A[1]</i>
+          <i class="tok c4 wide" data-mini="临近过去">C4A[64]</i>
+          <i class="tok c4 wide" data-mini="临近过去">C4A[65]</i>
+          <i class="tok local">t-5</i><i class="tok local">t-4</i><i class="tok local">t-3</i><i class="tok local">t-2</i><i class="tok local">t-1</i>
+          <i class="tok q">Q</i>
+        </div>
+        <div class="radar" style="margin-top:38px">
+          <i class="needle n1"></i><i class="needle n2"></i><i class="needle n3"></i><i class="needle n4"></i><i class="needle n5"></i>
+          <div class="center-q">Q</div>
+          <div class="dot d1">C128A</div><div class="dot d2">C128A</div><div class="dot d3">C4A</div><div class="dot d4">C4A</div><div class="dot local d5">局部</div>
+        </div>
+        <div class="caption">查询可以同时看到汇总的长历史和精确的局部细节。</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="layers">
+  <div class="wrap">
+    <div class="fade-in">
+      <div class="eyebrow">第 7 步</div>
+      <h2>不同的层保留不同的记忆</h2>
+      <div class="grid2">
+        <div class="stage">
+          <div class="stage-title"><b>层堆叠</b><span>概念模式</span></div>
+          <div class="layer-stack">
+            <div class="layer"><b>L01</b><i class="layer-name c4"></i><span class="tag c4">c4a</span></div>
+            <div class="layer"><b>L02</b><i class="layer-name c128"></i><span class="tag c128">c128a</span></div>
+            <div class="layer"><b>L03</b><i class="layer-name c4"></i><span class="tag c4">c4a</span></div>
+            <div class="layer"><b>L04</b><i class="layer-name local"></i><span class="tag local">局部</span></div>
+            <div class="layer"><b>L05</b><i class="layer-name c128"></i><span class="tag c128">c128a</span></div>
+            <div class="layer"><b>L06</b><i class="layer-name c4"></i><span class="tag c4">c4a</span></div>
+            <div class="layer"><b>...</b><i class="layer-name c128"></i><span class="tag c128">更多</span></div>
+          </div>
+        </div>
+        <div class="stage">
+          <div class="stage-title"><b>每层接收什么</b><span>相同的 token，不同的视角</span></div>
+          <div class="cache-row"><b>c4a</b><div class="cache-slots"><i class="slot c4"></i><i class="slot c4"></i><i class="slot c4"></i><i class="slot c4"></i><i class="slot local"></i><i class="slot local"></i></div></div>
+          <div class="cache-row"><b>c128a</b><div class="cache-slots"><i class="slot c128"></i><i class="slot local"></i><i class="slot local"></i><i class="slot local"></i></div></div>
+          <div class="cache-row"><b>局部</b><div class="cache-slots"><i class="slot local"></i><i class="slot local"></i><i class="slot local"></i><i class="slot local"></i><i class="slot local"></i><i class="slot local"></i></div></div>
+          <div class="mini-note">概念上：c4a 层保留中度压缩的可搜索记忆，c128a 层保留重度压缩的密集记忆，局部层只保留精确的近期 token。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="difference" class="alt">
+  <div class="wrap">
+    <div class="fade-in">
+      <div class="eyebrow">最终图景</div>
+      <h2>基础 KV 缓存 vs DeepSeek V4 缓存</h2>
+      <div class="compare">
+        <div class="panel">
+          <h3>基础 transformer</h3>
+          <div class="cache-row"><b>K</b><div class="cache-slots"><i class="slot k"></i><i class="slot k"></i><i class="slot k"></i><i class="slot k"></i><i class="slot k"></i><i class="slot k"></i><i class="slot k"></i><i class="slot k"></i><i class="slot k"></i><i class="slot k"></i><i class="slot k"></i><i class="slot k"></i></div></div>
+          <div class="cache-row"><b>V</b><div class="cache-slots"><i class="slot v"></i><i class="slot v"></i><i class="slot v"></i><i class="slot v"></i><i class="slot v"></i><i class="slot v"></i><i class="slot v"></i><i class="slot v"></i><i class="slot v"></i><i class="slot v"></i><i class="slot v"></i><i class="slot v"></i></div></div>
+          <div class="caption">每个旧 token 都有精确的 K 和精确的 V。</div>
+        </div>
+        <div class="panel">
+          <h3>DeepSeek V4</h3>
+          <div class="cache-row"><b>久远</b><div class="cache-slots"><i class="slot c128"></i><i class="slot c128"></i></div></div>
+          <div class="cache-row"><b>中间</b><div class="cache-slots"><i class="slot c4"></i><i class="slot c4"></i><i class="slot c4"></i><i class="slot c4"></i></div></div>
+          <div class="cache-row"><b>临近</b><div class="cache-slots"><i class="slot local"></i><i class="slot local"></i><i class="slot local"></i><i class="slot local"></i></div></div>
+          <div class="caption">共享 K/V，压缩的历史，精确的局部窗口。</div>
+        </div>
+      </div>
+      <div class="stage">
+        <div class="stage-title"><b>记忆思路</b><span>五个动作讲完整个故事</span></div>
+        <div class="pipe">
+          <div class="pipe-step"><b>1</b><span>用一个学到的共享状态 S 替换 K,V</span></div>
+          <div class="pipe-step"><b>2</b><span>用 S 同时做匹配和内容</span></div>
+          <div class="pipe-step"><b>3</b><span>用可学习加权池化压缩旧的 S token</span></div>
+          <div class="pipe-step"><b>4</b><span>稀疏读取 C4A，密集读取 C128A</span></div>
+          <div class="pipe-step"><b>5</b><span>为局部细节保持近期 S token 精确</span></div>
+        </div>
+      </div>
+      <div class="grid2">
+        <div class="stage">
+          <div class="stage-title"><b>动作 1：共享 K 和 V</b><span>两行旧记忆变成一行</span></div>
+          <div class="merge-demo">
+            <i class="merge-line one"></i><i class="merge-line two"></i>
+            <div class="merge-item merge-k">K</div>
+            <div class="merge-item merge-v">V</div>
+            <div class="merge-item merge-s">S</div>
+          </div>
+          <p class="plain-note">不再为每个旧 token 存一个独立的键向量和一个值向量，而是存一个学到的共享向量。这个共享向量经过训练可以同时承担两个角色。</p>
+        </div>
+        <div class="stage">
+          <div class="stage-title"><b>动作 2：压缩旧的共享状态</b><span>许多 S 块变成更少的摘要块</span></div>
+          <div class="cache-row"><b>S token</b><div class="cache-slots"><i class="slot shared anim-read"></i><i class="slot shared anim-read"></i><i class="slot shared anim-read"></i><i class="slot shared anim-read"></i><i class="slot shared anim-read"></i><i class="slot shared anim-read"></i><i class="slot shared anim-read"></i><i class="slot shared anim-read"></i></div></div>
+          <div class="cache-row"><b>C4A</b><div class="cache-slots"><i class="slot c4 anim-read"></i><i class="slot c4 anim-read"></i></div></div>
+          <div class="cache-row"><b>C128A</b><div class="cache-slots"><i class="slot c128 anim-read"></i></div></div>
+          <p class="plain-note">C4A 是用于中程历史的较轻压缩。C128A 是用于极长程历史的较强压缩。</p>
+        </div>
+      </div>
+      <div class="stage">
+        <div class="stage-title"><b>动作 3：查询看到混合记忆地图</b><span>远处是摘要，近处是精确 token</span></div>
+        <div class="radar">
+          <div class="scene-label">DeepSeek V4 视图</div>
+          <i class="needle n1 anim-read"></i><i class="needle n2 anim-read"></i><i class="needle n3 anim-read"></i><i class="needle n4 anim-read"></i><i class="needle n5 anim-read"></i>
+          <div class="center-q">Q</div>
+          <div class="dot d1">C128</div><div class="dot d2">C128</div><div class="dot d3">C4</div><div class="dot d4">C4</div><div class="dot local d5">局部</div>
+        </div>
+        <div class="story-text">
+          <div class="story-card"><b>久远的过去</b><p>存储为重度压缩的 C128A 摘要，让巨大上下文变得可控。</p></div>
+          <div class="story-card"><b>中间的过去</b><p>存储为 C4A 摘要。它们更多，所以模型可以只选择有用的那些。</p></div>
+          <div class="story-card"><b>最近的过去</b><p>以未压缩的局部 token 精确存储，因为附近的细节往往很重要。</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="benefits">
+  <div class="wrap">
+    <div class="fade-in">
+      <div class="eyebrow">为什么这很重要</div>
+      <h2>相比传统 KV 缓存的收益</h2>
+      <div class="story-text">
+        <div class="story-card"><b>每个旧 token 更少内存</b><p>传统缓存同时存储 K 和 V。DeepSeek V4 先存一个共享状态，所以每个旧 token 起步就更便宜。</p></div>
+        <div class="story-card"><b>更旧的历史变得更小</b><p>C4A 和 C128A 把许多共享状态变成更少的摘要块，所以长上下文不会增长得那么快。</p></div>
+        <div class="story-card"><b>近期细节保持精确</b><p>最新的 token 保持未压缩，所以模型在当前查询附近仍然有清晰的局部记忆。</p></div>
+      </div>
+      <div class="stage">
+        <div class="stage-title"><b>内存增长的直觉</b><span>同样的过去，不同的缓存形状</span></div>
+        <div class="compare">
+          <div class="panel">
+            <h3>传统</h3>
+            <div class="cache-row"><b>旧 t0</b><div class="cache-slots"><i class="slot k"></i><i class="slot v"></i></div></div>
+            <div class="cache-row"><b>旧 t1</b><div class="cache-slots"><i class="slot k"></i><i class="slot v"></i></div></div>
+            <div class="cache-row"><b>旧 t2</b><div class="cache-slots"><i class="slot k"></i><i class="slot v"></i></div></div>
+            <div class="cache-row"><b>旧 t3</b><div class="cache-slots"><i class="slot k"></i><i class="slot v"></i></div></div>
+            <div class="formula-line">线性增长：每个 token 增加 K + V</div>
+          </div>
+          <div class="panel">
+            <h3>DeepSeek V4</h3>
+            <div class="cache-row"><b>久远</b><div class="cache-slots"><i class="slot c128"></i></div></div>
+            <div class="cache-row"><b>中间</b><div class="cache-slots"><i class="slot c4"></i><i class="slot c4"></i></div></div>
+            <div class="cache-row"><b>临近</b><div class="cache-slots"><i class="slot shared"></i><i class="slot shared"></i><i class="slot shared"></i></div></div>
+            <div class="formula-line">混合增长：远处是摘要，近处是精确状态</div>
+          </div>
+        </div>
+      </div>
+      <div class="stage">
+        <div class="stage-title"><b>明确的取舍</b><span>为什么不压缩一切？</span></div>
+        <div class="timeline">
+          <div class="zone far"><b>久远过去</b><div class="tokens"><i class="tok c128 wide">C128A</i></div><p class="plain-note">最大程度省内存。</p></div>
+          <div class="zone mid"><b>中间过去</b><div class="tokens"><i class="tok c4 wide">C4A</i><i class="tok c4 wide">C4A</i></div><p class="plain-note">比久远摘要更细。</p></div>
+          <div class="zone near"><b>近期过去</b><div class="tokens"><i class="tok shared tiny">S</i><i class="tok shared tiny">S</i><i class="tok shared tiny">S</i></div><p class="plain-note">精确局部细节。</p></div>
+          <div class="zone query"><i class="tok q">Q</i></div>
+        </div>
+        <div class="caption">主要收益不只是「更小的缓存」，而是一个分级的记忆系统：远处强压缩，中间轻压缩，近处精确记忆。</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  DeepSeek V4 注意力的概念走读。运行时的服务细节被有意省略。
+</footer>
+
+<script>
+const io=new IntersectionObserver((entries)=>{entries.forEach(e=>{if(e.isIntersecting)e.target.classList.add('visible')})},{threshold:.12});
+document.querySelectorAll('.fade-in').forEach(el=>io.observe(el));
+</script>
+</body>
+</html>

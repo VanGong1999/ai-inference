@@ -1,1 +1,2 @@
-https://vizuaraai.github.io/convolution-musical-journey/book.html
+../../docs/book.html
+../../docs/book.zh.html

@@ -28,7 +28,7 @@
 |---|---|
 | [Miro 课程笔记](https://miro.com/app/board/uXjVHZulX3g=/?share_link_id=178385252360) | 本讲板书与笔记 |
 | [Comparison of Modern LLM Architectures](https://sebastianraschka.com/llm-architecture-gallery/) | Sebastian Raschka 的现代 LLM 架构对比（含 MHA/MQA/GQA） |
-| [DeepSeek Sparse Attention 可视化](https://vizuaraai.github.io/DeepSeek-Sparse/) | 稀疏注意力的可视化讲解 |
+| [DeepSeek Sparse Attention 可视化](../../DeepSeek-Sparse/) | 稀疏注意力的可视化讲解 |
 
 ### 代码与作业
 

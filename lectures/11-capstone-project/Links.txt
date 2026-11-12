@@ -1,1 +1,4 @@
-https://github.com/VizuaraAI/infertutor-arena-capstone
+Local Capstone repo: ../10-hardware-labs/infertutor-arena-capstone-main/
+PDFs (local only, gitignored):
+- ../10-hardware-labs/infertutor-arena-capstone-main/InferTutor_Arena_Capstone.pdf
+- ../10-hardware-labs/infertutor-arena-capstone-main/Modal_vLLM_Runbook.pdf

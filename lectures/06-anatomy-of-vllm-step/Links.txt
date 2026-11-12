@@ -1,8 +1,8 @@
 Lecture Notes: https://miro.com/app/board/uXjVHW4Tmog=/?share_link_id=647655636179
 
 Visual Walkthroughs:
-(1) From roofline to VLLM: https://vizuaraai.github.io/convolution-musical-journey/roofline-to-vllm.html
-(2) Radix attention and semantic caching: https://vizuaraai.github.io/convolution-musical-journey/radix-and-semantic-caching.html
+(1) From roofline to VLLM: ../../docs/roofline-to-vllm.html
+(2) Radix attention and semantic caching: ../../docs/radix-and-semantic-caching.html
 
 Basics of SGLang: Radix Attention: https://www.lmsys.org/blog/2024-01-17-sglang/
 

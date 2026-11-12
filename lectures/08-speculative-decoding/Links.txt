@@ -1,4 +1,4 @@
 (1) Speculative Decoding vLLM Benchmark: https://colab.research.google.com/drive/1Rct2WAW_HtJ2tE95Wona77aOFpY_IOZj?usp=sharing
-(2) Multi-Token Prediction coded from scratch: https://github.com/VizuaraAILabs/DeepSeek-From-Scratch/tree/main/ch05
+(2) Multi-Token Prediction coded from scratch: DeepSeek-From-Scratch-main/ch05
 
 Lecture Notes: https://miro.com/app/board/uXjVHQlEya8=/?share_link_id=680686534581

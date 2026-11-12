@@ -27,8 +27,8 @@
 | 资源 | 说明 |
 |---|---|
 | [Miro 课程笔记](https://miro.com/app/board/uXjVHb72krs=/?share_link_id=970747418881) | 本讲板书与笔记 |
-| [TurboQuant 可视化指南](https://vizuaraai.github.io/turboquant-rotation-visual-guide/) | TurboQuant 旋转的可视化讲解 |
-| [DeepSeek V4 KV Cache 可视化指南](https://vizuaraai.github.io/deepseek-v4-kv-cache-walkthrough/) | DeepSeek V4 的 KV Cache 实战走查 |
+| [TurboQuant 可视化指南](../../turboquant-rotation-visual-guide/) | TurboQuant 旋转的可视化讲解 |
+| [DeepSeek V4 KV Cache 可视化指南](../../deepseek-v4-kv-cache-walkthrough/) | DeepSeek V4 的 KV Cache 实战走查 |
 
 ### Notebook 与作业
 
