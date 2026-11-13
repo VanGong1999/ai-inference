@@ -243,6 +243,80 @@ body {
   border: 1px solid var(--line);
 }
 
+.chapter-nav {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 28px;
+  padding-top: 22px;
+  border-top: 1px solid var(--line);
+}
+.chapter-nav a {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,0.78);
+  text-decoration: none;
+  color: var(--ink);
+  transition: border-color 0.18s ease, transform 0.18s ease, background 0.18s ease;
+  min-height: 74px;
+}
+.chapter-nav a:hover {
+  border-color: rgba(12,115,184,0.35);
+  background: #fff;
+  transform: translateY(-2px);
+  color: var(--ink);
+}
+.chapter-nav .dir {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 0.04em;
+}
+.chapter-nav .title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+.chapter-nav .next { text-align: right; align-items: flex-end; }
+.chapter-nav .placeholder {
+  visibility: hidden;
+  pointer-events: none;
+}
+.chapter-nav.top {
+  margin: 0 0 22px;
+  padding: 0 0 18px;
+  border-top: 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.series-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 0 0 18px;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+.series-bar a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 700;
+  border-bottom: 1px solid rgba(12,115,184,0.25);
+}
+.series-bar a:hover { border-bottom-color: rgba(12,115,184,0.55); }
+.series-bar .pos {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--accent-2);
+  font-weight: 600;
+}
+
 .foot-nav {
   display: flex;
   flex-wrap: wrap;
@@ -270,6 +344,8 @@ body {
   .reading { padding: 24px 18px 36px; border-radius: 16px; }
   .nav { border-radius: 18px; }
   .nav .src { max-width: 100%; }
+  .chapter-nav { grid-template-columns: 1fr; }
+  .chapter-nav .next { text-align: left; align-items: flex-start; }
 }
 </style>
 </head>
@@ -289,7 +365,10 @@ body {
   <div id="loading">正在渲染 Markdown…</div>
   <div id="error"></div>
   <div class="reading">
+    <div class="series-bar" id="series-bar" hidden></div>
+    <div class="chapter-nav top" id="chapter-nav-top" hidden></div>
     <article id="content"></article>
+    <div class="chapter-nav" id="chapter-nav-bottom" hidden></div>
   </div>
 
   <div class="foot-nav">
@@ -309,6 +388,106 @@ body {
   const content = document.getElementById('content');
   const srcLabel = document.getElementById('src-label');
   const rawLink = document.getElementById('raw-link');
+  const seriesBar = document.getElementById('series-bar');
+  const navTop = document.getElementById('chapter-nav-top');
+  const navBottom = document.getElementById('chapter-nav-bottom');
+
+  // Reading sequences: README/index first, then chapters in order.
+  const SERIES = [
+    {
+      name: '面试口袋笔记',
+      index: 'llm-notes/README.md',
+      files: [
+        'llm-notes/README.md',
+        'llm-notes/01-推理问题.md',
+        'llm-notes/02-硬件基础.md',
+        'llm-notes/03-Transformer推理机制.md',
+        'llm-notes/04-量化.md',
+        'llm-notes/05-投机解码.md',
+        'llm-notes/06-KV-Cache优化.md',
+        'llm-notes/07-内核工程与FlashAttention.md',
+        'llm-notes/08-服务系统架构.md',
+        'llm-notes/09-并行.md',
+        'llm-notes/10-长上下文与内存管理.md',
+        'llm-notes/11-边缘与端侧推理.md',
+        'llm-notes/12-推理时计算扩展.md',
+        'llm-notes/13-可观测性与生产工程.md',
+        'llm-notes/14-推理的未来.md',
+        'llm-notes/附录.md'
+      ]
+    },
+    {
+      name: 'Philip Kiely《Inference Engineering》',
+      index: 'inference-engineering/README.md',
+      files: [
+        'inference-engineering/README.md',
+        'inference-engineering/00-前言.md',
+        'inference-engineering/01-推理.md',
+        'inference-engineering/02-先决条件.md',
+        'inference-engineering/03-模型.md',
+        'inference-engineering/04-硬件.md',
+        'inference-engineering/05-软件.md',
+        'inference-engineering/06-技术.md',
+        'inference-engineering/07-多模态.md',
+        'inference-engineering/08-生产.md',
+        'inference-engineering/附录A-术语表.md',
+        'inference-engineering/附录B-推荐阅读.md'
+      ]
+    },
+    {
+      name: '每讲中文导读',
+      index: 'guides/lectures/README.md',
+      files: [
+        'guides/lectures/README.md',
+        'guides/lectures/01-推理工程导论.md',
+        'guides/lectures/02-KV-Cache-的善与恶.md',
+        'guides/lectures/03-注意力变体-Part1.md',
+        'guides/lectures/04-注意力变体-Part2.md',
+        'guides/lectures/05-FlashAttention.md',
+        'guides/lectures/06-vLLM-Step-的解剖.md',
+        'guides/lectures/07-量化.md',
+        'guides/lectures/08-投机解码.md',
+        'guides/lectures/09-Bonus-推理与YC.md',
+        'guides/lectures/10-硬件实验.md',
+        'guides/lectures/11-Capstone-项目.md'
+      ]
+    },
+    {
+      name: '学习路径与术语',
+      index: 'guides/README.md',
+      files: [
+        'guides/README.md',
+        'guides/00-学习路径.md',
+        'guides/00-术语表.md',
+        'guides/00-环境搭建.md',
+        'guides/lectures/README.md'
+      ]
+    },
+    {
+      name: '生产推理系统笔记（中文）',
+      index: 'lecture-notes/l13-production-inference-systems/README.md',
+      files: [
+        'lecture-notes/l13-production-inference-systems/README.md',
+        'lecture-notes/l13-production-inference-systems/01-production-systems.zh.md',
+        'lecture-notes/l13-production-inference-systems/02-structured-output-and-evals.zh.md',
+        'lecture-notes/l13-production-inference-systems/03-disaggregated-serving-deep-dive.zh.md',
+        'lecture-notes/l13-production-inference-systems/04-final-system-design-interview-answer.zh.md'
+      ]
+    },
+    {
+      name: '生产推理系统笔记（英文）',
+      index: 'lecture-notes/l13-production-inference-systems/README.md',
+      files: [
+        'lecture-notes/l13-production-inference-systems/README.md',
+        'lecture-notes/l13-production-inference-systems/01-production-systems.md',
+        'lecture-notes/l13-production-inference-systems/02-structured-output-and-evals.md',
+        'lecture-notes/l13-production-inference-systems/03-disaggregated-serving-deep-dive.md',
+        'lecture-notes/l13-production-inference-systems/04-final-system-design-interview-answer.md'
+      ]
+    }
+  ];
+
+  const titleCache = Object.create(null);
 
   function showError(msg) {
     loading.style.display = 'none';
@@ -328,6 +507,11 @@ body {
   function dirname(path) {
     const i = path.lastIndexOf('/');
     return i >= 0 ? path.slice(0, i + 1) : '';
+  }
+
+  function basename(path) {
+    const i = path.lastIndexOf('/');
+    return i >= 0 ? path.slice(i + 1) : path;
   }
 
   function joinPath(baseDir, rel) {
@@ -363,6 +547,109 @@ body {
     });
   }
 
+  function findSeries(path) {
+    // Prefer the most specific series that contains this exact path.
+    // For shared README in lecture-notes, prefer Chinese series when path ends with .zh.md
+    // already exact match handles that.
+    for (const s of SERIES) {
+      if (s.files.indexOf(path) >= 0) return s;
+    }
+    return null;
+  }
+
+  function fallbackTitle(path) {
+    return basename(path).replace(/\.md$/i, '').replace(/\.zh$/i, '');
+  }
+
+  function fetchTitle(path) {
+    if (titleCache[path]) return Promise.resolve(titleCache[path]);
+    return fetch(path)
+      .then((r) => (r.ok ? r.text() : ''))
+      .then((md) => {
+        const m = md.match(/^#\s+(.+)$/m);
+        const title = m ? m[1].trim() : fallbackTitle(path);
+        titleCache[path] = title;
+        return title;
+      })
+      .catch(() => {
+        const title = fallbackTitle(path);
+        titleCache[path] = title;
+        return title;
+      });
+  }
+
+  function mdHref(path) {
+    return 'md.html?src=' + encodeURIComponent(path);
+  }
+
+  function renderNavPair(container, prev, next, prevTitle, nextTitle) {
+    container.hidden = false;
+    container.innerHTML = '';
+
+    if (prev) {
+      const a = document.createElement('a');
+      a.href = mdHref(prev);
+      a.innerHTML = '<span class="dir">← 上一章</span><span class="title"></span>';
+      a.querySelector('.title').textContent = prevTitle;
+      container.appendChild(a);
+    } else {
+      const ph = document.createElement('div');
+      ph.className = 'placeholder';
+      container.appendChild(ph);
+    }
+
+    if (next) {
+      const a = document.createElement('a');
+      a.className = 'next';
+      a.href = mdHref(next);
+      a.innerHTML = '<span class="dir">下一章 →</span><span class="title"></span>';
+      a.querySelector('.title').textContent = nextTitle;
+      container.appendChild(a);
+    } else {
+      const ph = document.createElement('div');
+      ph.className = 'placeholder';
+      container.appendChild(ph);
+    }
+  }
+
+  function setupSeriesNav(path) {
+    const series = findSeries(path);
+    if (!series) return null;
+
+    const idx = series.files.indexOf(path);
+    const prev = idx > 0 ? series.files[idx - 1] : null;
+    const next = idx < series.files.length - 1 ? series.files[idx + 1] : null;
+
+    seriesBar.hidden = false;
+    seriesBar.innerHTML =
+      '<span>系列：</span><a href="' + mdHref(series.index) + '">' + series.name + '</a>' +
+      '<span class="pos">' + (idx + 1) + ' / ' + series.files.length + '</span>';
+
+    const tasks = [];
+    if (prev) tasks.push(fetchTitle(prev).then((t) => ({ side: 'prev', title: t })));
+    if (next) tasks.push(fetchTitle(next).then((t) => ({ side: 'next', title: t })));
+
+    return Promise.all(tasks).then((items) => {
+      let prevTitle = '';
+      let nextTitle = '';
+      items.forEach((it) => {
+        if (it.side === 'prev') prevTitle = it.title;
+        if (it.side === 'next') nextTitle = it.title;
+      });
+      renderNavPair(navTop, prev, next, prevTitle, nextTitle);
+      renderNavPair(navBottom, prev, next, prevTitle, nextTitle);
+
+      // Keyboard: ← / →
+      document.addEventListener('keydown', (e) => {
+        if (e.target && /^(INPUT|TEXTAREA|SELECT)$/i.test(e.target.tagName)) return;
+        if (e.key === 'ArrowLeft' && prev) location.href = mdHref(prev);
+        if (e.key === 'ArrowRight' && next) location.href = mdHref(next);
+      });
+
+      return { prev, next };
+    });
+  }
+
   const safeSrc = normalizeSrc(src);
   if (!safeSrc) {
     showError('缺少或非法的 src 参数。示例：md.html?src=guides/lectures/06-vLLM-Step-的解剖.md');
@@ -382,9 +669,14 @@ body {
     .then((md) => {
       loading.style.display = 'none';
       const titleMatch = md.match(/^#\s+(.+)$/m);
-      if (titleMatch) document.title = titleMatch[1].trim() + ' — 导读';
+      if (titleMatch) {
+        const title = titleMatch[1].trim();
+        document.title = title + ' — 导读';
+        titleCache[safeSrc] = title;
+      }
       content.innerHTML = marked.parse(md, { gfm: true, breaks: false });
       rewriteLinks(content, dirname(safeSrc));
+      return setupSeriesNav(safeSrc);
     })
     .catch((err) => showError(err.message || String(err)));
 })();
