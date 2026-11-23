@@ -5,8 +5,9 @@
 > 📖 姊妹中文书：
 > - [`../llm-notes/README.md`](../llm-notes/README.md)：《Efficient LLM Inference — Interview Pocket Notes》中文全译本（面试导向，14 章 + 附录 + 约 70 道模拟问答）
 > - [`../inference-engineering/README.md`](../inference-engineering/README.md)：Philip Kiely《Inference Engineering》中文全译本（产品 / 生产 / 多模态导向）
+> - [`../modelplane-inference-guide-zh/README.md`](../modelplane-inference-guide-zh/README.md)：Modelplane 推理工程开放指南（平台工程师落地：概念 / 生产 / 工具 / 职业）
 >
-> 二者与本导读层的系统学习路线互补。
+> 三者与本导读层的系统学习路线互补。
 
 ## 导读层包含什么
 

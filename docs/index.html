@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AI 推理工程学习仓库 — 门户</title>
-<meta name="description" content="系统性学习 LLM Inference Engineering：Vizuara 课程书、面试口袋笔记、Philip Kiely 推理工程，以及可视化 Walkthrough 与生产笔记。">
+<meta name="description" content="系统性学习 LLM Inference Engineering：Vizuara 课程书、面试口袋笔记、Philip Kiely 推理工程、Modelplane 开放指南，以及可视化 Walkthrough 与生产笔记。">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -237,7 +237,7 @@ section { padding: 42px 0 8px; }
 /* Books */
 .books {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 16px;
 }
 .book {
@@ -254,6 +254,7 @@ section { padding: 42px 0 8px; }
 .book:nth-child(1) { border-top-color: #0c73b8; }
 .book:nth-child(2) { border-top-color: #b57912; }
 .book:nth-child(3) { border-top-color: #1f8f6f; }
+.book:nth-child(4) { border-top-color: #c45c26; }
 .book:hover {
   transform: translateY(-4px);
   border-color: rgba(15, 126, 200, 0.28);
@@ -520,7 +521,7 @@ footer a:hover { color: var(--accent); }
       <span>AI 推理工程学习仓库</span>
     </div>
     <div class="nav-links">
-      <a href="#books">三本书</a>
+      <a href="#books">四本书</a>
       <a href="#map">知识地图</a>
       <a href="visual-walkthroughs.html">Walkthroughs</a>
       <a href="md.html?src=guides/README.md">学习路径</a>
@@ -533,11 +534,11 @@ footer a:hover { color: var(--accent); }
       <div class="kicker">LLM Inference Engineering</div>
       <h1>把推理工程<br>学成一门<em>可落地的系统课</em></h1>
       <p class="hero-lead">
-        三本互补读物 + 可视化 Walkthrough + 课程导读：从 Roofline、KV Cache、注意力变体，
+        四本互补读物 + 可视化 Walkthrough + 课程导读：从 Roofline、KV Cache、注意力变体，
         到 vLLM、量化、投机解码、分离式服务与生产部署。
       </p>
       <div class="cta-row">
-        <a class="btn btn-primary" href="#books">浏览三本核心读物</a>
+        <a class="btn btn-primary" href="#books">浏览四本核心读物</a>
         <a class="btn btn-ghost" href="md.html?src=guides/00-学习路径.md">查看完整学习路线</a>
       </div>
     </div>
@@ -551,9 +552,9 @@ footer a:hover { color: var(--accent); }
     <div class="section-head">
       <div>
         <span class="section-num">01 / 核心读物</span>
-        <h2>三本书，三种切入角度</h2>
+        <h2>四本书，四种切入角度</h2>
       </div>
-      <p>同一主题的系统课、面试答法、产品与生产全景。可按目标任选一本，也可三本对照读。</p>
+      <p>同一主题的系统课、面试答法、产品生产全景，以及平台工程师落地指南。可按目标任选一本，也可对照读。</p>
     </div>
 
     <div class="books">
@@ -614,6 +615,26 @@ footer a:hover { color: var(--accent); }
           <a class="primary" href="md.html?src=inference-engineering/README.md">打开目录</a>
           <a href="md.html?src=inference-engineering/00-前言.md">从前言开始</a>
           <a href="md.html?src=inference-engineering/08-生产.md">生产章节</a>
+        </div>
+      </article>
+
+      <article class="book">
+        <div class="book-meta">
+          <span class="chip">Modelplane</span>
+          <span class="chip warm">平台落地 · 7 章</span>
+        </div>
+        <h3>推理工程开放指南</h3>
+        <p class="why">面向平台工程师：为什么现在要做推理、基础概念、生产取舍、技术栈与工具、案例与职业路径。</p>
+        <ul class="topics">
+          <li>平台技能如何迁移到推理工程</li>
+          <li>GPU 内存、引擎与速度上限</li>
+          <li>生产场景优先：延迟 / 吞吐 / 成本</li>
+          <li>工具栈、团队案例与职业发展</li>
+        </ul>
+        <div class="book-actions">
+          <a class="primary" href="md.html?src=modelplane-inference-guide-zh/README.md">打开目录</a>
+          <a href="md.html?src=modelplane-inference-guide-zh/01-为什么是现在.md">从第 1 章开始</a>
+          <a href="md.html?src=modelplane-inference-guide-zh/03-生产环境中的推理.md">生产章节</a>
         </div>
       </article>
     </div>
@@ -745,6 +766,10 @@ footer a:hover { color: var(--accent); }
             <strong>生产系统笔记</strong>
             <span>4 篇中英对照</span>
           </a>
+          <a href="md.html?src=modelplane-inference-guide-zh/README.md">
+            <strong>Modelplane 开放指南</strong>
+            <span>平台工程师落地 · 7 章</span>
+          </a>
           <a href="https://github.com/VanGong1999/ai-inference/tree/main/lectures">
             <strong>原始讲座资料</strong>
             <span>PDF / Notebook / 代码</span>
@@ -764,7 +789,7 @@ footer a:hover { color: var(--accent); }
   </section>
 
   <footer>
-    <p>三本书 + 课程导读 + Walkthrough · 中文导航层叠加于英文原文之上</p>
+    <p>四本书 + 课程导读 + Walkthrough · 中文导航层叠加于英文原文之上</p>
     <p><a href="https://github.com/VanGong1999/ai-inference">GitHub 仓库</a></p>
   </footer>
 

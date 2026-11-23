@@ -12,6 +12,7 @@
 | 📖 推理工程书籍（英文） | [`docs/book.html`](docs/book.html) | 27 章英文原著 + 4 个 Breadcrumb |
 | 📖 高效 LLM 推理（面试口袋笔记） | [`docs/llm-notes/README.md`](docs/llm-notes/README.md) · [站点](https://vanguong1999.github.io/ai-inference/md.html?src=llm-notes/README.md) | 《Efficient LLM Inference》中文全译本（14 章 + 4 附录 + 约 70 道面试问答） |
 | 📖 推理工程（Philip Kiely） | [`docs/inference-engineering/README.md`](docs/inference-engineering/README.md) · [站点](https://vanguong1999.github.io/ai-inference/md.html?src=inference-engineering/README.md) | 《Inference Engineering》中文全译本（8 章 + 2 附录，含多模态与生产工程） |
+| 📖 Modelplane 开放指南 | [`docs/modelplane-inference-guide-zh/README.md`](docs/modelplane-inference-guide-zh/README.md) · [站点](https://vanguong1999.github.io/ai-inference/md.html?src=modelplane-inference-guide-zh/README.md) | 面向平台工程师的推理落地指南（7 章：概念 / 生产 / 工具 / 职业） |
 | 🎬 可视化 Walkthrough | [`docs/visual-walkthroughs.html`](docs/visual-walkthroughs.html) | 全部交互式可视化讲解索引（FFT、Mamba、FlashAttention 等 20+ 篇） |
 | 🗺️ 中文学习路径 | [`docs/guides/README.md`](docs/guides/README.md) | 学习路线总览 + 章节对照表（站点内用 [`md.html`](docs/md.html?src=guides/README.md) 渲染） |
 | 📚 中英术语表 | [`docs/guides/00-术语表.md`](docs/guides/00-术语表.md) | KV Cache、PagedAttention、roofline 等关键术语 |
@@ -63,6 +64,7 @@ ai-inference/
 │   ├── lecture-notes/   # 生产系统笔记（含 *.zh.md 中文翻译）
 │   ├── llm-notes/       # 《Efficient LLM Inference》中文全译本（分章 Markdown）
 │   ├── inference-engineering/  # Philip Kiely《Inference Engineering》中文全译本（分章 Markdown）
+│   ├── modelplane-inference-guide-zh/  # Modelplane 推理工程开放指南中文译本（7 章）
 │   ├── quantization-visual-walkthrough/
 │   ├── dna-of-a-transformer/ … turboquant-… / deepseek-…  # 原外链 walkthrough 本地拷贝
 │   └── guides/          # 中文导读层
