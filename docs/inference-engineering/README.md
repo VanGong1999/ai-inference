@@ -35,6 +35,6 @@
 ## 翻译约定
 
 - 关键术语统一采用「**中文（English）**」格式；完整中英对照见 [`../guides/00-术语表.md`](../guides/00-术语表.md)。
-- 原书中的插图（Figure P.1 等）以文字形式标注位置与含义，图片文件未收录（原书为本地 PDF/EPUB，未入库）。
+- 原书插图已从 PDF 裁切并放入 [`figures/`](figures/)，各章在对应图注上方用相对路径引用（共 89 张；原书有两处均标为 Figure 3.1，第二张存为 `3.1b.png`）。
 - 章节编号沿用原书的 Chapter 0–7。
-- 原书英文版为本地 `Inference Engineering.pdf` / `.epub`（体积较大，未入库，见 `.gitignore`），本目录仅保留中文译本。
+- 原书英文版为本地 `Inference Engineering.pdf` / `.epub`（体积较大，未入库，见 `.gitignore`），本目录仅保留中文译本与插图。

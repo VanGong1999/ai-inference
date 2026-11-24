@@ -1,0 +1,1248 @@
+[
+  {
+    "id": "P.1",
+    "file": "P.1.png",
+    "page": 12,
+    "w": 885,
+    "h": 726,
+    "clip": [
+      74.0,
+      78.7,
+      368.7,
+      320.6
+    ],
+    "caption": "Figure P.1: There are well over two million open models on Hugging Face, 25 times  more mo"
+  },
+  {
+    "id": "P.2",
+    "file": "P.2.png",
+    "page": 13,
+    "w": 869,
+    "h": 614,
+    "clip": [
+      102.4,
+      188.1,
+      392.0,
+      392.5
+    ],
+    "caption": "Figure P.2: Open and closed models are both improving rapidly, unlocking and  expanding ac"
+  },
+  {
+    "id": "P.3",
+    "file": "P.3.png",
+    "page": 14,
+    "w": 889,
+    "h": 617,
+    "clip": [
+      75.1,
+      118.4,
+      371.2,
+      323.8
+    ],
+    "caption": "Figure P.3: Customizing open models unlocks new capabilities while retaining control  over"
+  },
+  {
+    "id": "0.1",
+    "file": "0.1.png",
+    "page": 20,
+    "w": 883,
+    "h": 885,
+    "clip": [
+      77.3,
+      74.4,
+      371.2,
+      369.1
+    ],
+    "caption": "Figure 0.1: A complete inference stack includes both runtime and infrastructure  optimizat"
+  },
+  {
+    "id": "0.2",
+    "file": "0.2.png",
+    "page": 22,
+    "w": 888,
+    "h": 1193,
+    "clip": [
+      75.6,
+      61.8,
+      371.2,
+      459.1
+    ],
+    "caption": "Figure 0.2: Runtime performance optimizations like speculation, diagrammed here,  improve "
+  },
+  {
+    "id": "0.3",
+    "file": "0.3.png",
+    "page": 23,
+    "w": 872,
+    "h": 568,
+    "clip": [
+      101.4,
+      61.8,
+      392.0,
+      250.9
+    ],
+    "caption": "Figure 0.3: Serving model inference at scale requires unifying capacity across  multiple c"
+  },
+  {
+    "id": "1.1",
+    "file": "1.1.png",
+    "page": 27,
+    "w": 873,
+    "h": 460,
+    "clip": [
+      101.0,
+      331.1,
+      392.0,
+      484.1
+    ],
+    "caption": "Figure 1.1: Just like elite athletes, inference services must be specialized for the  dema"
+  },
+  {
+    "id": "1.2",
+    "file": "1.2.png",
+    "page": 35,
+    "w": 873,
+    "h": 443,
+    "clip": [
+      101.0,
+      72.8,
+      392.0,
+      220.3
+    ],
+    "caption": "Figure 1.2: Fine-tuning a model changes the values of the model weights while  keeping the"
+  },
+  {
+    "id": "1.3",
+    "file": "1.3.png",
+    "page": 36,
+    "w": 889,
+    "h": 443,
+    "clip": [
+      75.1,
+      72.8,
+      371.2,
+      220.0
+    ],
+    "caption": "Figure 1.3: Distillation preserves the behavior of a large model in a smaller, more  effic"
+  },
+  {
+    "id": "1.4",
+    "file": "1.4.png",
+    "page": 38,
+    "w": 889,
+    "h": 225,
+    "clip": [
+      75.1,
+      72.8,
+      371.2,
+      147.6
+    ],
+    "caption": "Figure 1.4: TTFT is the time it takes to generate the fi rst token, while TPS measures  ho"
+  },
+  {
+    "id": "1.5",
+    "file": "1.5.png",
+    "page": 38,
+    "w": 888,
+    "h": 631,
+    "clip": [
+      75.4,
+      345.0,
+      371.2,
+      555.1
+    ],
+    "caption": "Figure 1.5: Mean latency is generally higher than P50 latency due to outliers in the  righ"
+  },
+  {
+    "id": "2.1",
+    "file": "2.1.png",
+    "page": 45,
+    "w": 873,
+    "h": 685,
+    "clip": [
+      101.0,
+      61.8,
+      392.0,
+      289.9
+    ],
+    "caption": "Figure 2.1: Multi-layer neural networks have one input layer, many hidden layers, and  one"
+  },
+  {
+    "id": "2.2",
+    "file": "2.2.png",
+    "page": 46,
+    "w": 889,
+    "h": 146,
+    "clip": [
+      75.1,
+      325.3,
+      371.2,
+      373.3
+    ],
+    "caption": "Figure 2.2: In a matmul, the output vector y is the product of an input vector x and a  we"
+  },
+  {
+    "id": "2.3",
+    "file": "2.3.png",
+    "page": 47,
+    "w": 873,
+    "h": 334,
+    "clip": [
+      101.0,
+      72.8,
+      392.0,
+      183.8
+    ],
+    "caption": "Figure 2.3: Two matmul equations representing separate layers collapse due to  composition"
+  },
+  {
+    "id": "2.4",
+    "file": "2.4.png",
+    "page": 48,
+    "w": 889,
+    "h": 616,
+    "clip": [
+      75.1,
+      72.8,
+      371.2,
+      277.7
+    ],
+    "caption": "Figure 2.4: Activation functions like ReLU are used to break linearity in multi-layer  neu"
+  },
+  {
+    "id": "2.5",
+    "file": "2.5.png",
+    "page": 48,
+    "w": 880,
+    "h": 327,
+    "clip": [
+      78.0,
+      446.2,
+      371.2,
+      555.0
+    ],
+    "caption": "Figure 2.5: Subword tokenization uses one token per common word and punctuation  mark, but"
+  },
+  {
+    "id": "2.6",
+    "file": "2.6.png",
+    "page": 50,
+    "w": 889,
+    "h": 537,
+    "clip": [
+      75.1,
+      210.7,
+      371.2,
+      389.6
+    ],
+    "caption": "Figure 2.6: A decode pass generates a logit for each token in the model’s vocabulary,  the"
+  },
+  {
+    "id": "2.7",
+    "file": "2.7.png",
+    "page": 53,
+    "w": 873,
+    "h": 1158,
+    "clip": [
+      101.0,
+      92.5,
+      392.0,
+      478.3
+    ],
+    "caption": "Figure 2.7: Transformer block diagram, adapted from “Attention Is All You Need”  (Vaswani "
+  },
+  {
+    "id": "2.8",
+    "file": "2.8.png",
+    "page": 54,
+    "w": 889,
+    "h": 225,
+    "clip": [
+      75.1,
+      287.5,
+      371.2,
+      362.3
+    ],
+    "caption": "Figure 2.8: The attention equation, adapted from “FlashAttention:  Fast and Memory-Efficie"
+  },
+  {
+    "id": "2.9",
+    "file": "2.9.png",
+    "page": 56,
+    "w": 889,
+    "h": 489,
+    "clip": [
+      75.1,
+      300.3,
+      371.2,
+      462.8
+    ],
+    "caption": "Figure 2.9: Mixture of Experts architecture includes both sharding and replicating to  tak"
+  },
+  {
+    "id": "2.10",
+    "file": "2.10.png",
+    "page": 58,
+    "w": 889,
+    "h": 298,
+    "clip": [
+      75.1,
+      147.3,
+      371.2,
+      246.5
+    ],
+    "caption": "Figure 2.10: Diffusion-based models iteratively generate an image from noise,  generally o"
+  },
+  {
+    "id": "2.11",
+    "file": "2.11.png",
+    "page": 59,
+    "w": 873,
+    "h": 345,
+    "clip": [
+      101.2,
+      315.3,
+      392.0,
+      429.9
+    ],
+    "caption": "Figure 2.11: SDXL architecture pipeline, adapted from “SDXL: Improving Latent  Diffusion M"
+  },
+  {
+    "id": "2.12",
+    "file": "2.12.png",
+    "page": 64,
+    "w": 889,
+    "h": 145,
+    "clip": [
+      75.2,
+      410.4,
+      371.2,
+      458.5
+    ],
+    "caption": "Figure 2.12: The equation for arithmetic intensity."
+  },
+  {
+    "id": "2.13",
+    "file": "2.13.png",
+    "page": 65,
+    "w": 873,
+    "h": 617,
+    "clip": [
+      101.0,
+      67.8,
+      392.0,
+      273.1
+    ],
+    "caption": "Figure 2.13: A roofl ine chart shows the switch from memory to compute bottleneck  based o"
+  },
+  {
+    "id": "2.14",
+    "file": "2.14.png",
+    "page": 66,
+    "w": 889,
+    "h": 282,
+    "clip": [
+      75.1,
+      421.7,
+      371.2,
+      515.7
+    ],
+    "caption": "Figure 2.14: Standard attention implementation, adapted from “FlashAttention:  Fast and Me"
+  },
+  {
+    "id": "2.15",
+    "file": "2.15.png",
+    "page": 67,
+    "w": 873,
+    "h": 355,
+    "clip": [
+      101.0,
+      270.2,
+      392.0,
+      388.1
+    ],
+    "caption": "Figure 2.15: Memory movement (reads and writes) and compute work for the  attention implem"
+  },
+  {
+    "id": "2.16",
+    "file": "2.16.png",
+    "page": 67,
+    "w": 873,
+    "h": 284,
+    "clip": [
+      101.0,
+      474.3,
+      392.0,
+      568.6
+    ],
+    "caption": "Figure 2.16: The total memory movement for a kernel is the sum of all reads and  writes ac"
+  },
+  {
+    "id": "2.17",
+    "file": "2.17.png",
+    "page": 68,
+    "w": 889,
+    "h": 284,
+    "clip": [
+      75.1,
+      92.3,
+      371.2,
+      186.5
+    ],
+    "caption": "Figure 2.17: The total compute for the kernel is the sum of operations across the  three s"
+  },
+  {
+    "id": "2.18",
+    "file": "2.18.png",
+    "page": 68,
+    "w": 889,
+    "h": 238,
+    "clip": [
+      75.1,
+      278.5,
+      371.2,
+      357.6
+    ],
+    "caption": "Figure 2.18: The arithmetic intensity of a kernel is the total work (number of compute  op"
+  },
+  {
+    "id": "3.1",
+    "file": "3.1.png",
+    "page": 77,
+    "w": 873,
+    "h": 146,
+    "clip": [
+      101.0,
+      229.0,
+      392.0,
+      277.1
+    ],
+    "caption": "Figure 3.1: Matrix Multiply and Accumulate (MMA) multiples matrix A by matrix B,  adds mat"
+  },
+  {
+    "id": "3.2",
+    "file": "3.2.png",
+    "page": 79,
+    "w": 873,
+    "h": 550,
+    "clip": [
+      101.0,
+      63.8,
+      392.0,
+      246.8
+    ],
+    "caption": "Figure 3.2: A GPU has multiple SMs, each of which has multiple Tensor Cores. L1  cache sit"
+  },
+  {
+    "id": "3.1",
+    "file": "3.1b.png",
+    "page": 80,
+    "w": 881,
+    "h": 243,
+    "clip": [
+      78.0,
+      461.9,
+      371.2,
+      542.6
+    ],
+    "caption": "Figure 3.1: NVIDIA GPU architecture names from 2017 through all announced future  architec"
+  },
+  {
+    "id": "3.3",
+    "file": "3.3.png",
+    "page": 84,
+    "w": 889,
+    "h": 632,
+    "clip": [
+      75.1,
+      358.0,
+      371.2,
+      568.6
+    ],
+    "caption": "Figure 3.3: Grace CPUs have a higher-bandwidth interconnect to the GPU than  standard CPUs"
+  },
+  {
+    "id": "3.4",
+    "file": "3.4.png",
+    "page": 87,
+    "w": 873,
+    "h": 819,
+    "clip": [
+      101.0,
+      72.8,
+      392.0,
+      345.5
+    ],
+    "caption": "Figure 3.4: NVLink, NVSwitch, and Infi niband work together to enable GPU-to-GPU  communic"
+  },
+  {
+    "id": "3.5",
+    "file": "3.5.png",
+    "page": 88,
+    "w": 889,
+    "h": 416,
+    "clip": [
+      75.1,
+      430.0,
+      371.2,
+      568.6
+    ],
+    "caption": "Figure 3.5: An H100 has eight memory slices and seven compute slices for  assembling multi"
+  },
+  {
+    "id": "4.1",
+    "file": "4.1.png",
+    "page": 99,
+    "w": 873,
+    "h": 264,
+    "clip": [
+      101.0,
+      209.3,
+      392.0,
+      296.7
+    ],
+    "caption": "Figure 4.1: Example CUDA kernel doubles each value in an array."
+  },
+  {
+    "id": "4.2",
+    "file": "4.2.png",
+    "page": 103,
+    "w": 873,
+    "h": 567,
+    "clip": [
+      101.0,
+      65.8,
+      392.0,
+      254.5
+    ],
+    "caption": "Figure 4.2: Kernel fusion reduces reads and writes between memory and compute  within a GP"
+  },
+  {
+    "id": "4.3",
+    "file": "4.3.png",
+    "page": 104,
+    "w": 889,
+    "h": 502,
+    "clip": [
+      75.1,
+      323.3,
+      371.2,
+      490.1
+    ],
+    "caption": "Figure 4.3: A basic neural network in PyTorch, adapted from the PyTorch  documentation."
+  },
+  {
+    "id": "4.4",
+    "file": "4.4.png",
+    "page": 109,
+    "w": 873,
+    "h": 216,
+    "clip": [
+      101.0,
+      351.9,
+      392.0,
+      423.4
+    ],
+    "caption": "Figure 4.4: vLLM inference example on eight GPUs."
+  },
+  {
+    "id": "4.5",
+    "file": "4.5.png",
+    "page": 110,
+    "w": 889,
+    "h": 311,
+    "clip": [
+      75.1,
+      472.2,
+      371.2,
+      575.6
+    ],
+    "caption": "Figure 4.5: SGLang inference example on eight GPUs."
+  },
+  {
+    "id": "4.6",
+    "file": "4.6.png",
+    "page": 112,
+    "w": 889,
+    "h": 407,
+    "clip": [
+      75.1,
+      372.9,
+      371.2,
+      508.0
+    ],
+    "caption": "Figure 4.6: TensorRT-LLM inference example on eight GPUs."
+  },
+  {
+    "id": "4.7",
+    "file": "4.7.png",
+    "page": 116,
+    "w": 881,
+    "h": 228,
+    "clip": [
+      78.0,
+      439.3,
+      371.2,
+      514.8
+    ],
+    "caption": "Figure 4.7: A kernel profi ler shows you how long each operation within a kernel takes  to"
+  },
+  {
+    "id": "5.1",
+    "file": "5.1.png",
+    "page": 125,
+    "w": 873,
+    "h": 529,
+    "clip": [
+      101.0,
+      118.3,
+      392.0,
+      294.2
+    ],
+    "caption": "Figure 5.1: Floating-point number formats have both exponent and mantissa bits  along with"
+  },
+  {
+    "id": "5.2",
+    "file": "5.2.png",
+    "page": 129,
+    "w": 873,
+    "h": 977,
+    "clip": [
+      101.0,
+      147.5,
+      392.0,
+      472.7
+    ],
+    "caption": "Figure 5.2: Quantization risk is low for weights and activations, moderate for KV  cache, "
+  },
+  {
+    "id": "5.3",
+    "file": "5.3.png",
+    "page": 132,
+    "w": 880,
+    "h": 1183,
+    "clip": [
+      78.0,
+      174.5,
+      371.2,
+      568.6
+    ],
+    "caption": "Figure 5.3: Speculative decoding from draft token generation and validation to prefi x  ac"
+  },
+  {
+    "id": "5.4",
+    "file": "5.4.png",
+    "page": 135,
+    "w": 873,
+    "h": 723,
+    "clip": [
+      101.0,
+      72.8,
+      392.0,
+      313.6
+    ],
+    "caption": "Figure 5.4: Medusa heads each generate a draft token on top of the token generated  by the"
+  },
+  {
+    "id": "5.5",
+    "file": "5.5.png",
+    "page": 136,
+    "w": 889,
+    "h": 276,
+    "clip": [
+      75.1,
+      119.4,
+      371.2,
+      211.2
+    ],
+    "caption": "Figure 5.5: EAGLE speculative models take hidden states as input and produce draft  tokens"
+  },
+  {
+    "id": "5.6",
+    "file": "5.6.png",
+    "page": 137,
+    "w": 873,
+    "h": 409,
+    "clip": [
+      101.0,
+      72.8,
+      392.0,
+      208.9
+    ],
+    "caption": "Figure 5.6: An n-gram dictionary matches prefi xes to likely suffixes and is especially  u"
+  },
+  {
+    "id": "5.7",
+    "file": "5.7.png",
+    "page": 138,
+    "w": 889,
+    "h": 548,
+    "clip": [
+      75.2,
+      396.0,
+      371.2,
+      578.6
+    ],
+    "caption": "Figure 5.7: A pair of four-token sequences with two-token matching prefi xes."
+  },
+  {
+    "id": "5.8",
+    "file": "5.8.png",
+    "page": 140,
+    "w": 889,
+    "h": 495,
+    "clip": [
+      75.1,
+      72.8,
+      371.2,
+      237.6
+    ],
+    "caption": "Figure 5.8: A pair of four-token sequences with no prefi x match, the fi rst tokens are  d"
+  },
+  {
+    "id": "5.9",
+    "file": "5.9.png",
+    "page": 141,
+    "w": 873,
+    "h": 168,
+    "clip": [
+      101.0,
+      177.8,
+      392.0,
+      233.5
+    ],
+    "caption": "Figure 5.9: Allocating free GPU memory to the KV cache is an essential confi guration  dec"
+  },
+  {
+    "id": "5.10",
+    "file": "5.10.png",
+    "page": 142,
+    "w": 881,
+    "h": 495,
+    "clip": [
+      78.0,
+      358.7,
+      371.2,
+      523.5
+    ],
+    "caption": "Figure 5.10: Cache-aware routing allocates traffic based on KV cache rather than  simply d"
+  },
+  {
+    "id": "5.11",
+    "file": "5.11.png",
+    "page": 144,
+    "w": 889,
+    "h": 476,
+    "clip": [
+      75.1,
+      381.7,
+      371.2,
+      540.2
+    ],
+    "caption": "Figure 5.11: After fi guring out how much VRAM inference requires, round up to the  next a"
+  },
+  {
+    "id": "5.12",
+    "file": "5.12.png",
+    "page": 146,
+    "w": 889,
+    "h": 368,
+    "clip": [
+      75.1,
+      209.0,
+      371.2,
+      331.3
+    ],
+    "caption": "Figure 5.12: Tensor Parallelism splits weights across GPUs, effectively sharing VRAM  reso"
+  },
+  {
+    "id": "5.13",
+    "file": "5.13.png",
+    "page": 146,
+    "w": 889,
+    "h": 368,
+    "clip": [
+      75.1,
+      446.1,
+      371.2,
+      568.5
+    ],
+    "caption": "Figure 5.13: For Mixture of Experts models, each expert runs across multiple GPUs  with Te"
+  },
+  {
+    "id": "5.14",
+    "file": "5.14.png",
+    "page": 147,
+    "w": 873,
+    "h": 368,
+    "clip": [
+      101.0,
+      286.3,
+      392.0,
+      408.6
+    ],
+    "caption": "Figure 5.14: Expert Parallelism runs each expert within a single GPU, with GPUs  each host"
+  },
+  {
+    "id": "5.15",
+    "file": "5.15.png",
+    "page": 148,
+    "w": 889,
+    "h": 489,
+    "clip": [
+      75.1,
+      72.8,
+      371.2,
+      235.4
+    ],
+    "caption": "Figure 5.15: This deployment uses TP for attention and EP for the sparse MoE layer."
+  },
+  {
+    "id": "5.16",
+    "file": "5.16.png",
+    "page": 149,
+    "w": 873,
+    "h": 819,
+    "clip": [
+      101.0,
+      68.3,
+      392.0,
+      341.1
+    ],
+    "caption": "Figure 5.16: Infi niBand enables multi-node inference across more than eight GPUs  via hig"
+  },
+  {
+    "id": "5.17",
+    "file": "5.17.png",
+    "page": 151,
+    "w": 873,
+    "h": 573,
+    "clip": [
+      101.0,
+      62.8,
+      392.0,
+      253.4
+    ],
+    "caption": "Figure 5.17: Disaggregation assigns prefi ll workers to generate the fi rst token and  dec"
+  },
+  {
+    "id": "6.1",
+    "file": "6.1.png",
+    "page": 158,
+    "w": 889,
+    "h": 351,
+    "clip": [
+      75.1,
+      369.7,
+      371.2,
+      486.5
+    ],
+    "caption": "Figure 6.1: VLMs add image and video understanding to LLMs."
+  },
+  {
+    "id": "6.2",
+    "file": "6.2.png",
+    "page": 161,
+    "w": 873,
+    "h": 351,
+    "clip": [
+      101.0,
+      450.1,
+      392.0,
+      566.9
+    ],
+    "caption": "Figure 6.2: Embedding models convert unstructured input data into vectors that  encode sem"
+  },
+  {
+    "id": "6.3",
+    "file": "6.3.png",
+    "page": 163,
+    "w": 873,
+    "h": 264,
+    "clip": [
+      101.0,
+      345.8,
+      392.0,
+      433.6
+    ],
+    "caption": "Figure 6.3: A high-performance embedding inference pipeline adds parallel  tokenization an"
+  },
+  {
+    "id": "6.4",
+    "file": "6.4.png",
+    "page": 164,
+    "w": 889,
+    "h": 351,
+    "clip": [
+      75.2,
+      461.9,
+      371.2,
+      578.6
+    ],
+    "caption": "Figure 6.4: ASR models transcribe input audio into text."
+  },
+  {
+    "id": "6.5",
+    "file": "6.5.png",
+    "page": 167,
+    "w": 873,
+    "h": 626,
+    "clip": [
+      101.0,
+      92.5,
+      392.0,
+      300.8
+    ],
+    "caption": "Figure 6.5: A two-stage pipeline for long audio fi le transcription parallelizes chunk  tr"
+  },
+  {
+    "id": "6.6",
+    "file": "6.6.png",
+    "page": 168,
+    "w": 889,
+    "h": 352,
+    "clip": [
+      75.1,
+      461.7,
+      371.2,
+      578.4
+    ],
+    "caption": "Figure 6.6: Text to speech models synthesize input text into audio."
+  },
+  {
+    "id": "6.7",
+    "file": "6.7.png",
+    "page": 171,
+    "w": 873,
+    "h": 369,
+    "clip": [
+      101.0,
+      72.8,
+      392.0,
+      195.6
+    ],
+    "caption": "Figure 6.7: Most voice-based applications use a cascading approach with a multi- model pip"
+  },
+  {
+    "id": "6.8",
+    "file": "6.8.png",
+    "page": 171,
+    "w": 873,
+    "h": 352,
+    "clip": [
+      101.0,
+      450.6,
+      392.0,
+      567.3
+    ],
+    "caption": "Figure 6.8: Image generation models may accept both text and reference images to  create n"
+  },
+  {
+    "id": "6.9",
+    "file": "6.9.png",
+    "page": 174,
+    "w": 889,
+    "h": 299,
+    "clip": [
+      75.1,
+      135.3,
+      371.2,
+      234.5
+    ],
+    "caption": "Figure 6.9: Recall that diffusion is a step-by-step process and that the general outline  "
+  },
+  {
+    "id": "6.10",
+    "file": "6.10.png",
+    "page": 175,
+    "w": 873,
+    "h": 352,
+    "clip": [
+      101.0,
+      95.7,
+      392.0,
+      212.4
+    ],
+    "caption": "Figure 6.10: Video generation models take text prompts and may take keyframes or  other im"
+  },
+  {
+    "id": "6.11",
+    "file": "6.11.png",
+    "page": 178,
+    "w": 889,
+    "h": 368,
+    "clip": [
+      75.2,
+      251.1,
+      371.2,
+      373.4
+    ],
+    "caption": "Figure 6.11: Context Parallelism replicates model weights but shares latent space to  comp"
+  },
+  {
+    "id": "7.1",
+    "file": "7.1.png",
+    "page": 183,
+    "w": 869,
+    "h": 657,
+    "clip": [
+      102.4,
+      71.4,
+      392.0,
+      290.1
+    ],
+    "caption": "Figure 7.1: Docker containers are composed of layers, from a base image up to an  ephemera"
+  },
+  {
+    "id": "7.2",
+    "file": "7.2.png",
+    "page": 184,
+    "w": 889,
+    "h": 218,
+    "clip": [
+      75.1,
+      270.9,
+      371.2,
+      343.2
+    ],
+    "caption": "Figure 7.2: Requirements should be pinned to exact versions to prevent future  changes fro"
+  },
+  {
+    "id": "7.3",
+    "file": "7.3.png",
+    "page": 186,
+    "w": 880,
+    "h": 527,
+    "clip": [
+      78.1,
+      68.8,
+      371.2,
+      244.1
+    ],
+    "caption": "Figure 7.3: Without autoscaling, inference systems waste resources during traffic lulls  a"
+  },
+  {
+    "id": "7.4",
+    "file": "7.4.png",
+    "page": 186,
+    "w": 889,
+    "h": 533,
+    "clip": [
+      75.1,
+      302.3,
+      371.2,
+      479.4
+    ],
+    "caption": "Figure 7.4: A strong autoscaling system for inference matches resources to demand."
+  },
+  {
+    "id": "7.5",
+    "file": "7.5.png",
+    "page": 187,
+    "w": 873,
+    "h": 451,
+    "clip": [
+      101.1,
+      150.0,
+      392.0,
+      299.7
+    ],
+    "caption": "Figure 7.5: Kubernetes clusters have a single control plane that orchestrates multiple  wo"
+  },
+  {
+    "id": "7.6",
+    "file": "7.6.png",
+    "page": 189,
+    "w": 873,
+    "h": 604,
+    "clip": [
+      101.0,
+      118.4,
+      392.0,
+      319.4
+    ],
+    "caption": "Figure 7.6: Static batching sets a fi xed batch size and waits for the batch to fi ll befo"
+  },
+  {
+    "id": "7.7",
+    "file": "7.7.png",
+    "page": 189,
+    "w": 873,
+    "h": 604,
+    "clip": [
+      101.0,
+      354.5,
+      392.0,
+      555.5
+    ],
+    "caption": "Figure 7.7: Dynamic batching adds a cutoff time after which a batch is run whether or  not"
+  },
+  {
+    "id": "7.8",
+    "file": "7.8.png",
+    "page": 190,
+    "w": 889,
+    "h": 604,
+    "clip": [
+      75.1,
+      72.8,
+      371.2,
+      273.8
+    ],
+    "caption": "Figure 7.8: Continuous batching operates at the token level, switching in new  requests as"
+  },
+  {
+    "id": "7.9",
+    "file": "7.9.png",
+    "page": 191,
+    "w": 873,
+    "h": 220,
+    "clip": [
+      101.0,
+      253.4,
+      392.0,
+      326.4
+    ],
+    "caption": "Figure 7.9: Each step in the cold start process adds to the overall timeline."
+  },
+  {
+    "id": "7.10",
+    "file": "7.10.png",
+    "page": 195,
+    "w": 873,
+    "h": 500,
+    "clip": [
+      101.0,
+      72.8,
+      392.0,
+      239.2
+    ],
+    "caption": "Figure 7.10: Independent component scaling gives each model access to appropriate  resourc"
+  },
+  {
+    "id": "7.11",
+    "file": "7.11.png",
+    "page": 196,
+    "w": 889,
+    "h": 568,
+    "clip": [
+      75.1,
+      120.4,
+      371.2,
+      309.7
+    ],
+    "caption": "Figure 7.11: A multi-cloud approach extends the idea of control and workload planes  to a "
+  },
+  {
+    "id": "7.12",
+    "file": "7.12.png",
+    "page": 199,
+    "w": 873,
+    "h": 761,
+    "clip": [
+      101.0,
+      72.8,
+      392.0,
+      326.1
+    ],
+    "caption": "Figure 7.12: Root cause of failures when training Llama 3, adapted from “The Llama 3  Herd"
+  },
+  {
+    "id": "7.13",
+    "file": "7.13.png",
+    "page": 202,
+    "w": 880,
+    "h": 389,
+    "clip": [
+      78.0,
+      359.4,
+      371.2,
+      489.0
+    ],
+    "caption": "Figure 7.13: Iteratively shifting traffic over to the new deployment prevents multiple  is"
+  },
+  {
+    "id": "7.14",
+    "file": "7.14.png",
+    "page": 204,
+    "w": 889,
+    "h": 429,
+    "clip": [
+      75.1,
+      207.1,
+      371.2,
+      349.8
+    ],
+    "caption": "Figure 7.14: An equation for estimating the total cost of using per-token APIs in a  produ"
+  },
+  {
+    "id": "7.15",
+    "file": "7.15.png",
+    "page": 204,
+    "w": 889,
+    "h": 286,
+    "clip": [
+      75.1,
+      405.2,
+      371.2,
+      500.2
+    ],
+    "caption": "Figure 7.15: An equation for estimating the total cost of using dedicated deployments  in "
+  },
+  {
+    "id": "7.16",
+    "file": "7.16.png",
+    "page": 206,
+    "w": 889,
+    "h": 220,
+    "clip": [
+      75.1,
+      495.6,
+      371.2,
+      568.6
+    ],
+    "caption": "Figure 7.16: On-server inference time is just a fraction of the end-to-end latency for a  "
+  },
+  {
+    "id": "7.17",
+    "file": "7.17.png",
+    "page": 208,
+    "w": 886,
+    "h": 297,
+    "clip": [
+      76.3,
+      105.3,
+      371.2,
+      203.9
+    ],
+    "caption": "Figure 7.17: One-time HTTP requests and responses are a good fi t for use cases like  text"
+  },
+  {
+    "id": "7.18",
+    "file": "7.18.png",
+    "page": 208,
+    "w": 886,
+    "h": 296,
+    "clip": [
+      76.3,
+      444.0,
+      371.2,
+      542.6
+    ],
+    "caption": "Figure 7.18: WebSockets establish a continuous connection for unstructured data like  audi"
+  },
+  {
+    "id": "7.19",
+    "file": "7.19.png",
+    "page": 209,
+    "w": 870,
+    "h": 297,
+    "clip": [
+      102.2,
+      139.3,
+      392.0,
+      237.8
+    ],
+    "caption": "Figure 7.19: gRPC establishes a continuous connection for well-defi ned service-to- servic"
+  }
+]
