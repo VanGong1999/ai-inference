@@ -13,8 +13,8 @@ export function Reader() {
       <div className="panel p-8 text-center">
         <h1 className="text-2xl font-bold">未指定资源</h1>
         <p className="mt-2 text-[var(--muted)]">请从资源库或实验室选择一项内容。</p>
-        <Link to="/library" className="mt-4 inline-flex font-bold text-[var(--cyan)]">
-          返回资源库 →
+        <Link to="/books" className="mt-4 inline-flex font-bold text-[var(--cyan)]">
+          返回书舱 →
         </Link>
       </div>
     )
@@ -24,7 +24,7 @@ export function Reader() {
   const external = /^https?:\/\//i.test(src)
 
   return (
-    <div className="flex h-[calc(100vh-11rem)] min-h-[480px] flex-col gap-3">
+    <div className="flex h-[calc(100vh-1.5rem)] min-h-[480px] flex-col gap-3">
       <div className="panel flex flex-wrap items-center gap-3 px-3 py-2.5">
         <button
           type="button"
