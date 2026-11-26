@@ -1,0 +1,919 @@
+{
+  "meta": {
+    "title": "Inference Control Room",
+    "version": "2.1",
+    "github": "https://github.com/VanGong1999/ai-inference"
+  },
+  "books": [
+    {
+      "id": "vizuara",
+      "title": "Inference Engineering（Vizuara）",
+      "short": "Vizuara 课程书",
+      "author": "Vizuara AI Labs",
+      "focus": "系统推导 · Roofline → vLLM",
+      "summary": "从 Roofline 出发的系统性课程书：KV Cache、注意力压缩、FlashAttention、PagedAttention，一路到 vLLM 与 Capstone。其余可视化 walkthrough 属本线配套，见实验室。",
+      "color": "#00f0ff",
+      "tag": "BOOK / VIZUARA",
+      "format": "html",
+      "rootHref": "book.zh.html",
+      "chapters": [
+        {
+          "id": "viz-ch00-inference-engineers-world",
+          "no": "0",
+          "title": "推理工程师的世界",
+          "summary": "推理工程师的世界",
+          "href": "book.zh.html#ch00-inference-engineers-world",
+          "kind": "html"
+        },
+        {
+          "id": "viz-ch01-three-layers",
+          "no": "1",
+          "title": "三层架构",
+          "summary": "三层架构",
+          "href": "book.zh.html#ch01-three-layers",
+          "kind": "html"
+        },
+        {
+          "id": "viz-ch02-five-numbers",
+          "no": "2",
+          "title": "你将赖以生存的五个数字",
+          "summary": "你将赖以生存的五个数字",
+          "href": "book.zh.html#ch02-five-numbers",
+          "kind": "html"
+        },
+        {
+          "id": "viz-ch03-the-roofline",
+          "no": "3",
+          "title": "Roofline 是我们的北极星",
+          "summary": "Roofline 是我们的北极星",
+          "href": "book.zh.html#ch03-the-roofline",
+          "kind": "html"
+        },
+        {
+          "id": "viz-ch04-pretraining-in-one-page",
+          "no": "4",
+          "title": "一页讲完预训练",
+          "summary": "一页讲完预训练",
+          "href": "book.zh.html#ch04-pretraining-in-one-page",
+          "kind": "html"
+        },
+        {
+          "id": "viz-ch05-naive-inference-and-redundancy",
+          "no": "5",
+          "title": "朴素推理及其冗余",
+          "summary": "朴素推理及其冗余",
+          "href": "book.zh.html#ch05-naive-inference-and-redundancy",
+          "kind": "html"
+        },
+        {
+          "id": "viz-ch06-the-machine",
+          "no": "6",
+          "title": "机器（一台 GPU）",
+          "summary": "机器（一台 GPU）",
+          "href": "book.zh.html#ch06-the-machine",
+          "kind": "html"
+        },
+        {
+          "id": "viz-ch07-good-and-evil-of-kv-cache",
+          "no": "7",
+          "title": "KV Cache 的善与恶",
+          "summary": "KV Cache 的善与恶",
+          "href": "book.zh.html#ch07-good-and-evil-of-kv-cache",
+          "kind": "html"
+        },
+        {
+          "id": "viz-ch08-compress-across-heads",
+          "no": "8",
+          "title": "跨头压缩",
+          "summary": "跨头压缩",
+          "href": "book.zh.html#ch08-compress-across-heads",
+          "kind": "html"
+        },
+        {
+          "id": "viz-ch09-compress-across-tokens",
+          "no": "9",
+          "title": "跨 token 压缩",
+          "summary": "跨 token 压缩",
+          "href": "book.zh.html#ch09-compress-across-tokens",
+          "kind": "html"
+        },
+        {
+          "id": "viz-ch10-flash-attention",
+          "no": "10",
+          "title": "FlashAttention",
+          "summary": "FlashAttention",
+          "href": "book.zh.html#ch10-flash-attention",
+          "kind": "html"
+        },
+        {
+          "id": "viz-ch11-paged-attention",
+          "no": "11",
+          "title": "PagedAttention",
+          "summary": "PagedAttention",
+          "href": "book.zh.html#ch11-paged-attention",
+          "kind": "html"
+        },
+        {
+          "id": "viz-ch12-prefix-caching-chunked-prefill",
+          "no": "12",
+          "title": "前缀缓存 + 分块预填充",
+          "summary": "前缀缓存 + 分块预填充",
+          "href": "book.zh.html#ch12-prefix-caching-chunked-prefill",
+          "kind": "html"
+        },
+        {
+          "id": "viz-ch13-quantization",
+          "no": "13",
+          "title": "量化",
+          "summary": "量化",
+          "href": "book.zh.html#ch13-quantization",
+          "kind": "html"
+        },
+        {
+          "id": "viz-ch14-continuous-batching",
+          "no": "14",
+          "title": "连续批处理",
+          "summary": "连续批处理",
+          "href": "book.zh.html#ch14-continuous-batching",
+          "kind": "html"
+        },
+        {
+          "id": "viz-ch15-speculative-decoding",
+          "no": "15",
+          "title": "投机解码",
+          "summary": "投机解码",
+          "href": "book.zh.html#ch15-speculative-decoding",
+          "kind": "html"
+        },
+        {
+          "id": "viz-ch16-parallelism",
+          "no": "16",
+          "title": "Roofline 上的并行",
+          "summary": "Roofline 上的并行",
+          "href": "book.zh.html#ch16-parallelism",
+          "kind": "html"
+        },
+        {
+          "id": "viz-ch17-disaggregated-prefill-decode",
+          "no": "17",
+          "title": "分离式预填充/解码",
+          "summary": "分离式预填充/解码",
+          "href": "book.zh.html#ch17-disaggregated-prefill-decode",
+          "kind": "html"
+        },
+        {
+          "id": "viz-ch18-replication-routing-multiregion",
+          "no": "18",
+          "title": "复制、路由与多区域",
+          "summary": "复制、路由与多区域",
+          "href": "book.zh.html#ch18-replication-routing-multiregion",
+          "kind": "html"
+        },
+        {
+          "id": "viz-ch19-anatomy-of-vllm",
+          "no": "19",
+          "title": "vLLM 一步的解剖",
+          "summary": "vLLM 一步的解剖",
+          "href": "book.zh.html#ch19-anatomy-of-vllm",
+          "kind": "html"
+        },
+        {
+          "id": "viz-ch20-engine-landscape",
+          "no": "20",
+          "title": "推理引擎全景（2026）",
+          "summary": "推理引擎全景（2026）",
+          "href": "book.zh.html#ch20-engine-landscape",
+          "kind": "html"
+        },
+        {
+          "id": "viz-ch21-inference-quest",
+          "no": "21",
+          "title": "推理探索（Inference Quest）",
+          "summary": "推理探索（Inference Quest）",
+          "href": "book.zh.html#ch21-inference-quest",
+          "kind": "html"
+        },
+        {
+          "id": "viz-ch22-finetuning-distillation-subliminal",
+          "no": "22",
+          "title": "微调、蒸馏与潜意识学习",
+          "summary": "微调、蒸馏与潜意识学习",
+          "href": "book.zh.html#ch22-finetuning-distillation-subliminal",
+          "kind": "html"
+        },
+        {
+          "id": "viz-ch23-multimodal-and-embodied",
+          "no": "23",
+          "title": "前沿——多模态与具身推理",
+          "summary": "前沿——多模态与具身推理",
+          "href": "book.zh.html#ch23-multimodal-and-embodied",
+          "kind": "html"
+        },
+        {
+          "id": "viz-ch24-capstone1-speed-optimized-server",
+          "no": "24",
+          "title": "Capstone 1——速度优化服务器",
+          "summary": "Capstone 1——速度优化服务器",
+          "href": "book.zh.html#ch24-capstone1-speed-optimized-server",
+          "kind": "html"
+        },
+        {
+          "id": "viz-ch25-capstone2-scale-to-a-million",
+          "no": "25",
+          "title": "Capstone 2——扩展到百万用户",
+          "summary": "Capstone 2——扩展到百万用户",
+          "href": "book.zh.html#ch25-capstone2-scale-to-a-million",
+          "kind": "html"
+        },
+        {
+          "id": "viz-ch26-capstone3-openclaw-rl",
+          "no": "26",
+          "title": "Capstone 3——OpenClaw-RL",
+          "summary": "Capstone 3——OpenClaw-RL",
+          "href": "book.zh.html#ch26-capstone3-openclaw-rl",
+          "kind": "html"
+        },
+        {
+          "id": "viz-ch27-conclusion",
+          "no": "27",
+          "title": "推理工程之美",
+          "summary": "推理工程之美",
+          "href": "book.zh.html#ch27-conclusion",
+          "kind": "html"
+        }
+      ]
+    },
+    {
+      "id": "kiely",
+      "title": "Inference Engineering（Philip Kiely）",
+      "short": "Baseten 生产书",
+      "author": "Philip Kiely · Baseten",
+      "focus": "产品 · 生产 · 多模态",
+      "summary": "从 CUDA 到 Kubernetes 的推理工程全景：运行时、基础设施与工具三层，覆盖多模态与真实部署。",
+      "color": "#bd00ff",
+      "tag": "BOOK / KIELY",
+      "format": "md",
+      "rootHref": "md.html?src=inference-engineering/README.md",
+      "chapters": [
+        {
+          "id": "kiely-00-前言",
+          "no": "00",
+          "title": "前言",
+          "summary": "为什么推理是 AI 行业最有价值的领域",
+          "href": "md.html?src=inference-engineering/00-前言.md",
+          "kind": "md"
+        },
+        {
+          "id": "kiely-01-推理",
+          "no": "0",
+          "title": "推理",
+          "summary": "三层：运行时/基础设施/工具",
+          "href": "md.html?src=inference-engineering/01-推理.md",
+          "kind": "md"
+        },
+        {
+          "id": "kiely-02-先决条件",
+          "no": "1",
+          "title": "先决条件",
+          "summary": "规模/应用/模型选择/延迟吞吐",
+          "href": "md.html?src=inference-engineering/02-先决条件.md",
+          "kind": "md"
+        },
+        {
+          "id": "kiely-03-模型",
+          "no": "2",
+          "title": "模型",
+          "summary": "神经网络、LLM/图像生成机制、瓶颈",
+          "href": "md.html?src=inference-engineering/03-模型.md",
+          "kind": "md"
+        },
+        {
+          "id": "kiely-04-硬件",
+          "no": "3",
+          "title": "硬件",
+          "summary": "GPU 架构、世代、实例、本地推理",
+          "href": "md.html?src=inference-engineering/04-硬件.md",
+          "kind": "md"
+        },
+        {
+          "id": "kiely-05-软件",
+          "no": "4",
+          "title": "软件",
+          "summary": "CUDA、框架、推理引擎、Dynamo",
+          "href": "md.html?src=inference-engineering/05-软件.md",
+          "kind": "md"
+        },
+        {
+          "id": "kiely-06-技术",
+          "no": "5",
+          "title": "技术",
+          "summary": "量化、投机解码、缓存、并行、分离式",
+          "href": "md.html?src=inference-engineering/06-技术.md",
+          "kind": "md"
+        },
+        {
+          "id": "kiely-07-多模态",
+          "no": "6",
+          "title": "多模态",
+          "summary": "VLM/Embedding/ASR/TTS/图像/视频",
+          "href": "md.html?src=inference-engineering/07-多模态.md",
+          "kind": "md"
+        },
+        {
+          "id": "kiely-08-生产",
+          "no": "7",
+          "title": "生产",
+          "summary": "容器化、自动扩缩、多云、部署",
+          "href": "md.html?src=inference-engineering/08-生产.md",
+          "kind": "md"
+        },
+        {
+          "id": "kiely-附录A-术语表",
+          "no": "A",
+          "title": "附录 A · 术语表",
+          "summary": "推理术语表",
+          "href": "md.html?src=inference-engineering/附录A-术语表.md",
+          "kind": "md"
+        },
+        {
+          "id": "kiely-附录B-推荐阅读",
+          "no": "B",
+          "title": "附录 B · 推荐阅读",
+          "summary": "推荐阅读",
+          "href": "md.html?src=inference-engineering/附录B-推荐阅读.md",
+          "kind": "md"
+        }
+      ]
+    },
+    {
+      "id": "llm-notes",
+      "title": "Efficient LLM Inference",
+      "short": "面试口袋笔记",
+      "author": "Lamhot Siagian",
+      "focus": "面试 · 公式 · 模拟问答",
+      "summary": "14 章 + 附录的面试口袋笔记：数字、公式与约 70 道 Mock Q&A，覆盖推理工程高频考点。",
+      "color": "#f0ff00",
+      "tag": "BOOK / INTERVIEW",
+      "format": "md",
+      "rootHref": "md.html?src=llm-notes/README.md",
+      "chapters": [
+        {
+          "id": "llm-01-推理问题",
+          "no": "1",
+          "title": "推理问题",
+          "summary": "训练 vs 推理、铁三角、内存带宽、Roofline",
+          "href": "md.html?src=llm-notes/01-推理问题.md",
+          "kind": "md"
+        },
+        {
+          "id": "llm-02-硬件基础",
+          "no": "2",
+          "title": "硬件基础",
+          "summary": "GPU 架构、Tensor Core、内存层级",
+          "href": "md.html?src=llm-notes/02-硬件基础.md",
+          "kind": "md"
+        },
+        {
+          "id": "llm-03-Transformer推理机制",
+          "no": "3",
+          "title": "Transformer 推理机制",
+          "summary": "KV Cache、prefill/decode、注意力变体",
+          "href": "md.html?src=llm-notes/03-Transformer推理机制.md",
+          "kind": "md"
+        },
+        {
+          "id": "llm-04-量化",
+          "no": "4",
+          "title": "量化",
+          "summary": "GPTQ、AWQ、QuIP#、AQLM、QAT",
+          "href": "md.html?src=llm-notes/04-量化.md",
+          "kind": "md"
+        },
+        {
+          "id": "llm-05-投机解码",
+          "no": "5",
+          "title": "投机解码",
+          "summary": "draft/verify、树验证、Medusa、EAGLE",
+          "href": "md.html?src=llm-notes/05-投机解码.md",
+          "kind": "md"
+        },
+        {
+          "id": "llm-06-KV-Cache优化",
+          "no": "6",
+          "title": "KV Cache 优化",
+          "summary": "PagedAttention、前缀缓存、StreamingLLM",
+          "href": "md.html?src=llm-notes/06-KV-Cache优化.md",
+          "kind": "md"
+        },
+        {
+          "id": "llm-07-内核工程与FlashAttention",
+          "no": "7",
+          "title": "内核工程与 FlashAttention",
+          "summary": "内核融合、online softmax、Triton",
+          "href": "md.html?src=llm-notes/07-内核工程与FlashAttention.md",
+          "kind": "md"
+        },
+        {
+          "id": "llm-08-服务系统架构",
+          "no": "8",
+          "title": "服务系统架构",
+          "summary": "批处理、分离式服务、SLO 调度",
+          "href": "md.html?src=llm-notes/08-服务系统架构.md",
+          "kind": "md"
+        },
+        {
+          "id": "llm-09-并行",
+          "no": "9",
+          "title": "并行",
+          "summary": "张量/流水线/专家并行、MoE",
+          "href": "md.html?src=llm-notes/09-并行.md",
+          "kind": "md"
+        },
+        {
+          "id": "llm-10-长上下文与内存管理",
+          "no": "10",
+          "title": "长上下文与内存管理",
+          "summary": "Ring Attention、上下文压缩、SSM",
+          "href": "md.html?src=llm-notes/10-长上下文与内存管理.md",
+          "kind": "md"
+        },
+        {
+          "id": "llm-11-边缘与端侧推理",
+          "no": "11",
+          "title": "边缘与端侧推理",
+          "summary": "llama.cpp、MLX、ONNX、NAS",
+          "href": "md.html?src=llm-notes/11-边缘与端侧推理.md",
+          "kind": "md"
+        },
+        {
+          "id": "llm-12-推理时计算扩展",
+          "no": "12",
+          "title": "推理时计算扩展",
+          "summary": "CoT、PRM、搜索、R1/o1、GRPO",
+          "href": "md.html?src=llm-notes/12-推理时计算扩展.md",
+          "kind": "md"
+        },
+        {
+          "id": "llm-13-可观测性与生产工程",
+          "no": "13",
+          "title": "可观测性与生产工程",
+          "summary": "指标、故障排查、成本建模",
+          "href": "md.html?src=llm-notes/13-可观测性与生产工程.md",
+          "kind": "md"
+        },
+        {
+          "id": "llm-14-推理的未来",
+          "no": "14",
+          "title": "推理的未来",
+          "summary": "扩散、多 token 预测、光计算",
+          "href": "md.html?src=llm-notes/14-推理的未来.md",
+          "kind": "md"
+        },
+        {
+          "id": "llm-附录",
+          "no": "附",
+          "title": "附录",
+          "summary": "公式速查 / 论文清单 / 术语表 / 硬件对比",
+          "href": "md.html?src=llm-notes/附录.md",
+          "kind": "md"
+        }
+      ]
+    },
+    {
+      "id": "modelplane",
+      "title": "Modelplane 推理工程开放指南",
+      "short": "平台工程指南",
+      "author": "Modelplane",
+      "focus": "平台 · 运维 · 职业路径",
+      "summary": "面向平台工程师的开放指南：为什么现在做推理、生产取舍、工具栈、案例与职业发展。",
+      "color": "#00ff9d",
+      "tag": "BOOK / PLATFORM",
+      "format": "md",
+      "rootHref": "md.html?src=modelplane-inference-guide-zh/README.md",
+      "chapters": [
+        {
+          "id": "mp-01-为什么是现在",
+          "no": "1",
+          "title": "为什么是现在",
+          "summary": "平台 → 推理、可迁移技能",
+          "href": "md.html?src=modelplane-inference-guide-zh/01-为什么是现在.md",
+          "kind": "md"
+        },
+        {
+          "id": "mp-02-推理基础",
+          "no": "2",
+          "title": "推理基础",
+          "summary": "GPU 内存、引擎、速度上限",
+          "href": "md.html?src=modelplane-inference-guide-zh/02-推理基础.md",
+          "kind": "md"
+        },
+        {
+          "id": "mp-03-生产环境中的推理",
+          "no": "3",
+          "title": "生产环境中的推理",
+          "summary": "场景优先、延迟/吞吐/成本",
+          "href": "md.html?src=modelplane-inference-guide-zh/03-生产环境中的推理.md",
+          "kind": "md"
+        },
+        {
+          "id": "mp-04-技术栈与工具",
+          "no": "4",
+          "title": "技术栈与工具",
+          "summary": "引擎、K8s、网关、可观测性",
+          "href": "md.html?src=modelplane-inference-guide-zh/04-技术栈与工具.md",
+          "kind": "md"
+        },
+        {
+          "id": "mp-05-案例与团队经验",
+          "no": "5",
+          "title": "案例与团队经验",
+          "summary": "案例与团队经验",
+          "href": "md.html?src=modelplane-inference-guide-zh/05-案例与团队经验.md",
+          "kind": "md"
+        },
+        {
+          "id": "mp-06-职业发展",
+          "no": "6",
+          "title": "职业发展",
+          "summary": "职业发展",
+          "href": "md.html?src=modelplane-inference-guide-zh/06-职业发展.md",
+          "kind": "md"
+        },
+        {
+          "id": "mp-07-来源与延伸阅读",
+          "no": "7",
+          "title": "来源与延伸阅读",
+          "summary": "来源与延伸阅读",
+          "href": "md.html?src=modelplane-inference-guide-zh/07-来源与延伸阅读.md",
+          "kind": "md"
+        }
+      ]
+    }
+  ],
+  "labs": [
+    {
+      "id": "lab-perplexity",
+      "title": "困惑度的解剖",
+      "summary": "困惑度损失、token 概率与交叉熵。",
+      "track": "基础",
+      "tags": [
+        "LLMs",
+        "损失"
+      ],
+      "href": "perplexity-anatomy.html",
+      "kind": "html"
+    },
+    {
+      "id": "lab-dna",
+      "title": "Transformer 的 DNA",
+      "summary": "Transformer 组件与数据流可视化。",
+      "track": "入门",
+      "tags": [
+        "transformer"
+      ],
+      "href": "dna-of-a-transformer/index.zh.html",
+      "kind": "html"
+    },
+    {
+      "id": "lab-chip",
+      "title": "从 GPU 推理到 AI 芯片创意",
+      "summary": "脉动阵列、HBM、KV 缓存与芯片创业创意。",
+      "track": "入门",
+      "tags": [
+        "芯片",
+        "硬件"
+      ],
+      "href": "ai-chip-ideas-guide/index.zh.html",
+      "kind": "html"
+    },
+    {
+      "id": "lab-kv-token",
+      "title": "跨 token 削减 KV Cache",
+      "summary": "剪枝、压缩、窗口化与摘要如何改变缓存。",
+      "track": "KV Cache",
+      "tags": [
+        "KV 缓存"
+      ],
+      "href": "kv-cache-token-reduction-walkthrough/visual-walkthroughs/kv-cache-token-reduction-visual-walkthrough.zh.html",
+      "kind": "html"
+    },
+    {
+      "id": "lab-fft",
+      "title": "为什么卷积是 N log N",
+      "summary": "混响、卷积、FFT 与计算加速。",
+      "track": "KV Cache",
+      "tags": [
+        "FFT"
+      ],
+      "href": "fft-visual-walkthrough.html",
+      "kind": "html"
+    },
+    {
+      "id": "lab-receptive",
+      "title": "滑动窗口注意力中的感受野",
+      "summary": "局部窗口如何通过层堆叠看更远。",
+      "track": "KV Cache",
+      "tags": [
+        "滑动窗口"
+      ],
+      "href": "receptive-field-sliding-window-walkthrough.html",
+      "kind": "html"
+    },
+    {
+      "id": "lab-mamba-sel",
+      "title": "为什么 Mamba 需要选择性",
+      "summary": "SSM 如何决定记住什么、抑制什么。",
+      "track": "KV Cache",
+      "tags": [
+        "Mamba"
+      ],
+      "href": "mamba-why-selectivity-matters.html",
+      "kind": "html"
+    },
+    {
+      "id": "lab-mamba-arch",
+      "title": "Mamba Block 内部",
+      "summary": "投影、卷积到 selective scan。",
+      "track": "KV Cache",
+      "tags": [
+        "Mamba"
+      ],
+      "href": "mamba-architecture-step-by-step.html",
+      "kind": "html"
+    },
+    {
+      "id": "lab-eviction",
+      "title": "KV Cache 驱逐",
+      "summary": "保护区、打分、块移除与代表性保留。",
+      "track": "驱逐",
+      "tags": [
+        "KV 缓存",
+        "驱逐"
+      ],
+      "href": "kv-cache-eviction-walkthrough.html",
+      "kind": "html"
+    },
+    {
+      "id": "lab-quant",
+      "title": "量化可视化 Walkthrough",
+      "summary": "浮点存储、PTQ、GPTQ、AWQ、GGUF 与 QAT。",
+      "track": "量化",
+      "tags": [
+        "量化"
+      ],
+      "href": "quantization-visual-walkthrough/index.html",
+      "kind": "html"
+    },
+    {
+      "id": "lab-turboquant",
+      "title": "TurboQuant 可视化指南",
+      "summary": "旋转感知量化与模型压缩。",
+      "track": "量化",
+      "tags": [
+        "量化",
+        "旋转"
+      ],
+      "href": "turboquant-rotation-visual-guide/index.zh.html",
+      "kind": "html"
+    },
+    {
+      "id": "lab-deepseek-sparse",
+      "title": "DeepSeek 稀疏注意力",
+      "summary": "稀疏注意力模式与高效推理。",
+      "track": "现代概念",
+      "tags": [
+        "DeepSeek"
+      ],
+      "href": "DeepSeek-Sparse/index.zh.html",
+      "kind": "html"
+    },
+    {
+      "id": "lab-deepseek-v4",
+      "title": "DeepSeek V4 KV Cache",
+      "summary": "DeepSeek 风格 KV 缓存效率走查。",
+      "track": "现代概念",
+      "tags": [
+        "DeepSeek",
+        "KV"
+      ],
+      "href": "deepseek-v4-kv-cache-walkthrough/index.zh.html",
+      "kind": "html"
+    },
+    {
+      "id": "lab-radix",
+      "title": "RadixAttention 与语义缓存",
+      "summary": "树索引前缀复用与语义跳过推理。",
+      "track": "现代概念",
+      "tags": [
+        "缓存"
+      ],
+      "href": "radix-and-semantic-caching.html",
+      "kind": "html"
+    },
+    {
+      "id": "lab-prod",
+      "title": "生产级推理系统",
+      "summary": "冷启动、金丝雀、路由与护栏。",
+      "track": "服务",
+      "tags": [
+        "生产"
+      ],
+      "href": "production-inference-systems.html",
+      "kind": "html"
+    },
+    {
+      "id": "lab-structured",
+      "title": "结构化输出与评测",
+      "summary": "JSON schema、引导解码与评测脚手架。",
+      "track": "服务",
+      "tags": [
+        "评测"
+      ],
+      "href": "structured-output-evals.html",
+      "kind": "html"
+    },
+    {
+      "id": "lab-disagg",
+      "title": "分离式服务",
+      "summary": "Prefill / Decode 分离与 KV 传输税。",
+      "track": "服务",
+      "tags": [
+        "分离式"
+      ],
+      "href": "disaggregated-serving-visual-walkthrough.html",
+      "kind": "html"
+    },
+    {
+      "id": "lab-million",
+      "title": "百万请求级 LLM 系统设计",
+      "summary": "高吞吐系统设计终答。",
+      "track": "服务",
+      "tags": [
+        "系统设计"
+      ],
+      "href": "million-request-llm-system-design.html",
+      "kind": "html"
+    },
+    {
+      "id": "lab-fa12",
+      "title": "FlashAttention-1 → 2",
+      "summary": "GPU 调度、切块与并行度。",
+      "track": "注意力",
+      "tags": [
+        "FlashAttention"
+      ],
+      "href": "flashattention-1-2.html",
+      "kind": "html"
+    },
+    {
+      "id": "lab-fa3",
+      "title": "FlashAttention-3",
+      "summary": "Hopper WGMMA / TMA 与流水重叠。",
+      "track": "注意力",
+      "tags": [
+        "FlashAttention",
+        "Hopper"
+      ],
+      "href": "flashattention-3.html",
+      "kind": "html"
+    },
+    {
+      "id": "lab-attn-cmp",
+      "title": "注意力机制优化汇总",
+      "summary": "注意力变体与推理优化地图。",
+      "track": "注意力",
+      "tags": [
+        "注意力"
+      ],
+      "href": "attention-variants-inference-comparison.html",
+      "kind": "html"
+    },
+    {
+      "id": "lab-roofline",
+      "title": "从 Roofline 到 vLLM",
+      "summary": "整条推理优化弧线的一页叙事。",
+      "track": "主线",
+      "tags": [
+        "Roofline",
+        "vLLM"
+      ],
+      "href": "roofline-to-vllm.html",
+      "kind": "html"
+    },
+    {
+      "id": "lab-retrain",
+      "title": "哪些注意力变体需要重训？",
+      "summary": "系统重排 vs 模型结构变更分类。",
+      "track": "主线",
+      "tags": [
+        "注意力",
+        "重训"
+      ],
+      "href": "attention-variants-retraining.html",
+      "kind": "html"
+    }
+  ],
+  "graph": {
+    "nodes": [
+      {
+        "id": "hub",
+        "label": "知识库",
+        "category": "hub",
+        "val": 30,
+        "desc": "四本独立书舱 + Vizuara 可视化实验室"
+      },
+      {
+        "id": "book-vizuara",
+        "label": "Vizuara",
+        "category": "vizuara",
+        "val": 22,
+        "desc": "课程书 · 系统推导",
+        "bookId": "vizuara"
+      },
+      {
+        "id": "book-kiely",
+        "label": "Kiely",
+        "category": "kiely",
+        "val": 18,
+        "desc": "生产工程全景",
+        "bookId": "kiely"
+      },
+      {
+        "id": "book-llm",
+        "label": "面试笔记",
+        "category": "llm-notes",
+        "val": 16,
+        "desc": "Efficient LLM Inference",
+        "bookId": "llm-notes"
+      },
+      {
+        "id": "book-modelplane",
+        "label": "Modelplane",
+        "category": "modelplane",
+        "val": 14,
+        "desc": "平台工程指南",
+        "bookId": "modelplane"
+      },
+      {
+        "id": "lab-hub",
+        "label": "实验室",
+        "category": "visual",
+        "val": 15,
+        "desc": "Vizuara 可视化 walkthrough",
+        "route": "/lab"
+      }
+    ],
+    "links": [
+      {
+        "source": "hub",
+        "target": "book-vizuara"
+      },
+      {
+        "source": "hub",
+        "target": "book-kiely"
+      },
+      {
+        "source": "hub",
+        "target": "book-llm"
+      },
+      {
+        "source": "hub",
+        "target": "book-modelplane"
+      },
+      {
+        "source": "hub",
+        "target": "lab-hub"
+      },
+      {
+        "source": "book-vizuara",
+        "target": "lab-hub"
+      }
+    ]
+  },
+  "categories": {
+    "hub": {
+      "label": "总控",
+      "color": "#e8f2ff"
+    },
+    "vizuara": {
+      "label": "Vizuara",
+      "color": "#00f0ff"
+    },
+    "kiely": {
+      "label": "Kiely",
+      "color": "#bd00ff"
+    },
+    "llm-notes": {
+      "label": "面试笔记",
+      "color": "#f0ff00"
+    },
+    "modelplane": {
+      "label": "Modelplane",
+      "color": "#00ff9d"
+    },
+    "visual": {
+      "label": "实验室",
+      "color": "#ff2d95"
+    }
+  }
+}

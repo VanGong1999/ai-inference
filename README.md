@@ -38,12 +38,22 @@
 **本地预览**：
 
 ```bash
+# 门户壳（霓虹总控台 + 资源库 + 实验室）
+cd web
+npm install
+npm run dev          # 开发：http://localhost:5173/
+# 改完后发布前：
+npm run build        # 写入 docs/index.html + portal-assets + 404.html
+npm run preview      # 带 /ai-inference/ 前缀的生产预览
+
+# 仅静态正文（书籍 / md / walkthrough）
 cd docs
 python3 -m http.server 8000
-# 浏览器打开 http://localhost:8000/
 # 中文书：http://localhost:8000/book.zh.html
-# 导读渲染：http://localhost:8000/md.html?src=guides/lectures/06-vLLM-Step-的解剖.md
+# 导读：http://localhost:8000/md.html?src=guides/lectures/06-vLLM-Step-的解剖.md
 ```
+
+部署细节见 [`DEPLOY.md`](DEPLOY.md)。
 
 ## 目录结构
 
@@ -51,8 +61,13 @@ python3 -m http.server 8000
 ai-inference/
 ├── README.md            # 本文件（中文总入口）
 ├── DEPLOY.md            # 部署 / 发布说明
+├── web/                 # Vite + React 总控壳源码
+│   ├── src/             # 路由页、Force Graph、霓虹组件、catalog.json
+│   └── scripts/         # postbuild（404.html + 清理旧 assets）
 ├── docs/                # GitHub Pages 根目录（serve from /docs）
-│   ├── index.html       # 中文站点门户首页
+│   ├── index.html       # SPA 门户入口（由 web 构建生成）
+│   ├── 404.html         # SPA 深链回退（与 index 同内容）
+│   ├── portal-assets/   # SPA 打包资源
 │   ├── book.zh.html     # 推理工程书籍（中文拼合版）
 │   ├── book.html        # 推理工程书籍（英文原文）
 │   ├── md.html          # Markdown 渲染页（站点内排版显示导读）
